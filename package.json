@@ -1,0 +1,14 @@
+{
+  "name": "cleanmate",
+  "version": "0.0.1",
+  "private": true,
+  "description": "확실한 건 알아서, 애매한 것만 딱 물어보는 정리 도구 — 엔진 프로토타입",
+  "type": "module",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "scan": "node --experimental-strip-types --no-warnings src/cli.ts",
+    "test": "node --experimental-strip-types --no-warnings --test src/**/*.test.ts"
+  }
+}
