@@ -12,3 +12,4 @@ desktop.ini
 # 스캔 결과물은 사용자 파일 경로를 담을 수 있다 — 절대 커밋하지 않는다
 *.scan.json
 scan-output/
+.vercel
