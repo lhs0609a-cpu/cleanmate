@@ -5,6 +5,8 @@
 기획: [마스터 기획서](https://claude.ai/code/artifact/4e328b41-b571-44f5-9915-61481e4a4692) ·
 상세 문서는 바탕화면(`클린메이트_기획서_v2.txt`, `클린메이트_기능명세_v1.txt`, `클린메이트_고레버리지질문엔진_설계.txt`)
 
+**웹 데모** → https://cleanmate-henna.vercel.app · 폴더를 고르면 브라우저 안에서 엔진이 돈다
+
 ## 지금 뭐가 되나
 
 **Phase 0 — 엔진 검증 프로토타입.** 스캔 → 3-존 분류 → 미지수 클러스터링 → 고레버리지 질문 생성까지.
@@ -13,10 +15,35 @@
 > 제1 개발 원칙: *"되돌릴 수 있는 그릇(격리·복구)이 준비되기 전엔 아무것도 지우지 않는다."*
 > 격리 모듈(M11)이 붙기 전까지 삭제 코드는 존재하지 않는다.
 
+## 개발 환경
+
+**CLI는 의존성이 0이다.** Node 24 타입 스트리핑만 쓴다 — `npm install` 없이 바로 돈다.
+
 ```bash
-npm run scan -- "C:/Users/you/Downloads"
-npm test
+npm run scan -- "C:/Users/you/Downloads"   # 설치 불필요
+npm test                                    # 설치 불필요
 ```
+
+웹 데모(`web/`)만 vite가 필요하다:
+
+```bash
+npm install && npm run dev
+npm run build
+```
+
+> ⚠️ **Google Drive 폴더에서 `npm install` 하지 말 것.**
+> 동기화 I/O 때문에 5분+ 걸리다 죽는다 (로컬 디스크는 **3초**). Drive에 node_modules를
+> 두면 수천 개 파일을 동기화하려 들고 파일 잠금까지 걸어 삭제도 안 된다.
+> **로컬 클론에서 작업한다** (`C:\dev\cleanmate`). GitHub이 진실의 원천이고,
+> Drive 사본은 소스만 둔다. CLI는 의존성이 없어서 Drive에서도 그냥 돈다.
+
+## 배포
+
+GitHub → Vercel 자동 배포. `master`에 푸시하면 프로덕션에 나간다.
+
+`vercel.json`의 **`connect-src 'none'`** — 데모가 사용자 파일을 읽으므로
+브라우저가 네트워크를 강제 차단한다. *"파일은 기기를 떠나지 않습니다"* 를 말이 아니라
+배포 설정으로 증명한다. 우리 코드가 데이터를 보내려 해도 브라우저가 막는다.
 
 ## 검증 결과 (실측)
 
