@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>클린메이트 — 뭘 지우면 안 되는지 아는 정리 도구</title>
+<meta name="description" content="확실한 건 알아서, 애매한 것만 딱 물어보는 정리 도구. 파일은 브라우저를 떠나지 않습니다." />
+<style>
+  :root{
+    --bg:#F7F9FA; --surface:#FFFFFF; --surface-2:#F1F5F6;
+    --ink:#10161C; --ink-2:#3B4750; --muted:#697A85; --line:#DDE4E8; --line-2:#C8D3D8;
+    --accent:#0B6F76; --accent-ink:#FFFFFF; --accent-soft:#E3F1F1;
+    --safe:#1A7F4B; --amb:#A96206; --lock:#B3261E;
+    --sans:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Segoe UI",-apple-system,system-ui,sans-serif;
+    --mono:ui-monospace,"Cascadia Code","Consolas","SF Mono","D2Coding",monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0B0F14; --surface:#121A21; --surface-2:#18222B;
+      --ink:#E7EDF1; --ink-2:#BCC9D2; --muted:#8698A5; --line:#233039; --line-2:#31414D;
+      --accent:#3ED8CE; --accent-ink:#04262A; --accent-soft:#12333A;
+      --safe:#5BD98D; --amb:#F0B44C; --lock:#FF7B72;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.7;
+       -webkit-font-smoothing:antialiased}
+  h1,h2,h3{text-wrap:balance;line-height:1.25;margin:0}
+  p{margin:0}
+  .wrap{max-width:960px;margin:0 auto;padding:0 24px}
+
+  header{border-bottom:1px solid var(--line);background:var(--surface)}
+  .hero{padding:72px 0 56px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  h1{font-size:clamp(32px,5.4vw,52px);font-weight:800;letter-spacing:-.032em;margin:16px 0 0}
+  .sub{margin-top:18px;font-size:clamp(16px,2vw,19px);color:var(--ink-2);max-width:56ch}
+  .sub b{color:var(--ink)}
+
+  main{padding:56px 0 80px;display:flex;flex-direction:column;gap:56px}
+  h2{font-size:24px;font-weight:750;letter-spacing:-.02em}
+  .sec-num{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--accent);text-transform:uppercase}
+  .sec-head{display:flex;flex-direction:column;gap:8px;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+
+  .zones{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  .zone{border:1px solid var(--line);border-top:3px solid var(--z);border-radius:3px;background:var(--surface);padding:16px}
+  .zone .tag{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--z);font-weight:700}
+  .zone h3{margin:6px 0 4px;font-size:15px}
+  .zone p{font-size:13px;color:var(--ink-2);line-height:1.6}
+  .z-safe{--z:var(--safe)} .z-amb{--z:var(--amb)} .z-lock{--z:var(--lock)}
+
+  .btn{font-family:var(--sans);font-size:15px;font-weight:650;padding:12px 22px;border-radius:3px;
+       background:var(--accent);color:var(--accent-ink);border:1px solid var(--accent);cursor:pointer;transition:.15s}
+  .btn:hover{opacity:.9}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+  .privacy{margin-top:14px;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+  .privacy .lockicon{color:var(--safe);font-family:var(--mono);font-weight:700}
+
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:3px;padding:20px;margin-top:18px}
+  .hint{font-size:13px;color:var(--muted);margin-top:10px}
+  #status{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-top:12px;min-height:1.2em}
+
+  .bars{display:flex;flex-direction:column;gap:9px;margin-top:6px}
+  .barrow{display:grid;grid-template-columns:78px 1fr 96px;gap:12px;align-items:center;font-size:13px}
+  .barlabel{font-family:var(--mono);font-size:11.5px;color:var(--z);font-weight:700}
+  .bartrack{height:9px;background:var(--surface-2);border-radius:2px;overflow:hidden}
+  .barfill{height:100%;background:var(--z);width:0;transition:width .5s ease}
+  .barval{font-family:var(--mono);font-size:12px;text-align:right;color:var(--ink-2);font-variant-numeric:tabular-nums}
+
+  .q{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:3px;
+     background:var(--surface);padding:16px;margin-top:12px}
+  .q-n{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700}
+  .q-text{font-size:15px;font-weight:650;margin:6px 0 8px}
+  .q-why{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+  .opts{display:flex;flex-wrap:wrap;gap:8px}
+  .opt{font-size:13px;padding:7px 12px;border:1px solid var(--line-2);background:var(--surface-2);
+       border-radius:2px;cursor:default}
+  .opt .oi{color:var(--accent);font-weight:650}
+  .q-stake{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:10px}
+
+  .metrics{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-top:18px}
+  .metric{border:1px solid var(--line);border-radius:3px;padding:14px;background:var(--surface)}
+  .metric .n{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--accent);
+             font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .metric .l{font-size:12px;color:var(--muted);margin-top:4px}
+
+  .note{border:1px solid var(--line);border-left:3px solid var(--amb);border-radius:3px;
+        background:var(--surface);padding:14px 16px;font-size:13.5px;color:var(--ink-2)}
+  .note b{color:var(--ink)}
+  footer{border-top:1px solid var(--line);padding:26px 0 60px;font-family:var(--mono);
+         font-size:11.5px;color:var(--muted);line-height:1.9}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap hero">
+    <div class="eyebrow">CleanMate · 엔진 데모</div>
+    <h1>확실한 건 알아서,<br>애매한 것만 딱 물어봅니다.</h1>
+    <p class="sub">
+      용량은 차는데 <b>뭘 지우고, 옮기고, 남길지</b> 모르겠죠.
+      클린메이트는 확신 있는 건 알아서 처리하고, <b>애매한 것만</b> 3~4개 질문으로 되묻습니다.
+    </p>
+  </div>
+</header>
+
+<div class="wrap">
+<main>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">01 — 어떻게 작동하나</span>
+      <h2>확신도 기반 3-존 분류</h2>
+    </div>
+    <div class="zones">
+      <div class="zone z-safe">
+        <span class="tag">ZONE A · 확신-안전</span>
+        <h3>알아서 처리</h3>
+        <p>재생성되고 손실이 없는 것. 원클릭처럼 느껴지되 ‘확실한 것만’.</p>
+      </div>
+      <div class="zone z-amb">
+        <span class="tag">ZONE B · 애매</span>
+        <h3>여기서만 물어본다</h3>
+        <p>사용자만 아는 것. 답 하나가 수백 개를 해결하는 질문으로.</p>
+      </div>
+      <div class="zone z-lock">
+        <span class="tag">ZONE C · 확신-위험</span>
+        <h3>아예 잠금</h3>
+        <p>시스템·앱 설정·미동기화 클라우드. 건드리지 않습니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">02 — 직접 해보기</span>
+      <h2>내 폴더로 엔진 돌려보기</h2>
+    </div>
+
+    <button class="btn" id="pick">폴더 고르기</button>
+    <div class="privacy">
+      <span class="lockicon">●</span>
+      <span>파일은 <b>브라우저를 한 바이트도 떠나지 않습니다.</b> 서버도, 업로드도 없어요. 탭을 닫으면 사라집니다.</span>
+    </div>
+    <p class="hint">Downloads · 바탕화면 · 프로젝트 폴더에서 가장 잘 맞습니다. 아무것도 삭제하지 않아요 — 분석만 합니다.</p>
+    <div id="status"></div>
+
+    <div class="panel" id="result" hidden>
+      <div class="bars" id="bars"></div>
+      <div id="questions"></div>
+      <div class="metrics" id="metrics"></div>
+    </div>
+
+    <div class="note" id="unsupported" hidden>
+      <b>이 브라우저는 지원되지 않아요.</b> 폴더 접근(File System Access API)이 필요해서
+      Chrome이나 Edge 데스크톱에서 열어주세요. Safari·Firefox는 아직 이 기능이 없습니다.
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">03 — 솔직하게</span>
+      <h2>이 데모의 한계</h2>
+    </div>
+    <div class="note">
+      브라우저는 <b>절대 경로를 알려주지 않습니다.</b> 그래서 고르신 폴더 이름을 루트로 삼아 판단해요.
+      AppData·WinSxS·구글 드라이브 캐시 같은 <b>시스템 경로 규칙은 데스크톱 앱에서만</b> 온전히 작동합니다.
+      실제 앱에서는 39만 파일 89GB를 <b>질문 3개</b>로 정리했고, 규칙 커버리지는 99.6%였어요.
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  클린메이트 (CleanMate) — 확실한 건 알아서, 애매한 것만 딱 물어보는 정리 도구<br>
+  아무것도 삭제하지 않는 분석 전용 데모 · 파일은 기기를 떠나지 않습니다
+</footer>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
