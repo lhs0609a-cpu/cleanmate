@@ -9,6 +9,7 @@
   },
   "scripts": {
     "scan": "node --experimental-strip-types --no-warnings src/cli.ts",
+    "probe": "node --experimental-strip-types --no-warnings src/cli-probe.ts",
     "test": "node --experimental-strip-types --no-warnings --test src/**/*.test.ts",
     "dev": "vite",
     "build": "vite build",

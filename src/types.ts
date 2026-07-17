@@ -85,3 +85,83 @@ export interface QuestionOption {
   /** 이 선택 시 무슨 일이 일어나는가 (사전 미리보기) */
   preview: string
 }
+
+/* ────────────────────────────────────────────────────────────
+   설명 레이어 — "마음놓고 지우려면" 필요한 것
+
+   사람이 삭제 전에 실제로 묻는 건 7가지다. 한 줄짜리 reason으로는
+   1.5개밖에 못 답한다. 못 답하는 것들이 정확히 사람이 무서워하는 것들이다.
+   ──────────────────────────────────────────────────────────── */
+
+/** 되돌리기 난이도. 'none'도 숨기지 않는다 — 정직이 신뢰다. */
+export type Recovery =
+  | 'auto-regenerates' // 그냥 다시 생김 (캐시·썸네일)
+  | 'one-command'      // 명령 한 줄로 원상복구 (hiberfil 등)
+  | 'quarantine-30d'   // 격리에서 되돌림 (M11)
+  | 'none'             // 되돌릴 수 없음 — 반드시 그렇게 말한다
+
+/**
+ * 설명 — 사실은 이 구조가 소유하고, LLM은 '표현'만 다듬는다.
+ *
+ * 왜 LLM에게 사실을 안 맡기나:
+ *   설명은 사용자가 검색해서 검증할 수 있다. 한 번 지어내면 신뢰가 끝난다.
+ *   소형 온디바이스 모델은 "빠른 시작이 hiberfil.sys를 쓴다" 같은 걸 모르고,
+ *   모르면 지어낸다. 그래서 사실은 DB, 표현만 LLM — engine.ts의 질문 선정과
+ *   똑같은 원칙이다.
+ *
+ * ★ 안전장치: usedBy를 못 쓰는 규칙은 SAFE 자격이 없다.
+ *   "뭐가 이걸 쓰는지" 모른다 = "뭐가 깨지는지" 모른다는 뜻이다.
+ *   Alfred 워크플로 참사도, DriveFS 26.5GB 오탐도 전부 이걸 몰라서 났다.
+ *   설명을 강제하면 엉터리 SAFE 규칙이 구조적으로 못 들어온다.
+ */
+export interface Explanation {
+  /** ① 이게 뭔가요 — 전문용어 없이 */
+  what: string
+  /** ② 왜 생겼나요 / 왜 이렇게 큰가요 — "내가 뭘 잘못했나?"에 답한다 */
+  why: string
+  /** ③ ★뭐가 이걸 쓰나요 — 연관. 위험 판단의 근거이자 설명의 핵심 */
+  usedBy: string[]
+  /** ④⑤ 지우면 뭐가 달라지나요 — 양면 정직. 손해를 반드시 포함한다 */
+  ifRemoved: string[]
+  /** ⑥ 되돌릴 수 있나요 */
+  recovery: Recovery
+  recoveryNote: string
+  /** ⑦ 안 지우면요 — '안 지운다'는 선택지를 절대 뺏지 않는다 */
+  ifKept: string
+}
+
+/**
+ * 회수 방법. 숨은 공간은 '파일 삭제'가 아니라 '명령 실행'이다.
+ * 그래서 격리(M11)가 없어도 안전하게 다룰 수 있다 — 되돌리기가 명령 한 줄이라서.
+ */
+export interface SystemAction {
+  /** 사람 말로: 무슨 일이 일어나는가 */
+  describe: string
+  command: string
+  needsAdmin: boolean
+  /** 되돌리는 명령. 이게 없으면 SystemAction으로 만들지 않는다. */
+  undo: string
+  undoDescribe: string
+}
+
+/**
+ * 프로브가 찾은 것 — 파일이 아니라 '항목'이다.
+ *
+ * 왜 FileEntry가 아닌가: hiberfil.sys는 node의 stat()이 EPERM으로 튕겨서
+ * 스캐너의 files[]에 애초에 못 들어온다(실측). 숨은 공간은 파일 트리가
+ * 아니라 시스템 API로만 보인다 → 스캔과 별개의 경로다. (기획서 17장)
+ *
+ * 왜 클러스터링을 안 하나: 클러스터링은 '같은 미지수를 공유하는 파일이
+ * 수백 개'일 때 필요한 것이다. 숨은 공간은 항목이 5~6개뿐이고
+ * 하나하나가 이미 수 GB짜리 고레버리지 질문이다. 묶을 게 없다.
+ */
+export interface Finding {
+  id: string
+  /** 사람이 읽는 이름 */
+  title: string
+  bytes: number
+  zone: Zone
+  explain: Explanation
+  /** 회수 방법. 없으면 = 아직 안전한 경로를 모른다 → 건드리지 않는다. */
+  action?: SystemAction
+}
