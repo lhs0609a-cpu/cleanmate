@@ -1,0 +1,338 @@
+/**
+ * 격리 회귀 테스트
+ *
+ * 여기서 잠그는 건 "지워지는가"가 아니라 "되돌아오는가"다.
+ * 복구가 안 되는 격리는 그냥 삭제다. 그래서 복구 테스트가 먼저 온다.
+ *
+ * BleachBit은 미리보기는 있는데 undo가 없어서 오삭제 사고가 반복됐다
+ * (공식 포럼 "어떻게 UNDO하나"). 그 자리에 우리가 서려는 것이므로,
+ * 복구는 기능이 아니라 존재 이유다.
+ */
+
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { mkdtemp, mkdir, writeFile, readFile, stat, rm, utimes } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  quarantine,
+  restore,
+  purgeExpired,
+  readManifest,
+  isExpired,
+  isUnchanged,
+  stampMtime,
+  GRACE_DAYS,
+  type QuarantineEntry,
+} from './quarantine.ts'
+
+const DAY_MS = 86_400_000
+
+/** 격리 저장소와 작업 폴더를 임시 디렉토리에 만든다 */
+async function sandbox() {
+  const base = await mkdtemp(join(tmpdir(), 'cleanmate-q-'))
+  const work = join(base, 'work')
+  const root = join(base, 'quarantine')
+  await mkdir(work, { recursive: true })
+  return {
+    base,
+    work,
+    root,
+    opts: { rootFor: () => root },
+    async file(name: string, content: string) {
+      const p = join(work, name)
+      await mkdir(join(p, '..'), { recursive: true })
+      await writeFile(p, content, 'utf8')
+      return p
+    },
+    async exists(p: string) {
+      try {
+        await stat(p)
+        return true
+      } catch {
+        return false
+      }
+    },
+    cleanup: () => rm(base, { recursive: true, force: true }),
+  }
+}
+
+test('★격리한 파일은 내용 그대로 되돌아온다 — 이게 안 되면 나머지는 의미 없다', async () => {
+  const s = await sandbox()
+  try {
+    const p = await s.file('보고서.txt', '소중한 내용입니다')
+
+    const q = await quarantine([{ path: p, reason: '테스트', zone: 'AMBIG' }], s.opts)
+    assert.equal(q.quarantined.length, 1)
+    assert.equal(q.failed.length, 0)
+    assert.equal(await s.exists(p), false, '격리했는데 원본이 그대로 있다')
+
+    const r = await restore([q.quarantined[0].id], s.root)
+    assert.equal(r.restored.length, 1, '복구가 안 됐다')
+    assert.equal(r.failed.length, 0)
+    assert.equal(await s.exists(p), true, '원래 자리로 안 돌아왔다')
+    assert.equal(await readFile(p, 'utf8'), '소중한 내용입니다', '내용이 변했다')
+  } finally {
+    await s.cleanup()
+  }
+})
+
+test('장부가 곧 복구 능력이다 — 이동한 것만 정확히 적힌다', async () => {
+  const s = await sandbox()
+  try {
+    const p = await s.file('a.bin', 'x'.repeat(500))
+    const q = await quarantine([{ path: p, reason: '오래된 캐시', zone: 'SAFE' }], s.opts)
+
+    const m = await readManifest(s.root)
+    assert.equal(m.length, 1)
+    assert.equal(m[0].originalPath, p, '원래 경로를 모르면 되돌릴 수가 없다')
+    assert.equal(m[0].size, 500)
+    assert.equal(m[0].reason, '오래된 캐시', '왜 격리했는지 = 감사 로그')
+    assert.equal(m[0].zone, 'SAFE')
+    assert.ok(m[0].quarantinedAt > 0, '언제 격리했는지 모르면 30일을 셀 수 없다')
+    assert.equal(m[0].id, q.quarantined[0].id)
+  } finally {
+    await s.cleanup()
+  }
+})
+
+test('복구된 항목은 장부에서 빠진다 — 두 번 되살리지 않는다', async () => {
+  const s = await sandbox()
+  try {
+    const p = await s.file('b.txt', 'hi')
+    const q = await quarantine([{ path: p, reason: 't', zone: 'AMBIG' }], s.opts)
+    await restore([q.quarantined[0].id], s.root)
+
+    assert.equal((await readManifest(s.root)).length, 0, '복구했는데 장부에 유령이 남았다')
+  } finally {
+    await s.cleanup()
+  }
+})
+
+test('되돌릴 자리를 누가 차지했으면 덮어쓰지 않는다', async () => {
+  const s = await sandbox()
+  try {
+    const p = await s.file('c.txt', '옛날 것')
+    const q = await quarantine([{ path: p, reason: 't', zone: 'AMBIG' }], s.opts)
+
+    // 격리한 뒤 사용자가 같은 이름으로 새 파일을 만들었다
+    await writeFile(p, '새로 만든 것', 'utf8')
+
+    const r = await restore([q.quarantined[0].id], s.root)
+    assert.equal(r.restored.length, 0)
+    assert.equal(r.failed.length, 1)
+    assert.match(r.failed[0].reason, /이미 있어요/)
+    assert.equal(
+      await readFile(p, 'utf8'),
+      '새로 만든 것',
+      '되돌리려다 사용자의 새 파일을 날렸다 — 격리의 존재 이유가 사라진다'
+    )
+  } finally {
+    await s.cleanup()
+  }
+})
+
+test('★스캔한 뒤에 파일이 바뀌었으면 건드리지 않는다 (TOCTOU)', async () => {
+  const s = await sandbox()
+  try {
+    const p = await s.file('d.txt', '원래 내용')
+    const before = await stat(p)
+
+    // 사용자가 목록을 읽는 사이에 그 파일을 열어서 고쳤다.
+    // 승인받은 파일과 지금 파일이 다른 파일이다.
+    await writeFile(p, '방금 고친 중요한 내용', 'utf8')
+
+    const q = await quarantine(
+      [
+        {
+          path: p,
+          reason: 't',
+          zone: 'AMBIG',
+          expect: { size: before.size, mtimeMs: before.mtimeMs },
+        },
+      ],
+      s.opts
+    )
+
+    assert.equal(q.quarantined.length, 0, '바뀐 파일을 그대로 격리했다')
+    assert.equal(q.failed.length, 1)
+    assert.match(q.failed[0].reason, /바뀌었어요/)
+    assert.equal(await readFile(p, 'utf8'), '방금 고친 중요한 내용', '원본이 살아있어야 한다')
+  } finally {
+    await s.cleanup()
+  }
+})
+
+test('안 바뀌었으면 통과한다 — 재검증이 과민하면 아무것도 못 지운다', async () => {
+  const s = await sandbox()
+  try {
+    const p = await s.file('e.txt', '그대로')
+    const st = await stat(p)
+
+    const q = await quarantine(
+      [{ path: p, reason: 't', zone: 'SAFE', expect: { size: st.size, mtimeMs: st.mtimeMs } }],
+      s.opts
+    )
+    assert.equal(q.quarantined.length, 1, '멀쩡한 파일을 거부했다')
+  } finally {
+    await s.cleanup()
+  }
+})
+
+test('하나가 실패해도 나머지는 진행한다 — 부분 성공을 정직하게 보고', async () => {
+  const s = await sandbox()
+  try {
+    const ok1 = await s.file('f1.txt', 'a')
+    const ok2 = await s.file('f2.txt', 'b')
+    const missing = join(s.work, '없는파일.txt')
+
+    const q = await quarantine(
+      [
+        { path: ok1, reason: 't', zone: 'SAFE' },
+        { path: missing, reason: 't', zone: 'SAFE' },
+        { path: ok2, reason: 't', zone: 'SAFE' },
+      ],
+      s.opts
+    )
+
+    assert.equal(q.quarantined.length, 2, '하나 실패했다고 나머지를 포기했다')
+    assert.equal(q.failed.length, 1)
+    assert.equal(q.failed[0].path, missing)
+    assert.match(q.failed[0].reason, /이미 없어요/, '에러 코드를 그대로 보여주면 안 된다')
+  } finally {
+    await s.cleanup()
+  }
+})
+
+test('★30일 전에는 절대 안 지운다', async () => {
+  const s = await sandbox()
+  try {
+    const p = await s.file('g.txt', 'still here')
+    await quarantine([{ path: p, reason: 't', zone: 'AMBIG' }], s.opts)
+
+    // 29일 23시간 뒤
+    const almost = Date.now() + GRACE_DAYS * DAY_MS - 3600_000
+    const r = await purgeExpired(s.root, almost)
+
+    assert.equal(r.purged.length, 0, '유예가 안 끝났는데 지웠다')
+    assert.equal((await readManifest(s.root)).length, 1, '아직 되돌릴 수 있어야 한다')
+  } finally {
+    await s.cleanup()
+  }
+})
+
+test('30일이 지나야 실제로 지운다', async () => {
+  const s = await sandbox()
+  try {
+    const p = await s.file('h.txt', 'bye')
+    const q = await quarantine([{ path: p, reason: 't', zone: 'AMBIG' }], s.opts)
+
+    const after = Date.now() + (GRACE_DAYS + 1) * DAY_MS
+    const r = await purgeExpired(s.root, after)
+
+    assert.equal(r.purged.length, 1)
+    assert.equal(r.bytes, 3)
+    assert.equal((await readManifest(s.root)).length, 0)
+
+    // 이제는 진짜 없다
+    const back = await restore([q.quarantined[0].id], s.root)
+    assert.equal(back.restored.length, 0, '지웠는데 복구가 됐다 — 둘 중 하나가 거짓말이다')
+  } finally {
+    await s.cleanup()
+  }
+})
+
+test('만료 안 된 건 남기고 만료된 것만 골라 지운다', async () => {
+  const s = await sandbox()
+  try {
+    const old = await s.file('old.txt', 'o')
+    const fresh = await s.file('fresh.txt', 'f')
+
+    await quarantine([{ path: old, reason: 't', zone: 'AMBIG' }], s.opts)
+    // 장부를 손으로 조작: old만 40일 전에 격리된 것으로
+    const m = await readManifest(s.root)
+    m[0].quarantinedAt = Date.now() - 40 * DAY_MS
+    await writeFile(join(s.root, 'manifest.jsonl'), JSON.stringify(m[0]) + '\n', 'utf8')
+
+    await quarantine([{ path: fresh, reason: 't', zone: 'AMBIG' }], s.opts)
+
+    const r = await purgeExpired(s.root)
+    assert.equal(r.purged.length, 1, '만료된 것만 지워야 한다')
+    assert.equal(r.purged[0].originalPath, old)
+
+    const left = await readManifest(s.root)
+    assert.equal(left.length, 1)
+    assert.equal(left[0].originalPath, fresh, '아직 유예 중인 걸 지웠다')
+  } finally {
+    await s.cleanup()
+  }
+})
+
+test('★실측 버그 — Stats.mtime은 반올림, mtimeMs는 소수. 섞어 쓰면 절반이 오거부된다', () => {
+  // 실제로 겪은 값이다. 안 건드린 캐시 파일 5개 중 3개가 "바뀌었어요"로
+  // 거부됐다. 원인: node의 Stats.mtime은 mtimeMs를 Math.round해서 만든다.
+  //   raw mtimeMs            = 1784276323518.8796
+  //   Stats.mtime.getTime()  = 1784276323519   (node가 반올림)
+  //   Math.floor(raw)        = 1784276323518   (옛 비교 코드)
+  // → 519 !== 518 → 멀쩡한 파일을 거부. 소수부 0.5 이상이면 매번 터진다.
+  const raw = 1784276323518.8796
+  const viaDate = 1784276323519 // node의 Stats.mtime.getTime()이 주는 값
+
+  assert.equal(Math.floor(raw), 1784276323518, '이게 옛 버그의 한쪽 값이었다')
+  assert.notEqual(Math.floor(raw), viaDate, '두 표현이 실제로 어긋난다는 증거')
+
+  assert.ok(
+    isUnchanged({ size: 100, mtimeMs: raw }, { size: 100, mtimeMs: viaDate }),
+    '같은 파일인데 표현이 달라서 "바뀌었다"고 판단했다 — 이게 그 버그다'
+  )
+  assert.equal(stampMtime(raw), stampMtime(viaDate), '표준형이 둘을 같게 만들어야 한다')
+})
+
+test('재검증은 진짜 변경은 잡는다 — 과민과 둔감 사이', () => {
+  const base = { size: 100, mtimeMs: 1784276323518.8796 }
+  assert.ok(isUnchanged(base, base), '자기 자신을 거부하면 안 된다')
+  assert.ok(!isUnchanged({ ...base, size: 101 }, base), '크기가 바뀌었는데 통과시켰다')
+  assert.ok(!isUnchanged({ ...base, mtimeMs: base.mtimeMs + 1000 }, base), '수정일이 바뀌었는데 통과시켰다')
+  // 1ms 미만 차이는 같은 파일로 본다 — 표현 방식의 차이지 변경이 아니다
+  assert.ok(isUnchanged({ ...base, mtimeMs: 1784276323519.0 }, base), '표현 오차를 변경으로 봤다')
+})
+
+test('실파일 20개 왕복 — 오거부가 하나도 없어야 한다', async () => {
+  // 소수부는 파일마다 무작위다. 20개면 0.5 이상이 반드시 섞인다.
+  // 옛 코드는 여기서 절반쯤 실패했다.
+  const s = await sandbox()
+  try {
+    const reqs = []
+    for (let i = 0; i < 20; i++) {
+      const p = await s.file(`r${i}.bin`, 'x'.repeat(1000 + i))
+      const st = await stat(p)
+      // sweep이 하는 것과 똑같이 Date를 거쳐서 stamp를 만든다
+      reqs.push({
+        path: p,
+        reason: 't',
+        zone: 'SAFE' as const,
+        expect: { size: st.size, mtimeMs: stampMtime(st.mtime.getTime()) },
+      })
+    }
+
+    const q = await quarantine(reqs, s.opts)
+    assert.equal(q.failed.length, 0, `안 건드린 파일 ${q.failed.length}개를 거부했다: ${q.failed[0]?.reason}`)
+    assert.equal(q.quarantined.length, 20)
+  } finally {
+    await s.cleanup()
+  }
+})
+
+test('isExpired는 경계에서 정확하다', () => {
+  const base: QuarantineEntry = {
+    id: 'x',
+    originalPath: 'C:/a.txt',
+    size: 1,
+    mtimeMs: 0,
+    quarantinedAt: 0,
+    reason: 't',
+    zone: 'SAFE',
+  }
+  assert.equal(isExpired(base, GRACE_DAYS * DAY_MS - 1), false, '1ms 모자라면 아직 아니다')
+  assert.equal(isExpired(base, GRACE_DAYS * DAY_MS), true)
+})

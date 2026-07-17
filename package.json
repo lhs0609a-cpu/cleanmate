@@ -10,6 +10,8 @@
   "scripts": {
     "scan": "node --experimental-strip-types --no-warnings src/cli.ts",
     "probe": "node --experimental-strip-types --no-warnings src/cli-probe.ts",
+    "clean": "node --experimental-strip-types --no-warnings src/cli-clean.ts",
+    "restore": "node --experimental-strip-types --no-warnings src/cli-restore.ts",
     "test": "node --experimental-strip-types --no-warnings --test src/**/*.test.ts",
     "dev": "vite",
     "build": "vite build",
