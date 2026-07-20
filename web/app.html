@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>클린메이트 — 뭘 지우면 안 되는지 아는 정리 도구</title>
+<meta name="description" content="확실한 건 알아서, 애매한 것만 딱 물어보는 정리 도구. 파일은 기기를 떠나지 않습니다." />
+<style>
+  :root{
+    --bg:#F7F9FA; --surface:#FFFFFF; --surface-2:#F1F5F6;
+    --ink:#10161C; --ink-2:#3B4750; --muted:#697A85; --line:#DDE4E8; --line-2:#C8D3D8;
+    --accent:#0B6F76; --accent-ink:#FFFFFF; --accent-soft:#E3F1F1;
+    --safe:#1A7F4B; --amb:#A96206; --lock:#B3261E;
+    --safe-soft:#E4F3EA; --amb-soft:#FBEFDD; --lock-soft:#FBE7E5;
+    --sans:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Segoe UI",-apple-system,system-ui,sans-serif;
+    --mono:ui-monospace,"Cascadia Code","Consolas","SF Mono","D2Coding",monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0B0F14; --surface:#121A21; --surface-2:#18222B;
+      --ink:#E7EDF1; --ink-2:#BCC9D2; --muted:#8698A5; --line:#233039; --line-2:#31414D;
+      --accent:#3ED8CE; --accent-ink:#04262A; --accent-soft:#12333A;
+      --safe:#5BD98D; --amb:#F0B44C; --lock:#FF7B72;
+      --safe-soft:#123726; --amb-soft:#3A2C12; --lock-soft:#3A1815;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.65;
+       -webkit-font-smoothing:antialiased}
+  h1,h2,h3{text-wrap:balance;line-height:1.25;margin:0}
+  p{margin:0}
+  button{font-family:inherit}
+  .wrap{max-width:880px;margin:0 auto;padding:0 20px}
+
+  /* ── 상단 바 ── */
+  .topbar{position:sticky;top:0;z-index:10;background:var(--surface);border-bottom:1px solid var(--line)}
+  .topbar .wrap{display:flex;align-items:center;gap:20px;height:56px}
+  .brand{font-weight:800;letter-spacing:-.02em;font-size:16px}
+  .brand .dot{color:var(--accent)}
+  .nav{display:flex;gap:4px;margin-left:auto}
+  .nav button{background:none;border:0;color:var(--muted);font-size:13.5px;font-weight:600;
+              padding:7px 12px;border-radius:6px;cursor:pointer;transition:.12s}
+  .nav button:hover{background:var(--surface-2);color:var(--ink-2)}
+  .nav button.on{background:var(--accent-soft);color:var(--accent)}
+
+  main{padding:28px 0 80px;min-height:70vh}
+  .screen{display:none;flex-direction:column;gap:20px}
+  .screen.on{display:flex}
+
+  /* ── 카드 ── */
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
+  .card.pad{padding:24px}
+
+  /* ── 대시보드 히어로 ── */
+  .hero{text-align:center;padding:8px 0 4px}
+  .hero .big{font-family:var(--mono);font-size:clamp(40px,9vw,64px);font-weight:800;
+             letter-spacing:-.04em;line-height:1;color:var(--accent);font-variant-numeric:tabular-nums}
+  .hero .big.muted{color:var(--muted)}
+  .hero .cap{font-size:14px;color:var(--muted);margin-top:10px}
+
+  .oneclick{display:block;width:100%;max-width:360px;margin:22px auto 0;
+            font-size:17px;font-weight:750;padding:18px;border-radius:12px;
+            background:var(--accent);color:var(--accent-ink);border:0;cursor:pointer;
+            box-shadow:0 1px 0 rgba(0,0,0,.04);transition:.15s}
+  .oneclick:hover{filter:brightness(1.05)}
+  .oneclick:disabled{opacity:.5;cursor:not-allowed}
+  .oneclick .s{display:block;font-size:12.5px;font-weight:500;opacity:.85;margin-top:3px}
+  .subpick{display:block;margin:12px auto 0;background:none;border:0;color:var(--accent);
+           font-size:13px;font-weight:600;cursor:pointer;text-align:center;width:100%}
+
+  .privacy{margin:14px auto 0;max-width:520px;font-size:12.5px;color:var(--muted);
+           display:flex;gap:8px;align-items:flex-start;justify-content:center;text-align:center;line-height:1.5}
+  .privacy .d{color:var(--safe);font-weight:800}
+
+  #status{font-family:var(--mono);font-size:12px;color:var(--muted);text-align:center;min-height:1.2em;margin-top:8px}
+
+  /* ── 존 막대 ── */
+  .zbars{display:flex;flex-direction:column;gap:11px}
+  .zrow{display:grid;grid-template-columns:96px 1fr 118px;gap:12px;align-items:center;font-size:13px}
+  .zlabel{font-family:var(--mono);font-size:11.5px;color:var(--z);font-weight:700}
+  .ztrack{height:10px;background:var(--surface-2);border-radius:3px;overflow:hidden}
+  .zfill{height:100%;background:var(--z);width:0;transition:width .6s ease;border-radius:3px}
+  .zval{font-family:var(--mono);font-size:12px;text-align:right;color:var(--ink-2);font-variant-numeric:tabular-nums}
+  .zsafe{--z:var(--safe)} .zamb{--z:var(--amb)} .zlock{--z:var(--lock)}
+  .zdesc{font-size:12px;color:var(--muted);margin-top:3px}
+
+  .sechead{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+  .sechead h2{font-size:18px;font-weight:750;letter-spacing:-.02em}
+  .sechead .k{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.1em;text-transform:uppercase}
+  .lede{font-size:13.5px;color:var(--ink-2)}
+
+  /* ── 정리 계획 3분할 ── */
+  .split3{display:grid;gap:10px;grid-template-columns:repeat(3,1fr)}
+  @media(max-width:600px){.split3{grid-template-columns:1fr}.zrow{grid-template-columns:70px 1fr 92px}}
+  .stat{border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--surface)}
+  .stat .n{font-family:var(--mono);font-size:22px;font-weight:800;letter-spacing:-.02em;
+           font-variant-numeric:tabular-nums}
+  .stat .n.g{color:var(--safe)} .stat .n.a{color:var(--accent)} .stat .n.m{color:var(--muted)}
+  .stat .l{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.45}
+
+  /* ── 질문 카드 ── */
+  .q{border:1px solid var(--line);border-left:3px solid var(--amb);border-radius:10px;
+     background:var(--surface);padding:16px}
+  .q-n{font-family:var(--mono);font-size:11px;color:var(--amb);font-weight:700}
+  .q-text{font-size:15px;font-weight:650;margin:6px 0 6px}
+  .q-why{font-size:12px;color:var(--muted);margin-bottom:12px}
+  .opts{display:flex;flex-wrap:wrap;gap:8px}
+  .opt{font-size:13px;font-weight:600;padding:9px 14px;border:1px solid var(--line-2);
+       background:var(--surface-2);border-radius:8px;cursor:pointer;transition:.12s}
+  .opt:hover{border-color:var(--accent);color:var(--accent)}
+  .opt.chosen{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+  .opt.keep.chosen{background:var(--safe);border-color:var(--safe);color:#fff}
+  .q-answered{font-size:12.5px;color:var(--safe);font-weight:600;margin-top:10px}
+  .q-stake{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:10px}
+
+  /* ── 숨은 공간 / 설명 ── */
+  .expl{display:flex;flex-direction:column;gap:14px}
+  .expl .blk .h{font-size:12px;font-weight:700;color:var(--accent);margin-bottom:4px}
+  .expl .blk.warn .h{color:var(--amb)}
+  .expl .blk p,.expl .blk li{font-size:13.5px;color:var(--ink-2);line-height:1.6}
+  .expl .blk ul{margin:4px 0 0;padding-left:18px}
+
+  .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;
+        font-weight:700;padding:4px 9px;border-radius:20px}
+  .pill.desk{background:var(--amb-soft);color:var(--amb)}
+  .pill.live{background:var(--safe-soft);color:var(--safe)}
+
+  .kept{border:1px solid var(--line);border-left:3px solid var(--safe);border-radius:10px;
+        background:var(--surface);padding:16px}
+  .kept .n{font-family:var(--mono);font-size:20px;font-weight:800;color:var(--safe)}
+  .kept ul{margin:8px 0 0;padding-left:18px;font-size:12.5px;color:var(--ink-2);line-height:1.7}
+
+  .note{border:1px solid var(--line);border-left:3px solid var(--muted);border-radius:10px;
+        background:var(--surface);padding:14px 16px;font-size:13px;color:var(--ink-2);line-height:1.6}
+  .note b{color:var(--ink)}
+  .btn{font-size:14px;font-weight:650;padding:11px 18px;border-radius:9px;background:var(--accent);
+       color:var(--accent-ink);border:0;cursor:pointer}
+  .btn.ghost{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line-2)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+
+  .empty{text-align:center;color:var(--muted);font-size:14px;padding:40px 0}
+  footer{border-top:1px solid var(--line);padding:22px 0 60px;font-family:var(--mono);
+         font-size:11px;color:var(--muted);line-height:1.9;text-align:center}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/" style="text-decoration:none;color:inherit">클린메이트<span class="dot">.</span></a>
+    <nav class="nav">
+      <button data-go="home" class="on">홈</button>
+      <button data-go="hidden">숨은 공간</button>
+      <button data-go="quar">격리함</button>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap">
+<main>
+
+  <!-- ════ 홈 ════ -->
+  <section class="screen on" id="s-home">
+    <div class="card pad hero">
+      <div class="big muted" id="hero-num">—</div>
+      <div class="cap" id="hero-cap">폴더를 골라 분석하면, 정리 가능한 용량을 여기 보여드려요.</div>
+
+      <button class="oneclick" id="oneclick">
+        원클릭 최적화
+        <span class="s">확실한 건 알아서 · 애매한 건 모아서 보여드려요</span>
+      </button>
+      <button class="subpick" id="pick2">다른 폴더 고르기</button>
+
+      <div class="privacy">
+        <span class="d">●</span>
+        <span>파일은 <b style="color:var(--ink)">기기를 한 바이트도 떠나지 않습니다.</b>
+          서버도 업로드도 없어요. 이 웹 데모는 분석까지 하고, 실제 정리·삭제는 데스크톱 앱이 합니다.</span>
+      </div>
+      <div id="status"></div>
+    </div>
+
+    <!-- 분석 결과 (스캔 후 표시) -->
+    <div id="results" hidden style="display:flex;flex-direction:column;gap:20px">
+
+      <div class="card">
+        <div class="sechead"><span class="k">분류</span><h2>확신도 3-존</h2></div>
+        <p class="zdesc">모든 파일을 “알아서 처리 / 물어봐야 / 아예 잠금” 셋 중 하나로 나눕니다.</p>
+        <div class="zbars" id="zbars" style="margin-top:14px"></div>
+      </div>
+
+      <div class="card">
+        <div class="sechead"><span class="k">원클릭</span><h2>정리 계획</h2>
+          <span class="pill live" style="margin-left:auto">실시간 분석</span></div>
+        <p class="lede" id="plan-lede"></p>
+        <div class="split3" id="plan3" style="margin-top:14px"></div>
+        <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn" id="apply-btn" disabled>확실한 캐시 정리하기</button>
+          <span class="pill desk">데스크톱 앱에서 실행</span>
+        </div>
+        <p class="note" style="margin-top:12px" id="apply-note"></p>
+      </div>
+
+      <div id="qwrap" class="card">
+        <div class="sechead"><span class="k">물어보기</span><h2>애매한 것만 딱</h2></div>
+        <p class="lede">답 하나가 수백 개를 해결하는 질문만 골랐어요. ‘아니오/모르겠음’은 항상 그대로 둡니다.</p>
+        <div id="questions" style="display:flex;flex-direction:column;gap:12px;margin-top:14px"></div>
+      </div>
+
+      <div class="kept" id="kept" hidden></div>
+    </div>
+
+    <div class="note" id="unsupported" hidden>
+      <b>이 브라우저는 폴더 접근이 안 돼요.</b> Chrome이나 Edge 데스크톱에서 열어주세요.
+      (Safari·Firefox는 아직 File System Access API가 없습니다.)
+    </div>
+  </section>
+
+  <!-- ════ 숨은 공간 ════ -->
+  <section class="screen" id="s-hidden">
+    <div class="card pad">
+      <div class="sechead"><span class="k">숨은 공간</span><h2>스캔에 안 보이는 용량</h2></div>
+      <p class="lede" style="margin-top:6px">
+        “정리해도 용량이 안 줄어든다”의 1순위 원인이에요. 최대절전 파일·가상메모리처럼
+        파일 목록엔 안 잡히는데 수십 GB를 먹는 것들입니다.
+        <b style="color:var(--ink)">파일 삭제가 아니라 공식 명령으로</b> 회수하고, 전부 되돌릴 수 있어요.
+      </p>
+      <div style="margin-top:12px"><span class="pill desk">실측·실행은 데스크톱 앱</span></div>
+    </div>
+
+    <div class="card" id="hiber-card"></div>
+  </section>
+
+  <!-- ════ 격리함 ════ -->
+  <section class="screen" id="s-quar">
+    <div class="card pad">
+      <div class="sechead"><span class="k">격리함</span><h2>지운 것, 30일간 되돌리기</h2></div>
+      <p class="lede" style="margin-top:6px">
+        정리한 파일은 바로 사라지지 않아요. 30일 동안 격리함에 있다가, 그때 실제로 지워집니다.
+        그 사이엔 언제든 <b style="color:var(--ink)">원래 자리로 되돌릴 수 있어요.</b>
+        되돌리기 없는 청소 도구(BleachBit 등)가 오삭제로 신뢰를 잃은 그 자리를 우리가 대신합니다.
+      </p>
+      <div style="margin-top:12px"><span class="pill desk">실제 격리·복구는 데스크톱 앱</span></div>
+      <div class="empty">아직 격리된 항목이 없어요.</div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  클린메이트 (CleanMate) — 확실한 건 알아서, 애매한 것만 딱 물어보는 정리 도구<br>
+  이 화면은 실제 데스크톱 앱의 프론트엔드입니다 · 파일은 기기를 떠나지 않습니다
+</footer>
+</div>
+
+<!-- 자동 업데이트 팝업 (데스크톱 앱에서만 뜬다) -->
+<div id="update-modal" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.45);align-items:center;justify-content:center;padding:24px">
+  <div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;max-width:420px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="font-size:12px;font-weight:700;color:var(--accent);font-family:var(--mono)">새 버전</div>
+    <h2 style="font-size:19px;font-weight:750;margin:8px 0 6px" id="um-title">업데이트가 있어요</h2>
+    <p style="font-size:14px;color:var(--ink-2);line-height:1.6" id="um-body">최신 버전을 받아 자동으로 설치할게요. 추가로 누르실 건 없어요.</p>
+    <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end">
+      <button class="btn ghost" id="um-later" style="font-size:14px;padding:10px 16px">나중에</button>
+      <button class="btn" id="um-now" style="font-size:14px;padding:10px 16px">지금 업데이트</button>
+    </div>
+    <div id="um-progress" style="display:none;font-size:13px;color:var(--muted);margin-top:14px"></div>
+  </div>
+</div>
+
+<script type="module" src="/src/app.ts"></script>
+</body>
+</html>

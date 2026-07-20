@@ -12,7 +12,13 @@
 import { isSupported, pickDirectory, scanHandle } from './browser-scanner.ts'
 import { classifyOne, isAutoEligible } from '../../src/classify.ts'
 import { run as runEngine, fmtBytes } from '../../src/engine.ts'
+import { compareVersions } from '../../src/updater.ts'
 import type { FileEntry, Question } from '../../src/types.ts'
+
+/** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
+const APP_VERSION = '0.3.0'
+/** '항상 최신'을 가리키는 안정 URL — GitHub가 최신 릴리스의 에셋으로 리다이렉트한다. */
+const LATEST_MANIFEST = 'https://github.com/lhs0609a-cpu/cleanmate/releases/latest/download/latest.json'
 
 const $ = (id: string) => document.getElementById(id)!
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
@@ -286,8 +292,47 @@ async function loadQuar() {
   }
 }
 
+/* ── 자동 업데이트 (V3/알약식) ─────────────────────────────────
+   앱이 켜지면 조용히 최신 버전을 확인 → 새 버전이면 팝업 → 받아서 무인 재설치.
+   판단(compareVersions)은 테스트된 순수 로직, 다운로드·설치는 Rust 명령. */
+async function checkUpdate() {
+  try {
+    const res = await fetch(LATEST_MANIFEST, { cache: 'no-store' })
+    if (!res.ok) return
+    const m = await res.json()
+    if (!m?.version || compareVersions(m.version, APP_VERSION) <= 0) return // 최신이거나 더 낮음 → 조용히 넘어감
+
+    const modal = $('update-modal')
+    const body = $('um-body')
+    const progress = $('um-progress')
+    $('um-title').textContent = `업데이트 v${m.version}이 있어요`
+    body.innerHTML = `지금 버전은 v${APP_VERSION}이에요. ` + (m.notes ? esc(m.notes) + ' ' : '') + '받아서 자동으로 설치할게요 — 추가로 누르실 건 없어요.'
+    modal.style.display = 'flex'
+
+    $('um-later').onclick = () => { modal.style.display = 'none' }
+    $('um-now').onclick = async () => {
+      ;($('um-now') as HTMLButtonElement).disabled = true
+      ;($('um-later') as HTMLButtonElement).disabled = true
+      progress.style.display = 'block'
+      try {
+        progress.textContent = '새 버전을 받는 중…'
+        const path = await TAURI.core.invoke('download_update', { url: m.url })
+        progress.textContent = '설치하고 다시 시작할게요…'
+        await TAURI.core.invoke('apply_update', { installerPath: path }) // 앱은 여기서 종료·재설치된다
+      } catch (err) {
+        progress.textContent = '업데이트에 실패했어요: ' + (err as Error).message
+        ;($('um-now') as HTMLButtonElement).disabled = false
+        ;($('um-later') as HTMLButtonElement).disabled = false
+      }
+    }
+  } catch {
+    /* 네트워크가 없어도 앱은 정상 작동 — 업데이트는 조용히 건너뛴다. */
+  }
+}
+
 /* ── 데스크톱 초기화 ───────────────────────────────────────── */
 if (inTauri) {
   // 데스크톱에서는 정적 데모 카드를 감추고 실측으로 대체한다.
-  $('hiber-card').innerHTML = `<div class="empty">‘숨은 공간’ 탭을 열면 이 PC를 실측합니다.</div>`
+  $('hiber-card').innerHTML = `<div class="empty">'숨은 공간' 탭을 열면 이 PC를 실측합니다.</div>`
+  checkUpdate() // 시작 시 조용히 최신 버전 확인
 }
