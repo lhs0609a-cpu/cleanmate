@@ -98,8 +98,25 @@ async function scanPlan(path: string) {
   }
 }
 
+/**
+ * 명령·인자를 argv에서 뽑는다.
+ * 일반 node 실행:  [node, engine-cli.ts, command, ...args] → slice(2)
+ * SEA 단일 exe:    [exe, command, ...args] (스크립트 경로 없음) → slice(1)
+ */
+function readArgs(): string[] {
+  let start = 2
+  try {
+    // SEA 런타임에서만 node:sea가 있고 isSea()가 참이다.
+    const sea = require('node:sea')
+    if (sea?.isSea?.()) start = 1
+  } catch {
+    /* 일반 node(ESM) 실행 — require 자체가 없다. slice(2)가 맞다. */
+  }
+  return process.argv.slice(start)
+}
+
 async function main() {
-  const [command, ...args] = process.argv.slice(2)
+  const [command, ...args] = readArgs()
 
   try {
     switch (command) {

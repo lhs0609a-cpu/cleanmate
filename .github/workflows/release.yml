@@ -57,15 +57,21 @@ jobs:
       - name: 엔진 번들 (esbuild → CJS)
         run: npx esbuild src/engine-cli.ts --bundle --platform=node --format=cjs --outfile=dist-engine/engine.cjs
 
-      - name: 엔진 exe 생성 (pkg)
-        run: npx @yao-pkg/pkg dist-engine/engine.cjs --targets node20-win-x64 --output dist-engine/cleanmate-engine.exe
+      # 엔진 exe: Node 내장 SEA로. 외부 바이너리를 안 받고 러너의 node.exe를
+      # 그대로 쓴다(pkg의 미리빌드 404 문제 회피).
+      - name: 엔진 exe 생성 (Node SEA)
+        shell: bash
+        run: |
+          mkdir -p dist-app
+          echo '{ "main": "dist-engine/engine.cjs", "output": "dist-engine/sea.blob" }' > dist-engine/sea-config.json
+          node --experimental-sea-config dist-engine/sea-config.json
+          node -e "require('fs').copyFileSync(process.execPath, 'dist-app/cleanmate-engine.exe')"
+          npx --yes postject dist-app/cleanmate-engine.exe NODE_SEA_BLOB dist-engine/sea.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
 
       - name: 이노셋업이 담을 폴더 구성 (dist-app/)
         shell: bash
         run: |
-          mkdir -p dist-app
           cp src-tauri/target/release/cleanmate.exe dist-app/
-          cp dist-engine/cleanmate-engine.exe dist-app/
           ls -la dist-app/
 
       - name: 이노셋업 설치
