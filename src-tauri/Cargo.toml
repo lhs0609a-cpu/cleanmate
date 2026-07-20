@@ -1,0 +1,30 @@
+[package]
+name = "cleanmate"
+version = "0.1.0"
+description = "확실한 건 알아서, 애매한 것만 딱 물어보는 정리 도구"
+authors = ["CleanMate"]
+edition = "2021"
+
+[lib]
+name = "cleanmate_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# 자동 업데이트 다운로드용
+reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
+tokio = { version = "1", features = ["full"] }
+
+[profile.release]
+# 설치 크기를 줄인다 — 신뢰·가벼움이 제품의 얼굴이다.
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

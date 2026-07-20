@@ -1,0 +1,9 @@
+{
+  "_comment": "업데이트 장부 — 앱이 켜질 때 이 파일을 확인한다. V3/알약의 자동 업데이트와 같은 방식. CI(release.yml)가 새 릴리스마다 자동으로 갱신해 GitHub Releases(또는 홈페이지)에 올린다. 앱은 자기 버전과 여기 version을 비교해, 더 높으면 url의 이노셋업 설치파일을 받아 /VERYSILENT로 재설치한다.",
+  "version": "0.1.0",
+  "notes": "첫 데스크톱 빌드. 3-존 분류 · 격리 기반 정리 · 숨은 공간 프로브.",
+  "pub_date": "2026-07-20T00:00:00Z",
+  "url": "https://github.com/lhs0609a-cpu/cleanmate/releases/download/v0.1.0/CleanMate-Setup-0.1.0.exe",
+  "signature": "",
+  "_signature_comment": "서명 인증서가 준비되면 설치파일의 SHA-256 또는 서명값을 넣는다. 앱은 받은 파일이 이 값과 일치할 때만 실행한다 — 업데이트 위변조 방지."
+}

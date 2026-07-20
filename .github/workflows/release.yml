@@ -1,0 +1,91 @@
+# 릴리스 빌드 — 태그를 밀면 설치파일이 자동으로 나온다.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#     → 이 워크플로가 클라우드(윈도우)에서:
+#         1. 프론트엔드(vite) + Tauri(Rust) 빌드
+#         2. 이노셋업으로 CleanMate-Setup-x.y.z.exe 생성
+#         3. GitHub Release에 설치파일 + 업데이트 장부(latest.json) 게시
+#
+# ★ 로컬에 아무것도 설치할 필요 없다. 드라이브 폴더의 빌드 문제도 여기선 없다
+#   (깨끗한 환경에서 npm install을 새로 한다).
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # GitHub Release 생성용
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 버전 추출 (태그 v0.1.0 → 0.1.0)
+        id: ver
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: 의존성 설치
+        # npm ci 대신 install — 드라이브 폴더에서 package-lock을 갱신할 수 없어
+        # lock이 뒤처질 수 있다. install은 스스로 맞춘다.
+        run: npm install
+
+      - name: 프론트엔드 빌드 (→ dist/)
+        run: npm run build
+
+      # ★ 아이콘 자산: assets/logo.png 가 있으면 모든 크기를 생성한다.
+      #   없으면 이 단계에서 실패한다 — 브랜드 아이콘은 어차피 필요한 자산.
+      - name: 아이콘 생성
+        run: npx tauri icon assets/logo.png
+
+      - name: Tauri 빌드 (→ cleanmate.exe + 리소스)
+        run: npx tauri build
+
+      - name: 이노셋업이 담을 폴더 구성 (dist-app/)
+        shell: bash
+        run: |
+          mkdir -p dist-app
+          cp -r src-tauri/target/release/cleanmate.exe dist-app/
+          # 사이드카 엔진·리소스가 생기면 여기서 함께 복사한다.
+
+      - name: 이노셋업 설치
+        run: choco install innosetup --no-progress -y
+
+      - name: 설치파일 생성 (CleanMate-Setup-x.y.z.exe)
+        run: iscc /DAppVersion=${{ steps.ver.outputs.version }} installer/cleanmate.iss
+
+      - name: 업데이트 장부(latest.json) 갱신
+        shell: bash
+        run: |
+          VER=${{ steps.ver.outputs.version }}
+          URL="https://github.com/${{ github.repository }}/releases/download/v${VER}/CleanMate-Setup-${VER}.exe"
+          cat > latest.json <<EOF
+          {
+            "version": "${VER}",
+            "notes": "자동 생성 릴리스",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "url": "${URL}",
+            "signature": ""
+          }
+          EOF
+
+      - name: GitHub Release 게시
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-installer/CleanMate-Setup-${{ steps.ver.outputs.version }}.exe
+            latest.json
+          body: |
+            클린메이트 ${{ steps.ver.outputs.version }}
+
+            설치파일을 받아 실행하세요. 이후 새 버전은 앱이 조용히 자동 업데이트합니다.

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CleanMate",
+  "version": "0.1.0",
+  "identifier": "com.cleanmate.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "클린메이트",
+        "width": 900,
+        "height": 680,
+        "minWidth": 720,
+        "minHeight": 560,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "_comment_active": "Tauri 자체 번들러(NSIS/MSI)는 끈다. 우리는 이노셋업으로 포장한다(installer/cleanmate.iss). tauri build는 target/release/cleanmate.exe + 리소스만 만들고, CI가 그걸 이노셋업에 넘긴다.",
+    "targets": [],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
+    "_comment_icon": "★ 필요한 자산: 브랜드 아이콘. 로고 PNG 하나(assets/logo.png)를 주면 CI가 `tauri icon`으로 모든 크기를 자동 생성한다. 없으면 첫 빌드가 여기서 막힌다 — 제품의 얼굴이라 어차피 필요한 자산이다."
+  }
+}

@@ -4,6 +4,13 @@ dist/
 .env*
 !.env.example
 
+# 데스크톱 앱 빌드 산출물 (CI가 만든다)
+src-tauri/target/
+src-tauri/gen/
+src-tauri/icons/
+dist-app/
+dist-installer/
+
 # OS
 Thumbs.db
 .DS_Store
