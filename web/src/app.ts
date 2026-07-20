@@ -16,9 +16,9 @@ import { compareVersions } from '../../src/updater.ts'
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.3.0'
-/** '항상 최신'을 가리키는 안정 URL — GitHub가 최신 릴리스의 에셋으로 리다이렉트한다. */
-const LATEST_MANIFEST = 'https://github.com/lhs0609a-cpu/cleanmate/releases/latest/download/latest.json'
+const APP_VERSION = '0.4.0'
+/** GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨). */
+const LATEST_API = 'https://api.github.com/repos/lhs0609a-cpu/cleanmate/releases/latest'
 
 const $ = (id: string) => document.getElementById(id)!
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
@@ -297,10 +297,13 @@ async function loadQuar() {
    판단(compareVersions)은 테스트된 순수 로직, 다운로드·설치는 Rust 명령. */
 async function checkUpdate() {
   try {
-    const res = await fetch(LATEST_MANIFEST, { cache: 'no-store' })
+    const res = await fetch(LATEST_API, { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store' })
     if (!res.ok) return
-    const m = await res.json()
-    if (!m?.version || compareVersions(m.version, APP_VERSION) <= 0) return // 최신이거나 더 낮음 → 조용히 넘어감
+    const r = await res.json()
+    const version = (r.tag_name ?? '').replace(/^v/, '')
+    const exe = (r.assets ?? []).find((a: any) => /\.exe$/i.test(a.name))
+    if (!version || !exe || compareVersions(version, APP_VERSION) <= 0) return // 최신이거나 더 낮음 → 조용히 넘어감
+    const m = { version, url: exe.browser_download_url, notes: (r.body ?? '').split('\n')[0] }
 
     const modal = $('update-modal')
     const body = $('um-body')
