@@ -1,212 +1,192 @@
 /**
- * 클린메이트 앱 화면 — 실제 데스크톱 앱의 프론트엔드
+ * 클린메이트 앱 화면 — 브라우저 데모 + 데스크톱 앱 공용 프론트엔드
  *
- * ★ 이 화면은 버려지지 않는다. 나중에 Tauri가 감싸는 바로 그 프론트엔드다.
- *   (docs/배포-아키텍처.md §2)
+ * 한 벌의 화면이 두 곳에서 돈다:
+ *   - 브라우저(Vercel 데모): 분석까지. 실제 삭제는 브라우저가 못 한다(보안 경계).
+ *   - 데스크톱(Tauri): run_engine으로 검증된 엔진을 호출 → 진짜로 청소한다.
  *
- * 브라우저에서 도는 것 / 못 도는 것:
- *   - 도는 것: 스캔·3-존 분류·질문 엔진. 전부 실제 엔진(classify.ts / engine.ts)이다.
- *     파일은 기기를 안 떠난다.
- *   - 못 도는 것: 실제 격리·삭제·powercfg. 브라우저의 물리적 한계다(설계 선택이 아님).
- *     그 부분은 "데스크톱 앱에서 실행"으로 정직하게 표시한다.
+ * 두 경로가 '같은 리포트 형태'를 만들어 같은 렌더 함수에 넣는다.
+ * (형태 = engine-cli.ts의 scan-plan 출력)
  */
 
 import { isSupported, pickDirectory, scanHandle } from './browser-scanner.ts'
 import { classifyOne, isAutoEligible } from '../../src/classify.ts'
-import { run, fmtBytes } from '../../src/engine.ts'
-import type { Classified, FileEntry } from '../../src/types.ts'
+import { run as runEngine, fmtBytes } from '../../src/engine.ts'
+import type { FileEntry, Question } from '../../src/types.ts'
 
 const $ = (id: string) => document.getElementById(id)!
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 
-/* ── 화면 전환 ─────────────────────────────────────────────── */
-const screens = ['home', 'hidden', 'quar']
-function go(name: string) {
-  for (const s of screens) $(`s-${s}`).classList.toggle('on', s === name)
-  document.querySelectorAll<HTMLButtonElement>('.nav button').forEach((b) =>
-    b.classList.toggle('on', b.dataset.go === name)
-  )
-}
-document.querySelectorAll<HTMLButtonElement>('.nav button').forEach((b) =>
-  b.addEventListener('click', () => go(b.dataset.go!))
-)
+// ── 실행 환경 감지 ──
+const TAURI = (window as any).__TAURI__
+const inTauri = !!TAURI
 
-/* ── 지원 여부 ─────────────────────────────────────────────── */
-if (!isSupported()) {
-  $('unsupported').hidden = false
-  ;($('oneclick') as HTMLButtonElement).disabled = true
+/** 엔진 사이드카 호출 (데스크톱 전용). JSON {ok,data|error} 규약. */
+async function engine(command: string, args: string[] = []): Promise<any> {
+  const res = await TAURI.core.invoke('run_engine', { command, args })
+  if (!res || res.ok === false) throw new Error(res?.error || '엔진 오류')
+  return res.data
 }
 
-/* ── 브라우저용 정리 계획 ──────────────────────────────────────
-   sweep.ts의 planSweep과 같은 판단을 한다. 단 scan()은 node:fs라 못 쓰므로,
-   브라우저 스캔 결과에 classifyOne(순수 함수)을 직접 돌린다. R1 방어선
-   (isAutoEligible = 규칙 확증분만 자동)은 그대로 지킨다. ── */
-interface Plan {
-  autoBytes: number
-  autoCount: number
-  lockBytes: number
-  lockCount: number
-  askBytes: number
-  askCount: number
-  inferredBytes: number
-  safeBytes: number
-  ambigBytes: number
-  lockedBytes: number
-  ambig: Classified[]
-  keptExamples: { meaning: string; bytes: number }[]
+/* ── 공통 리포트 형태 ─────────────────────────────────────── */
+interface Report {
+  scannedFiles: number
+  elapsedMs: number
+  zones: { safe: ZC; ambig: ZC; locked: ZC }
+  plan: {
+    autoBytes: number; autoCount: number
+    askBytes: number; askCount: number
+    lockBytes: number; lockCount: number
+    inferredBytes: number
+  }
+  questions: Question[]
+  kept: { meaning: string; bytes: number }[]
 }
+interface ZC { bytes: number; count: number }
 
-function buildPlan(files: FileEntry[]): Plan {
-  let autoBytes = 0, autoCount = 0, lockBytes = 0, lockCount = 0
-  let askBytes = 0, askCount = 0, inferredBytes = 0
-  let safeBytes = 0, ambigBytes = 0, lockedBytes = 0
-  const ambig: Classified[] = []
+/** 브라우저 스캔 결과 → 리포트 (engine-cli와 같은 판단, classifyOne은 순수) */
+function buildBrowserReport(files: FileEntry[], elapsedMs: number): Report {
+  let sB = 0, sC = 0, aB = 0, aC = 0, lB = 0, lC = 0, autoB = 0, autoC = 0, inferB = 0
+  const ambig = []
   const keptMap = new Map<string, number>()
-
   for (const f of files) {
     const c = classifyOne(f)
     const z = c.verdict.zone
-    if (z === 'LOCKED') {
-      lockBytes += f.size; lockCount++; lockedBytes += f.size
-      keptMap.set(c.verdict.meaning, (keptMap.get(c.verdict.meaning) ?? 0) + f.size)
-    } else if (z === 'AMBIG') {
-      askBytes += f.size; askCount++; ambigBytes += f.size
-      ambig.push(c)
-    } else {
-      safeBytes += f.size
-      if (isAutoEligible(c)) { autoBytes += f.size; autoCount++ }
-      else inferredBytes += f.size
-    }
+    if (z === 'LOCKED') { lB += f.size; lC++; keptMap.set(c.verdict.meaning, (keptMap.get(c.verdict.meaning) ?? 0) + f.size) }
+    else if (z === 'AMBIG') { aB += f.size; aC++; ambig.push(c) }
+    else { sB += f.size; sC++; if (isAutoEligible(c)) { autoB += f.size; autoC++ } else inferB += f.size }
   }
+  return {
+    scannedFiles: files.length, elapsedMs,
+    zones: { safe: { bytes: sB, count: sC }, ambig: { bytes: aB, count: aC }, locked: { bytes: lB, count: lC } },
+    plan: { autoBytes: autoB, autoCount: autoC, askBytes: aB, askCount: aC, lockBytes: lB, lockCount: lC, inferredBytes: inferB },
+    questions: runEngine(ambig).questions,
+    kept: [...keptMap.entries()].map(([meaning, bytes]) => ({ meaning, bytes })).sort((a, b) => b.bytes - a.bytes).slice(0, 6),
+  }
+}
 
-  const keptExamples = [...keptMap.entries()]
-    .map(([meaning, bytes]) => ({ meaning, bytes }))
-    .sort((a, b) => b.bytes - a.bytes)
-    .slice(0, 5)
+/* ── 화면 전환 ─────────────────────────────────────────────── */
+const screens = ['home', 'hidden', 'quar']
+let hiddenLoaded = false, quarLoaded = false
+function go(name: string) {
+  for (const s of screens) $(`s-${s}`).classList.toggle('on', s === name)
+  document.querySelectorAll<HTMLButtonElement>('.nav button').forEach((b) => b.classList.toggle('on', b.dataset.go === name))
+  if (inTauri && name === 'hidden' && !hiddenLoaded) { hiddenLoaded = true; loadHidden() }
+  if (inTauri && name === 'quar' && !quarLoaded) { quarLoaded = true; loadQuar() }
+}
+document.querySelectorAll<HTMLButtonElement>('.nav button').forEach((b) => b.addEventListener('click', () => go(b.dataset.go!)))
 
-  return { autoBytes, autoCount, lockBytes, lockCount, askBytes, askCount, inferredBytes,
-    safeBytes, ambigBytes, lockedBytes, ambig, keptExamples }
+/* ── 지원 여부 ─────────────────────────────────────────────── */
+if (!inTauri && !isSupported()) {
+  $('unsupported').hidden = false
+  ;($('oneclick') as HTMLButtonElement).disabled = true
 }
 
 /* ── 렌더 ──────────────────────────────────────────────────── */
 function zbar(label: string, cls: string, bytes: number, total: number, count: number, desc: string) {
   const pct = total ? (bytes / total) * 100 : 0
-  return `<div>
-    <div class="zrow ${cls}">
+  return `<div><div class="zrow ${cls}">
       <span class="zlabel">${label}</span>
       <span class="ztrack"><span class="zfill" style="width:${pct.toFixed(1)}%"></span></span>
       <span class="zval">${fmtBytes(bytes)} · ${count.toLocaleString()}개</span>
-    </div>
-    <div class="zdesc">${desc}</div>
-  </div>`
+    </div><div class="zdesc">${desc}</div></div>`
 }
 
-function renderResults(plan: Plan) {
-  const total = plan.safeBytes + plan.ambigBytes + plan.lockedBytes
+let scannedPath: string | null = null // Tauri: 정리 실행에 쓸 경로
 
+function renderReport(r: Report) {
+  const total = r.zones.safe.bytes + r.zones.ambig.bytes + r.zones.locked.bytes
   $('zbars').innerHTML =
-    zbar('존 A 안전', 'zsafe', plan.safeBytes, total, plan.autoCount,
-      '캐시·로그처럼 다시 생기는 것. 규칙이 확증한 것만 자동 정리해요.') +
-    zbar('존 B 애매', 'zamb', plan.ambigBytes, total, plan.askCount,
-      '사용자만 아는 것. 무인 삭제 안 하고 물어봅니다.') +
-    zbar('존 C 잠금', 'zlock', plan.lockedBytes, total, plan.lockCount,
-      '시스템·설정·클라우드. 지우면 뭔가 깨져서 아예 안 건드려요.')
+    zbar('존 A 안전', 'zsafe', r.zones.safe.bytes, total, r.plan.autoCount, '캐시·로그처럼 다시 생기는 것. 규칙이 확증한 것만 자동 정리해요.') +
+    zbar('존 B 애매', 'zamb', r.zones.ambig.bytes, total, r.zones.ambig.count, '사용자만 아는 것. 무인 삭제 안 하고 물어봅니다.') +
+    zbar('존 C 잠금', 'zlock', r.zones.locked.bytes, total, r.zones.locked.count, '시스템·설정·클라우드. 지우면 뭔가 깨져서 아예 안 건드려요.')
 
-  // 원클릭 계획 3분할 — "거짓말 안 함"
-  $('plan-lede').textContent =
-    '원클릭은 이렇게 해요: 확실한 캐시는 격리로 정리하고(되돌리기 가능), 애매한 건 아래 질문으로 모아서 보여드려요.'
+  $('plan-lede').textContent = '원클릭은 이렇게 해요: 확실한 캐시는 격리로 정리하고(되돌리기 가능), 애매한 건 아래 질문으로 모아서 보여드려요.'
   $('plan3').innerHTML = `
-    <div class="stat"><div class="n g">${fmtBytes(plan.autoBytes)}</div>
-      <div class="l">지금 정리 가능<br>확실한 캐시 ${plan.autoCount.toLocaleString()}개 · 규칙 확증분만</div></div>
-    <div class="stat"><div class="n a">${fmtBytes(plan.askBytes)}</div>
-      <div class="l">물어보면 정리 가능<br>애매한 ${plan.askCount.toLocaleString()}개 · 아래 질문으로</div></div>
-    <div class="stat"><div class="n m">${fmtBytes(plan.lockBytes)}</div>
-      <div class="l">지켜드린 것<br>${plan.lockCount.toLocaleString()}개 · 건드리면 위험</div></div>`
+    <div class="stat"><div class="n g">${fmtBytes(r.plan.autoBytes)}</div><div class="l">지금 정리 가능<br>확실한 캐시 ${r.plan.autoCount.toLocaleString()}개 · 규칙 확증분만</div></div>
+    <div class="stat"><div class="n a">${fmtBytes(r.plan.askBytes)}</div><div class="l">물어보면 정리 가능<br>애매한 ${r.plan.askCount.toLocaleString()}개 · 아래 질문으로</div></div>
+    <div class="stat"><div class="n m">${fmtBytes(r.plan.lockBytes)}</div><div class="l">지켜드린 것<br>${r.plan.lockCount.toLocaleString()}개 · 건드리면 위험</div></div>`
 
-  const applyNote = plan.inferredBytes > 0
-    ? `규칙이 확증 못 한 ${fmtBytes(plan.inferredBytes)}는 존 A로 보여도 자동 정리에서 뺐어요. 추론만으로는 자동으로 안 지웁니다(오삭제 방어선).`
-    : '자동 정리 대상은 전부 규칙이 확증한 캐시예요. 지워도 다시 생깁니다.'
-  $('apply-note').innerHTML = esc(applyNote)
+  $('apply-note').innerHTML = esc(r.plan.inferredBytes > 0
+    ? `규칙이 확증 못 한 ${fmtBytes(r.plan.inferredBytes)}는 존 A로 보여도 자동 정리에서 뺐어요. 추론만으로는 자동으로 안 지웁니다(오삭제 방어선).`
+    : '자동 정리 대상은 전부 규칙이 확증한 캐시예요. 지워도 다시 생깁니다.')
 
-  // 질문
-  const report = run(plan.ambig)
-  const qEl = $('questions')
-  if (report.questions.length) {
-    qEl.innerHTML = report.questions.map((q, i) => `
-      <div class="q" data-qi="${i}">
-        <div class="q-n">질문 ${i + 1}</div>
-        <div class="q-text">${esc(q.text)}</div>
-        <div class="q-why">왜 묻나: ${esc(q.rationale)}</div>
-        <div class="opts">
-          ${q.options.map((o, oi) => `<button class="opt${o.outcome === 'KEEP' ? ' keep' : ''}"
-            data-qi="${i}" data-oi="${oi}" data-outcome="${o.outcome}"
-            data-preview="${esc(o.preview)}">${esc(o.label)}</button>`).join('')}
-        </div>
-        <div class="q-answered" hidden></div>
-        <div class="q-stake">걸린 용량: ${fmtBytes(q.stakeBytes)} · ${q.stakeCount.toLocaleString()}개</div>
-      </div>`).join('')
+  renderQuestions(r.questions)
+  renderKept(r.kept, r.plan.lockBytes)
 
-    // 답변 루프 (프론트) — 답하면 그 결과를 보여준다.
-    // 실제 재분류·격리는 데스크톱 앱이 하지만, "물어보고 답을 받는" 흐름은 여기서 완성된다.
-    qEl.querySelectorAll<HTMLButtonElement>('.opt').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const q = btn.closest('.q')!
-        q.querySelectorAll('.opt').forEach((o) => o.classList.remove('chosen'))
-        btn.classList.add('chosen')
-        const ans = q.querySelector('.q-answered') as HTMLElement
-        ans.hidden = false
-        const desk = btn.dataset.outcome === 'KEEP' ? '' : ' <span class="pill desk">데스크톱 앱에서 실행</span>'
-        ans.innerHTML = '→ ' + esc(btn.dataset.preview!) + desk
-      })
-    })
-  } else {
-    qEl.innerHTML = `<div class="note">물어볼 만한 묶음이 없어요. 애매한 항목이 적거나 잘게 흩어져 있습니다.
-      Downloads처럼 파일이 많은 폴더에서 더 잘 보여요.</div>`
-  }
-
-  // 지켜드린 것
-  const kept = $('kept')
-  if (plan.keptExamples.length) {
-    kept.hidden = false
-    kept.innerHTML = `
-      <div style="font-size:12px;font-weight:700;color:var(--safe)">지켜드린 것 — 지웠으면 뭔가 깨졌을 것들</div>
-      <div class="n">${fmtBytes(plan.lockBytes)}</div>
-      <ul>${plan.keptExamples.map((k) => `<li>${esc(k.meaning)} — ${fmtBytes(k.bytes)}</li>`).join('')}</ul>
-      <div style="font-size:11.5px;color:var(--muted);margin-top:8px">
-        경쟁 도구는 “지운 양”을 자랑해요. 우리는 “지킨 양”을 보여드립니다.</div>`
-  } else {
-    kept.hidden = true
-  }
-
-  // 히어로 숫자 갱신
-  $('hero-num').textContent = fmtBytes(plan.autoBytes + plan.askBytes)
+  $('hero-num').textContent = fmtBytes(r.plan.autoBytes + r.plan.askBytes)
   $('hero-num').classList.remove('muted')
-  $('hero-cap').innerHTML =
-    `이 폴더에서 <b style="color:var(--ink)">정리 가능</b> · 지금 즉시 ${fmtBytes(plan.autoBytes)} + 물어보면 ${fmtBytes(plan.askBytes)}`
-  ;($('apply-btn') as HTMLButtonElement).disabled = plan.autoBytes === 0
+  $('hero-cap').innerHTML = `이 폴더에서 <b style="color:var(--ink)">정리 가능</b> · 지금 즉시 ${fmtBytes(r.plan.autoBytes)} + 물어보면 ${fmtBytes(r.plan.askBytes)}`
+
+  const applyBtn = $('apply-btn') as HTMLButtonElement
+  applyBtn.disabled = r.plan.autoBytes === 0
+  // 데스크톱에서는 실제로 정리한다. 브라우저에서는 안내만.
+  document.querySelectorAll<HTMLElement>('#s-home .pill.desk').forEach((p) => { p.hidden = inTauri })
+  applyBtn.textContent = inTauri ? `확실한 캐시 ${fmtBytes(r.plan.autoBytes)} 정리하기` : '확실한 캐시 정리하기'
+}
+
+function renderQuestions(questions: Question[]) {
+  const qEl = $('questions')
+  if (!questions.length) {
+    qEl.innerHTML = `<div class="note">물어볼 만한 묶음이 없어요. 애매한 항목이 적거나 잘게 흩어져 있습니다.</div>`
+    return
+  }
+  qEl.innerHTML = questions.map((q, i) => `
+    <div class="q" data-qi="${i}">
+      <div class="q-n">질문 ${i + 1}</div>
+      <div class="q-text">${esc(q.text)}</div>
+      <div class="q-why">왜 묻나: ${esc(q.rationale)}</div>
+      <div class="opts">${q.options.map((o) => `<button class="opt${o.outcome === 'KEEP' ? ' keep' : ''}"
+        data-outcome="${o.outcome}" data-preview="${esc(o.preview)}">${esc(o.label)}</button>`).join('')}</div>
+      <div class="q-answered" hidden></div>
+      <div class="q-stake">걸린 용량: ${fmtBytes(q.stakeBytes)} · ${q.stakeCount.toLocaleString()}개</div>
+    </div>`).join('')
+  qEl.querySelectorAll<HTMLButtonElement>('.opt').forEach((btn) => btn.addEventListener('click', () => {
+    const q = btn.closest('.q')!
+    q.querySelectorAll('.opt').forEach((o) => o.classList.remove('chosen'))
+    btn.classList.add('chosen')
+    const ans = q.querySelector('.q-answered') as HTMLElement
+    ans.hidden = false
+    const tag = !inTauri && btn.dataset.outcome !== 'KEEP' ? ' <span class="pill desk">데스크톱 앱에서 실행</span>' : ''
+    ans.innerHTML = '→ ' + esc(btn.dataset.preview!) + tag
+  }))
+}
+
+function renderKept(kept: { meaning: string; bytes: number }[], lockBytes: number) {
+  const el = $('kept')
+  if (!kept.length) { el.hidden = true; return }
+  el.hidden = false
+  el.innerHTML = `<div style="font-size:12px;font-weight:700;color:var(--safe)">지켜드린 것 — 지웠으면 뭔가 깨졌을 것들</div>
+    <div class="n">${fmtBytes(lockBytes)}</div>
+    <ul>${kept.map((k) => `<li>${esc(k.meaning)} — ${fmtBytes(k.bytes)}</li>`).join('')}</ul>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:8px">경쟁 도구는 "지운 양"을 자랑해요. 우리는 "지킨 양"을 보여드립니다.</div>`
 }
 
 /* ── 스캔 실행 ─────────────────────────────────────────────── */
 async function runScan() {
-  const dir = await pickDirectory()
-  if (!dir) return
-
   ;($('oneclick') as HTMLButtonElement).disabled = true
-  $('status').textContent = '읽는 중...'
-
+  $('status').textContent = inTauri ? '폴더 고르는 중...' : '읽는 중...'
   try {
-    const scanned = await scanHandle(dir, (n) => {
-      $('status').textContent = `읽는 중... ${n.toLocaleString()}개`
-    })
-    $('status').textContent =
-      `${scanned.files.length.toLocaleString()}개 · ${fmtBytes(scanned.totalBytes)} · ${Math.round(scanned.elapsedMs)}ms`
-
-    const plan = buildPlan(scanned.files)
+    let report: Report
+    if (inTauri) {
+      const path = await TAURI.dialog.open({ directory: true, title: '정리할 폴더 고르기' })
+      if (!path) { $('status').textContent = ''; return }
+      scannedPath = path as string
+      $('status').textContent = '분석 중...'
+      report = (await engine('scan-plan', [scannedPath])) as Report
+      $('status').textContent = `${report.scannedFiles.toLocaleString()}개 · ${report.elapsedMs}ms`
+    } else {
+      const dir = await pickDirectory()
+      if (!dir) { $('status').textContent = ''; return }
+      const scanned = await scanHandle(dir, (n) => { $('status').textContent = `읽는 중... ${n.toLocaleString()}개` })
+      report = buildBrowserReport(scanned.files, Math.round(scanned.elapsedMs))
+      $('status').textContent = `${scanned.files.length.toLocaleString()}개 · ${fmtBytes(scanned.totalBytes)} · ${Math.round(scanned.elapsedMs)}ms`
+    }
     ;($('results') as HTMLElement).hidden = false
-    renderResults(plan)
+    renderReport(report)
     $('results').scrollIntoView({ behavior: 'smooth', block: 'start' })
   } catch (err) {
-    $('status').textContent = `읽지 못했어요: ${(err as Error).message}`
+    $('status').textContent = `문제가 있었어요: ${(err as Error).message}`
   } finally {
     ;($('oneclick') as HTMLButtonElement).disabled = false
   }
@@ -214,37 +194,100 @@ async function runScan() {
 
 $('oneclick').addEventListener('click', runScan)
 $('pick2').addEventListener('click', runScan)
-$('apply-btn').addEventListener('click', () => {
-  alert('실제 정리(격리로 이동)는 데스크톱 앱에서 실행됩니다.\n\n브라우저는 보안상 파일을 옮기거나 지울 수 없어요. 이 화면은 그대로 데스크톱 앱의 프론트엔드가 됩니다.')
+
+/* ── 정리 실행 (데스크톱: 진짜 격리 / 브라우저: 안내) ── */
+$('apply-btn').addEventListener('click', async () => {
+  if (!inTauri) {
+    alert('실제 정리(격리로 이동)는 데스크톱 앱에서 실행됩니다.\n\n브라우저는 보안상 파일을 옮기거나 지울 수 없어요.')
+    return
+  }
+  if (!scannedPath) return
+  const btn = $('apply-btn') as HTMLButtonElement
+  btn.disabled = true; btn.textContent = '정리 중...'
+  try {
+    const res = await engine('apply-sweep', [scannedPath])
+    $('apply-note').innerHTML =
+      `<b style="color:var(--safe)">${res.quarantinedCount.toLocaleString()}개를 격리했어요.</b> ` +
+      `지금 즉시 확보는 0 — 격리는 옮기기만 한 거예요. <b>30일 뒤 ${fmtBytes(res.bytesAfterGrace)}</b>가 최종 확보되고, ` +
+      `그 사이 언제든 격리함에서 되돌릴 수 있어요.` +
+      (res.failed.length ? ` (${res.failed.length}개는 사용 중이라 건너뜀)` : '')
+    btn.textContent = '정리 완료'
+    quarLoaded = false // 격리함 새로고침 필요
+  } catch (err) {
+    $('apply-note').textContent = `정리 실패: ${(err as Error).message}`
+    btn.disabled = false; btn.textContent = '다시 시도'
+  }
 })
 
-/* ── 숨은 공간 카드 (설명 레이어 시연) ─────────────────────────
-   실측·실행은 데스크톱 앱(probes/hiberfil.ts)에서. 여기선 7문답 설명이
-   어떻게 보이는지를 보여준다. 숫자는 예시(RAM 32GB PC 기준). ── */
-$('hiber-card').innerHTML = `
-  <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
-    <h2 style="font-size:17px;font-weight:750">최대절전 파일 (hiberfil.sys)</h2>
-    <span style="font-family:var(--mono);font-size:20px;font-weight:800;color:var(--safe);margin-left:auto">12.7GB</span>
-  </div>
-  <div style="font-size:12px;color:var(--muted);margin:2px 0 16px">예시 · RAM 32GB 데스크톱 기준. 실제 값은 데스크톱 앱이 이 PC에서 실측합니다.</div>
-  <div class="expl">
-    <div class="blk"><div class="h">이게 뭔가요</div>
-      <p>컴퓨터를 완전히 끄기 전에, 지금 열어둔 것들을 통째로 저장해두는 파일이에요. 다시 켜면 어제 그 상태로 돌아오게 해줍니다.</p></div>
-    <div class="blk"><div class="h">왜 이렇게 큰가요</div>
-      <p>메모리(RAM)를 통째로 옮겨 적어야 해서 RAM의 약 40%를 미리 잡아둡니다. 뭔가 쌓여서 커진 게 아니라 처음부터 이 크기예요 — 그래서 파일을 아무리 정리해도 절대 줄지 않아요.</p></div>
-    <div class="blk"><div class="h">뭐가 이걸 쓰나요</div>
-      <ul><li>최대 절전 모드 — 전원을 껐다 켜도 창이 그대로 돌아오는 기능</li>
-        <li><b>빠른 시작</b> — 부팅이 몇 초 빨라지는 기능. 기본으로 켜져 있어 쓰는 줄 모르는 분이 대부분이에요</li></ul></div>
-    <div class="blk warn"><div class="h">지우면 뭐가 달라지나요</div>
-      <ul><li>최대 절전을 못 씁니다 (절전 모드는 그대로)</li>
-        <li>빠른 시작도 꺼져서 부팅이 2~5초 느려질 수 있어요</li>
-        <li>데스크톱이면 거의 체감 없어요. 노트북이면 한 번 더 생각해보세요</li></ul></div>
-    <div class="blk"><div class="h">되돌릴 수 있나요</div>
-      <p>네, 명령 한 줄이면 원래대로예요. 파일을 지우는 게 아니라 기능을 끄는 거라, 다시 켜면 파일이 새로 생깁니다.</p></div>
-    <div class="blk"><div class="h">안 지우면요</div>
-      <p>아무 문제 없어요. 12.7GB를 계속 쓸 뿐입니다. 급하지 않으면 그냥 두셔도 돼요.</p></div>
-  </div>
-  <div style="margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-    <button class="btn" disabled>최대절전 끄고 12.7GB 회수</button>
-    <span class="pill desk">데스크톱 앱에서 실행 (관리자 권한)</span>
-  </div>`
+/* ── 숨은 공간 (데스크톱: 실측) ─────────────────────────────── */
+async function loadHidden() {
+  const card = $('hiber-card')
+  card.innerHTML = `<div class="empty">이 PC를 확인하는 중...</div>`
+  try {
+    const data = await engine('probe')
+    if (!data.findings.length) { card.innerHTML = `<div class="empty">회수할 숨은 공간이 없어요. 이미 깔끔하네요.</div>`; return }
+    card.innerHTML = data.findings.map((f: any) => explainCard(f)).join('')
+  } catch (err) {
+    card.innerHTML = `<div class="note">숨은 공간을 확인하지 못했어요: ${esc((err as Error).message)}</div>`
+  }
+}
+
+function explainCard(f: any): string {
+  const e = f.explain
+  const gb = (n: number) => (n / 1073741824).toFixed(1) + 'GB'
+  const blk = (h: string, body: string, warn = false) => `<div class="blk${warn ? ' warn' : ''}"><div class="h">${h}</div>${body}</div>`
+  const ul = (arr: string[]) => `<ul>${arr.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`
+  return `
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+      <h2 style="font-size:17px;font-weight:750">${esc(f.title)}</h2>
+      <span style="font-family:var(--mono);font-size:20px;font-weight:800;color:var(--safe);margin-left:auto">${gb(f.bytes)}</span>
+    </div>
+    <div class="expl" style="margin-top:14px">
+      ${blk('이게 뭔가요', `<p>${esc(e.what)}</p>`)}
+      ${blk('왜 이렇게 큰가요', `<p>${esc(e.why)}</p>`)}
+      ${blk('뭐가 이걸 쓰나요', ul(e.usedBy))}
+      ${blk('지우면 뭐가 달라지나요', ul(e.ifRemoved), true)}
+      ${blk('되돌릴 수 있나요', `<p>${esc(e.recoveryNote)}</p>`)}
+      ${blk('안 지우면요', `<p>${esc(e.ifKept)}</p>`)}
+    </div>
+    <div style="margin-top:16px"><span class="pill desk">실행(관리자 권한)은 다음 업데이트에서 연결됩니다</span></div>`
+}
+
+/* ── 격리함 (데스크톱: 실제 목록 + 되돌리기) ─────────────────── */
+async function loadQuar() {
+  const screen = $('s-quar')
+  const listId = 'quar-list-live'
+  let host = document.getElementById(listId)
+  if (!host) { host = document.createElement('div'); host.id = listId; screen.appendChild(host) }
+  host.innerHTML = `<div class="empty">격리함을 읽는 중...</div>`
+  try {
+    const data = await engine('quar-list')
+    if (!data.items.length) { host.innerHTML = `<div class="card"><div class="empty">아직 격리된 항목이 없어요.</div></div>`; return }
+    const day = 86400000
+    host.innerHTML = `<div class="card">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px">
+        <h2 style="font-size:16px;font-weight:750">격리된 ${data.items.length.toLocaleString()}개 · ${fmtBytes(data.totalBytes)}</h2>
+        <button class="btn" id="restore-all" style="margin-left:auto">전부 되돌리기</button>
+      </div>
+      ${data.items.slice(0, 50).map((it: any) => {
+        const left = Math.ceil((data.graceDays * day - (Date.now() - it.quarantinedAt)) / day)
+        return `<div style="padding:8px 0;border-top:1px solid var(--line);font-size:12.5px">
+          <div style="color:var(--ink-2)">${esc(it.originalPath)}</div>
+          <div style="color:var(--muted)">${fmtBytes(it.size)} · ${it.expired ? '만료됨' : left + '일 남음'} · ${esc(it.reason)}</div></div>`
+      }).join('')}
+    </div>`
+    document.getElementById('restore-all')?.addEventListener('click', async () => {
+      const r = await engine('restore', ['--all'])
+      alert(`${r.restoredCount.toLocaleString()}개를 되돌렸어요.`)
+      loadQuar()
+    })
+  } catch (err) {
+    host.innerHTML = `<div class="card"><div class="note">격리함을 읽지 못했어요: ${esc((err as Error).message)}</div></div>`
+  }
+}
+
+/* ── 데스크톱 초기화 ───────────────────────────────────────── */
+if (inTauri) {
+  // 데스크톱에서는 정적 데모 카드를 감추고 실측으로 대체한다.
+  $('hiber-card').innerHTML = `<div class="empty">‘숨은 공간’ 탭을 열면 이 PC를 실측합니다.</div>`
+}

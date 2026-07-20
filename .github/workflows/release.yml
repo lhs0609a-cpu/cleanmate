@@ -51,12 +51,22 @@ jobs:
       - name: Tauri 빌드 (→ cleanmate.exe + 리소스)
         run: npx tauri build
 
+      # ★ 엔진 사이드카: 검증된 TS 엔진을 단일 exe로 포장한다.
+      #   esbuild로 한 덩어리 CJS로 묶고(의존성 0이라 간단), pkg로 Node 런타임
+      #   내장 exe를 만든다. 사용자는 Node를 안 깔아도 된다.
+      - name: 엔진 번들 (esbuild → CJS)
+        run: npx esbuild src/engine-cli.ts --bundle --platform=node --format=cjs --outfile=dist-engine/engine.cjs
+
+      - name: 엔진 exe 생성 (pkg)
+        run: npx @yao-pkg/pkg dist-engine/engine.cjs --targets node20-win-x64 --output dist-engine/cleanmate-engine.exe
+
       - name: 이노셋업이 담을 폴더 구성 (dist-app/)
         shell: bash
         run: |
           mkdir -p dist-app
-          cp -r src-tauri/target/release/cleanmate.exe dist-app/
-          # 사이드카 엔진·리소스가 생기면 여기서 함께 복사한다.
+          cp src-tauri/target/release/cleanmate.exe dist-app/
+          cp dist-engine/cleanmate-engine.exe dist-app/
+          ls -la dist-app/
 
       - name: 이노셋업 설치
         run: choco install innosetup --no-progress -y
