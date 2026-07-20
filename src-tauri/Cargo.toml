@@ -5,9 +5,8 @@ description = "확실한 건 알아서, 애매한 것만 딱 물어보는 정리
 authors = ["CleanMate"]
 edition = "2021"
 
-[lib]
-name = "cleanmate_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# 데스크톱 전용이라 라이브러리 크레이트가 필요 없다. main.rs 하나로 된 바이너리.
+# (모바일 대응 시에만 lib.rs + main.rs 분리가 필요하다.)
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
