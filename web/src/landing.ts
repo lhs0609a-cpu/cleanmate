@@ -42,7 +42,42 @@ function setDownload(el: HTMLElement | null, url: string) {
   el.setAttribute('href', url)
 }
 
+/** 스크롤에 따라 요소가 부드럽게 나타난다 (점진적 향상 — JS 없어도 내용은 보임). */
+function setupReveal() {
+  const els = document.querySelectorAll('.reveal')
+  if (!('IntersectionObserver' in window)) {
+    els.forEach((e) => e.classList.add('in'))
+    return
+  }
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          ;(e.target as HTMLElement).classList.add('in')
+          io.unobserve(e.target)
+        }
+      }
+    },
+    { threshold: 0.12, rootMargin: '0px 0px -8% 0px' }
+  )
+  els.forEach((e, i) => {
+    ;(e as HTMLElement).style.transitionDelay = `${Math.min(i % 4, 3) * 70}ms`
+    io.observe(e)
+  })
+}
+
+/** 스크롤하면 헤더에 경계선이 생긴다. */
+function setupHeader() {
+  const hdr = document.getElementById('hdr')
+  if (!hdr) return
+  const on = () => hdr.classList.toggle('scrolled', window.scrollY > 8)
+  on()
+  window.addEventListener('scroll', on, { passive: true })
+}
+
 async function main() {
+  setupReveal()
+  setupHeader()
   const heroDl = document.getElementById('hero-dl')
   const navDl = document.getElementById('nav-dl')
   const finalDl = document.getElementById('final-dl')
