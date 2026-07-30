@@ -4,9 +4,26 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>클린메이트 — 지워도 되는 것만 지웁니다</title>
-<meta name="description" content="뭘 지우면 안 되는지 아는 유일한 정리 도구. 확실한 건 알아서, 애매한 건 딱 물어보고, 위험한 건 아예 잠급니다. 지운 양이 아니라 지켜드린 양을 봅니다. 30일 되돌리기 · 100% 온디바이스." />
+<meta name="description" content="뭘 지우는지 알고 지우는 정리 도구. 지울 파일을 이름과 이유로 먼저 보여주고, 확실한 건 알아서, 애매한 건 딱 물어보고, 위험한 건 아예 잠급니다. 30일 되돌리기 · 100% 온디바이스." />
+<link rel="canonical" href="https://cleanmate-henna.vercel.app/" />
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="클린메이트" />
+<meta property="og:url" content="https://cleanmate-henna.vercel.app/" />
 <meta property="og:title" content="클린메이트 — 지워도 되는 것만 지웁니다" />
-<meta property="og:description" content="뭘 지우면 안 되는지 아는 정리 도구. 30일 되돌리기 · 온디바이스." />
+<meta property="og:description" content="뭘 지우는지 알고 지우는 정리 도구. 지울 파일을 이유와 함께 먼저 보여줍니다. 30일 되돌리기 · 100% 온디바이스." />
+<meta property="og:image" content="https://cleanmate-henna.vercel.app/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="클린메이트 — 지워도 되는 것으로 확인된 용량 14.6GB, 잠근 용량 41.8GB" />
+<meta property="og:locale" content="ko_KR" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="클린메이트 — 지워도 되는 것만 지웁니다" />
+<meta name="twitter:description" content="뭘 지우는지 알고 지우는 정리 도구. 30일 되돌리기 · 100% 온디바이스." />
+<meta name="twitter:image" content="https://cleanmate-henna.vercel.app/og.png" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="/favicon-180.png" />
 <meta name="theme-color" content="#07090D" />
 <style>
   :root{
@@ -29,6 +46,21 @@
   .grad{background:linear-gradient(103deg,var(--acc),var(--acc-2) 55%,var(--acc-3));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
   .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
   .reveal.in{opacity:1;transform:none}
+
+  /* 스크린리더 전용 — 화면에선 안 보이고 보조기기엔 읽힌다 */
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+  /* 키보드 사용자를 위한 건너뛰기 링크 */
+  .skip{position:absolute;left:-9999px;top:0;z-index:100}
+  .skip:focus{left:16px;top:12px;background:var(--acc);color:var(--acc-ink);padding:10px 16px;border-radius:10px;font-weight:700}
+  /* 포커스 링 — 마우스 클릭엔 안 뜨고 키보드 이동에만 뜬다 */
+  :focus-visible{outline:2px solid var(--acc);outline-offset:3px;border-radius:6px}
+
+  /* 애니메이션을 줄여달라고 설정한 사용자는 전부 정지 상태로 본다 */
+  @media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+    .reveal{opacity:1;transform:none}
+  }
 
   /* 버튼 */
   .btn{display:inline-flex;align-items:center;gap:9px;font-family:var(--sans);font-weight:650;border-radius:12px;cursor:pointer;transition:.18s;border:1px solid transparent;white-space:nowrap}
@@ -72,6 +104,10 @@
   .hero .lede b{color:var(--ink);font-weight:650}
   .cta{display:flex;flex-wrap:wrap;gap:13px;justify-content:center;margin-top:36px}
   .dlmeta{margin-top:16px;font-size:12.5px;color:var(--muted);font-family:var(--mono)}
+  /* macOS 방문자에게만 보이는 안내 — 스크립트가 켠다 */
+  .osnote{display:none;margin:14px auto 0;max-width:52ch;font-size:13px;color:var(--amb);
+    background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.22);border-radius:12px;padding:11px 16px}
+  .osnote.on{display:block}
 
   /* 앱 목업 */
   .mockwrap{margin:60px auto 0;max-width:940px;position:relative}
@@ -94,6 +130,9 @@
   .zA{--z:var(--safe)} .zB{--z:var(--amb)} .zC{--z:var(--lock)}
   .m-kept{margin-top:22px;display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:rgba(74,222,128,.05)}
   .m-kept .k{font-family:var(--mono);font-weight:800;color:var(--safe);font-size:18px}
+  .m-kept .kt{font-size:13.5px;color:var(--ink-2)}
+  /* 재현물임을 밝힌다 — 실제 스크린샷으로 교체 예정 */
+  .mocknote{margin-top:14px;text-align:center;font-size:11.5px;color:var(--faint)}
 
   /* 스탯 밴드 */
   .band{border-block:1px solid var(--line);margin-top:80px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.015))}
@@ -112,21 +151,31 @@
   .ssub{margin:18px auto 0;max-width:58ch;color:var(--ink-2);font-size:17px;line-height:1.65}
   .center{text-align:center}
 
-  /* 차별점 */
-  .kept-hero{margin-top:44px;border:1px solid var(--line-2);border-radius:24px;padding:clamp(32px,5vw,60px);text-align:center;
-    background:radial-gradient(120% 140% at 50% 0,rgba(74,222,128,.08),transparent 60%),linear-gradient(180deg,var(--surface),var(--bg-2));box-shadow:var(--glow)}
-  .kept-hero .big{font-family:var(--mono);font-size:clamp(56px,12vw,104px);font-weight:860;letter-spacing:-.06em;line-height:.9;
-    background:linear-gradient(120deg,var(--safe),var(--acc));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-  .kept-hero .cap{margin-top:16px;color:var(--ink-2);font-size:15.5px}
-  .keptlist{margin:34px auto 0;max-width:600px;display:flex;flex-direction:column;gap:11px;text-align:left}
+  /* 차별점 — 지울 목록이 주인공, 잠근 목록은 근거 */
+  .del-hero{margin-top:44px;border:1px solid var(--line-2);border-radius:24px;padding:clamp(30px,5vw,56px);text-align:center;
+    background:radial-gradient(120% 140% at 50% 0,rgba(47,228,210,.09),transparent 60%),linear-gradient(180deg,var(--surface),var(--bg-2));box-shadow:var(--glow)}
+  .del-hero .big{font-family:var(--mono);font-size:clamp(52px,11vw,96px);font-weight:860;letter-spacing:-.06em;line-height:.9;
+    background:linear-gradient(103deg,var(--acc),var(--acc-2) 60%,var(--acc-3));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .del-hero .cap{margin-top:16px;color:var(--ink-2);font-size:15.5px}
+  .rowlist{margin:32px auto 0;max-width:640px;display:flex;flex-direction:column;gap:11px;text-align:left}
   .krow{display:flex;gap:14px;align-items:center;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:13px;padding:16px 18px;font-size:14.5px}
-  .krow .x{color:var(--lock);font-weight:900;flex:none}
-  .krow .v{margin-left:auto;font-family:var(--mono);font-weight:750;color:var(--safe);white-space:nowrap}
+  .krow .mk{font-weight:900;flex:none;font-size:15px}
+  .krow .why{color:var(--muted);font-size:13px;display:block;margin-top:2px}
+  .krow .v{margin-left:auto;font-family:var(--mono);font-weight:750;white-space:nowrap}
+  /* 지울 것 */
+  .krow.del .mk{color:var(--acc)} .krow.del .v{color:var(--acc)}
+  /* 잠근 것 — 근거 층이라 한 단 작고 조용하다 */
+  .lockwrap{margin-top:40px;padding-top:32px;border-top:1px solid var(--line)}
+  .lockwrap .lt{font-size:14.5px;color:var(--ink-2)}
+  .lockwrap .lt b{color:var(--lock);font-family:var(--mono);font-weight:800}
+  .lockwrap .rowlist{margin-top:18px}
+  .lockwrap .krow{padding:12px 16px;font-size:13.5px;background:transparent}
+  .krow.lock .mk{color:var(--lock)} .krow.lock .v{color:var(--muted);font-size:12.5px}
 
   /* 존 */
   .zones{display:grid;gap:18px;grid-template-columns:1fr;margin-top:44px}
   @media(min-width:760px){.zones{grid-template-columns:repeat(3,1fr)}}
-  .zone{background:linear-gradient(180deg,var(--surface),var(--bg-2));border:1px solid var(--line);border-radius:18px;padding:28px;position:relative;overflow:hidden;transition:.2s}
+  .zone{background:linear-gradient(180deg,var(--surface),var(--bg-2));border:1px solid var(--line);border-radius:18px;padding:28px;position:relative;overflow:hidden;transition:.2s;text-align:left}
   .zone:hover{transform:translateY(-4px);border-color:var(--z)}
   .zone::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--z)}
   .zone .zt{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--z);font-weight:700}
@@ -147,7 +196,7 @@
   /* 비교 */
   .cmp{margin-top:40px;border:1px solid var(--line);border-radius:18px;overflow:hidden}
   .cmp .scroll{overflow-x:auto}
-  table{width:100%;border-collapse:collapse;font-size:15px;min-width:520px}
+  table{width:100%;border-collapse:collapse;font-size:15px;min-width:560px}
   th,td{padding:18px 20px;text-align:left;border-bottom:1px solid var(--line)}
   tbody tr:last-child td{border-bottom:0}
   th{font-weight:700;font-size:13px;color:var(--muted);background:rgba(255,255,255,.02)}
@@ -175,10 +224,12 @@
 </head>
 <body>
 
+<a class="skip" href="#main">본문으로 건너뛰기</a>
+
 <header id="hdr">
   <div class="wrap bar">
-    <a class="logo" href="/"><span class="mk">✓</span>클린메이트</a>
-    <nav>
+    <a class="logo" href="/"><span class="mk" aria-hidden="true">✓</span>클린메이트</a>
+    <nav aria-label="주요 메뉴">
       <a href="#why">왜 다른가</a>
       <a href="#how">작동 방식</a>
       <a href="#compare">비교</a>
@@ -189,32 +240,34 @@
   </div>
 </header>
 
+<main id="main">
+
 <!-- 히어로 -->
 <section class="hero">
-  <div class="grid-bg"></div>
-  <div class="aurora"></div>
+  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="aurora" aria-hidden="true"></div>
   <div class="wrap">
-    <span class="pill"><span class="d"></span>100% 온디바이스 · 30일 되돌리기 · 오픈 규칙</span>
+    <span class="pill"><span class="d" aria-hidden="true"></span>100% 온디바이스 · 30일 되돌리기 · 오픈 규칙</span>
     <h1>지워도 되는 것만<br><span class="grad">지웁니다.</span></h1>
-    <p class="lede">용량은 차는데 뭘 지워야 할지 모르겠죠. 클린메이트는 <b>확실한 건 알아서</b> 정리하고,
-      <b>애매한 건 딱 3~4개만</b> 묻고, <b>위험한 건 아예 잠급니다.</b>
-      그리고 지운 양이 아니라 — 지켜드린 양을 보여줍니다.</p>
+    <p class="lede">용량은 차는데 뭘 지워야 할지 모르겠죠. 클린메이트는 <b>지울 파일을 이유와 함께 먼저 보여주고</b> 지웁니다.
+      확실한 건 알아서, <b>애매한 건 딱 3~4개만</b> 묻고, <b>위험한 건 아예 잠급니다.</b></p>
     <div class="cta">
       <a class="btn btn-pri btn-lg" id="hero-dl" href="#get">Windows용 무료 다운로드</a>
       <a class="btn btn-ghost btn-lg" href="/app.html">브라우저에서 체험 →</a>
     </div>
-    <div class="dlmeta" id="hero-ver">최신 버전 확인 중…</div>
+    <div class="dlmeta" id="hero-ver" aria-live="polite">최신 버전 확인 중…</div>
+    <p class="osnote" id="os-note"></p>
 
-    <!-- 앱 목업 -->
+    <!-- 앱 목업 (HTML 재현물 — 실제 스크린샷 대기 중) -->
     <div class="mockwrap reveal">
-      <div class="win">
-        <div class="win-top">
+      <div class="win" role="img" aria-label="클린메이트 앱 화면 예시: 이 PC에서 정리 가능 14.6GB, 존 A 안전 2.1GB는 자동 정리, 존 B 애매 12.5GB는 질문 후 정리, 존 C 잠금 41.8GB는 건드리지 않음.">
+        <div class="win-top" aria-hidden="true">
           <span class="dot" style="background:#FB7185"></span>
           <span class="dot" style="background:#FBBF24"></span>
           <span class="dot" style="background:#4ADE80"></span>
           <span class="win-title">클린메이트</span>
         </div>
-        <div class="win-body">
+        <div class="win-body" aria-hidden="true">
           <div class="m-top">
             <div>
               <div class="m-cap">이 PC에서 정리 가능</div>
@@ -227,9 +280,10 @@
             <div class="m-row zB"><span class="m-lab">존 B 애매</span><span class="m-track"><span class="m-fill" style="--w:58%"></span></span><span class="m-val">12.5GB · 물어봄</span></div>
             <div class="m-row zC"><span class="m-lab">존 C 잠금</span><span class="m-track"><span class="m-fill" style="--w:86%"></span></span><span class="m-val">41.8GB · 안 건드림</span></div>
           </div>
-          <div class="m-kept"><span class="k">✓ 41.8GB</span><span style="font-size:13.5px;color:var(--ink-2)">지켜드렸어요 — 지웠으면 뭔가 깨졌을 것들</span></div>
+          <div class="m-kept"><span class="k">✓ 41.8GB</span><span class="kt">잠갔어요 — 지웠으면 뭔가 깨졌을 것들</span></div>
         </div>
       </div>
+      <p class="mocknote">화면은 실측 데이터로 만든 재현 이미지입니다.</p>
     </div>
   </div>
 </section>
@@ -237,8 +291,8 @@
 <!-- 스탯 밴드 -->
 <div class="band">
   <div class="wrap stats">
-    <div class="stat reveal"><div class="n grad">41.8<span style="font-size:.5em">GB</span></div><div class="l">한 번에 지켜낸 용량</div></div>
-    <div class="stat reveal"><div class="n grad">0<span style="font-size:.5em">건</span></div><div class="l">몰래 삭제</div></div>
+    <div class="stat reveal"><div class="n grad">14.6<span style="font-size:.5em">GB</span></div><div class="l">지워도 되는 것으로 확인된 용량</div></div>
+    <div class="stat reveal"><div class="n grad">3~4<span style="font-size:.5em">개</span></div><div class="l">정리 전 묻는 질문 수</div></div>
     <div class="stat reveal"><div class="n grad">30<span style="font-size:.5em">일</span></div><div class="l">되돌리기 유예</div></div>
     <div class="stat reveal"><div class="n grad">100<span style="font-size:.5em">%</span></div><div class="l">온디바이스 처리</div></div>
   </div>
@@ -248,16 +302,34 @@
 <section id="why">
   <div class="wrap center">
     <span class="kick reveal">왜 다른가</span>
-    <h2 class="stitle reveal">"지운 양"이 아니라 "지킨 양"을 봅니다</h2>
-    <p class="ssub reveal">경쟁 도구는 얼마나 지웠는지 자랑합니다. 그래서 지우면 안 될 걸 지웁니다.
-      우리는 <b style="color:var(--ink)">지우면 큰일 날 것들을 지켜낸 양</b>을 보여줍니다.</p>
-    <div class="kept-hero reveal">
-      <div class="big">41.8GB</div>
-      <div class="cap">한 번의 스캔에서 지켜드린 용량 — 전부 지웠으면 뭔가 깨졌을 것들</div>
-      <div class="keptlist">
-        <div class="krow"><span class="x">✕</span><span>구글 드라이브 동기화 장부 — 옮겼으면 동기화가 통째로 깨졌을 것</span><span class="v">26.5GB</span></div>
-        <div class="krow"><span class="x">✕</span><span>WSL·Docker 가상디스크 — 지웠으면 개발환경이 통째로 사라졌을 것</span><span class="v">8.2GB</span></div>
-        <div class="krow"><span class="x">✕</span><span>설치된 앱 속 node_modules 635곳 — 지웠으면 앱이 깨졌을 것</span><span class="v">앱 보호</span></div>
+    <h2 class="stitle reveal">뭘 지우는지 <span class="grad">알고</span> 지웁니다</h2>
+    <p class="ssub reveal">다른 도구는 "정리 완료"만 알려줍니다. 뭘 지웠는지는 안 알려줍니다.
+      클린메이트는 <b style="color:var(--ink)">지울 것을 이름과 이유로 먼저 보여주고</b>, 그다음에 지웁니다.</p>
+    <div class="del-hero reveal">
+      <div class="big">14.6GB</div>
+      <div class="cap">이 PC에서 지워도 되는 것으로 확인된 용량 — 하나하나 이유가 있습니다</div>
+      <div class="rowlist">
+        <div class="krow del"><span class="mk" aria-hidden="true">✓</span>
+          <span>브라우저·앱 캐시<span class="why">지워도 다시 생깁니다. 손실이 없어 묻지 않고 정리합니다.</span></span>
+          <span class="v">2.1GB</span></div>
+        <div class="krow del"><span class="mk" aria-hidden="true">✓</span>
+          <span>다 쓴 설치파일·오래된 다운로드<span class="why">"이거 백업해두셨어요?" 한 번만 확인하고 정리합니다.</span></span>
+          <span class="v">8.4GB</span></div>
+        <div class="krow del"><span class="mk" aria-hidden="true">✓</span>
+          <span>끝난 프로젝트의 빌드 산출물<span class="why">명령 한 줄로 다시 만들 수 있습니다. 원본 코드는 그대로 둡니다.</span></span>
+          <span class="v">4.1GB</span></div>
+      </div>
+
+      <div class="lockwrap">
+        <p class="lt">그리고 건드리면 안 되는 <b>41.8GB</b>는 잠갔습니다 — 이게 위 숫자를 믿을 수 있는 이유입니다.</p>
+        <div class="rowlist">
+          <div class="krow lock"><span class="mk" aria-hidden="true">✕</span>
+            <span>구글 드라이브 동기화 장부</span><span class="v">옮겼으면 동기화가 통째로 깨졌을 것 · 26.5GB</span></div>
+          <div class="krow lock"><span class="mk" aria-hidden="true">✕</span>
+            <span>WSL·Docker 가상디스크</span><span class="v">지웠으면 개발환경이 사라졌을 것 · 8.2GB</span></div>
+          <div class="krow lock"><span class="mk" aria-hidden="true">✕</span>
+            <span>설치된 앱 속 node_modules 635곳</span><span class="v">지웠으면 앱이 깨졌을 것</span></div>
+        </div>
       </div>
     </div>
   </div>
@@ -286,14 +358,14 @@
   <div class="wrap">
     <div class="center"><span class="kick reveal">핵심</span><h2 class="stitle reveal">정직하게, 안전하게, 똑똑하게</h2></div>
     <div class="feat">
-      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/></svg></div>
+      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/></svg></div>
         <h3>30일 되돌리기</h3><p>지운 건 바로 사라지지 않고 격리함에 30일 머뭅니다. 언제든 원래 자리로. 되돌리기 없는 청소 도구가 사고를 낸 그 자리를 대신합니다.</p></div>
-      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></div>
+      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></div>
         <h3>숨은 공간까지</h3><p>"정리해도 안 줄던" 진짜 이유 — 최대절전 파일·가상메모리 같은 숨은 수십 GB를, 파일 삭제가 아니라 안전한 공식 명령으로 회수합니다.</p></div>
-      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
-        <h3>기기를 떠나지 않음</h3><p>분석은 전부 당신 컴퓨터 안에서. 서버도 업로드도 없습니다. 웹 데모는 브라우저가 네트워크를 아예 차단하도록 배포했습니다.</p></div>
-      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></div>
-        <h3>조용한 자동 업데이트</h3><p>새 버전이 나오면 앱이 알아서 받아 설치합니다. 추가 클릭 없이. 늘 최신 규칙으로 보호받습니다.</p></div>
+      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+        <h3>기기를 떠나지 않음</h3><p>분석은 전부 당신 컴퓨터 안에서. 서버도 업로드도 없습니다. 웹 데모 화면은 브라우저가 네트워크를 아예 차단하도록 배포했습니다.</p></div>
+      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></div>
+        <h3>검증된 자동 업데이트</h3><p>새 버전이 나오면 앱이 알아서 받아 설치합니다. 받은 파일의 SHA-256이 릴리스에 게시된 값과 일치할 때만 실행합니다 — 아니면 지우고 멈춥니다.</p></div>
     </div>
   </div>
 </section>
@@ -305,13 +377,14 @@
     <h2 class="stitle reveal">왜 다른 도구를 못 믿었을까</h2>
     <div class="cmp reveal">
       <div class="scroll"><table>
-        <thead><tr><th></th><th>일반 청소 도구</th><th class="colus">클린메이트</th></tr></thead>
+        <caption class="sr-only">일반 청소 도구와 클린메이트의 동작 비교</caption>
+        <thead><tr><th scope="col"><span class="sr-only">비교 항목</span></th><th scope="col">일반 청소 도구</th><th scope="col" class="colus">클린메이트</th></tr></thead>
         <tbody>
-          <tr><td>모르는 파일을 만나면</td><td class="no">지워도 된다고 추측</td><td class="colus">물어봅니다</td></tr>
-          <tr><td>실수로 지웠을 때</td><td class="no">복구 불가인 경우 많음</td><td class="colus">30일 되돌리기</td></tr>
-          <tr><td>자랑하는 숫자</td><td class="no">지운 양</td><td class="colus">지켜드린 양</td></tr>
-          <tr><td>내 파일이 나가는가</td><td class="no">서버로 전송하기도</td><td class="colus">기기를 안 떠남</td></tr>
-          <tr><td>결제</td><td class="no">자동전환 함정</td><td class="colus">투명한 청구</td></tr>
+          <tr><th scope="row">지우기 직전에</th><td class="no">"정리 완료"만 통보</td><td class="colus">뭘 왜 지우는지 먼저 보여줌</td></tr>
+          <tr><th scope="row">모르는 파일을 만나면</th><td class="no">지워도 된다고 추측</td><td class="colus">물어봅니다</td></tr>
+          <tr><th scope="row">실수로 지웠을 때</th><td class="no">복구 불가인 경우 많음</td><td class="colus">30일 되돌리기</td></tr>
+          <tr><th scope="row">내 파일이 나가는가</th><td class="no">서버로 전송하기도</td><td class="colus">기기를 안 떠남</td></tr>
+          <tr><th scope="row">결제</th><td class="no">자동전환 함정</td><td class="colus">투명한 청구</td></tr>
         </tbody>
       </table></div>
     </div>
@@ -322,24 +395,28 @@
 <section id="get">
   <div class="wrap">
     <div class="final reveal">
-      <h2>지금 안심하고 정리하세요</h2>
-      <p>설치하고 원클릭. 확실한 건 알아서, 애매한 것만 물어봅니다. 무료입니다.</p>
-      <a class="btn btn-pri btn-lg" id="final-dl" href="#">Windows용 다운로드</a>
-      <div class="meta" id="final-ver">최신 버전 확인 중…</div>
+      <h2>보면서 정리하세요</h2>
+      <p>설치하고 원클릭. 지울 목록을 이유와 함께 보여드립니다. 무료입니다.</p>
+      <a class="btn btn-pri btn-lg" id="final-dl" href="https://github.com/lhs0609a-cpu/cleanmate/releases">Windows용 다운로드</a>
+      <div class="meta" id="final-ver" aria-live="polite">최신 버전 확인 중…</div>
     </div>
     <p class="center fineprint">Windows 10/11 · 설치 시 "알 수 없는 게시자" 경고가 뜨면 <b style="color:var(--ink-2)">추가 정보 → 실행</b>을 눌러주세요 (코드 서명 준비 중).</p>
   </div>
 </section>
 
+</main>
+
 <footer>
   <div class="wrap foot">
-    <a class="logo" href="/"><span class="mk">✓</span>클린메이트</a>
+    <a class="logo" href="/"><span class="mk" aria-hidden="true">✓</span>클린메이트</a>
     <div class="sp"></div>
-    <a href="/app.html">체험</a>
-    <a href="https://github.com/lhs0609a-cpu/cleanmate" target="_blank" rel="noopener">GitHub</a>
-    <a href="https://github.com/lhs0609a-cpu/cleanmate/releases" target="_blank" rel="noopener">릴리스</a>
+    <nav aria-label="바닥글 메뉴" style="display:flex;gap:18px">
+      <a href="/app.html">체험</a>
+      <a href="https://github.com/lhs0609a-cpu/cleanmate" target="_blank" rel="noopener">GitHub<span class="sr-only"> (새 창)</span></a>
+      <a href="https://github.com/lhs0609a-cpu/cleanmate/releases" target="_blank" rel="noopener">릴리스<span class="sr-only"> (새 창)</span></a>
+    </nav>
   </div>
-  <div class="wrap fineprint">확실한 건 알아서, 애매한 것만 딱 물어보는 정리 도구 · 파일은 기기를 떠나지 않습니다 · © 클린메이트</div>
+  <div class="wrap fineprint">지울 것을 이유와 함께 보여주는 정리 도구 · 파일은 기기를 떠나지 않습니다 · © 클린메이트</div>
 </footer>
 
 <script type="module" src="/src/landing.ts"></script>

@@ -12,7 +12,7 @@
 import { isSupported, pickDirectory, scanHandle } from './browser-scanner.ts'
 import { classifyOne, isAutoEligible } from '../../src/classify.ts'
 import { run as runEngine, fmtBytes } from '../../src/engine.ts'
-import { compareVersions } from '../../src/updater.ts'
+import { compareVersions, verifyIntegrity, normalizeSha256 } from '../../src/updater.ts'
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
@@ -294,15 +294,36 @@ async function loadQuar() {
 
 /* ── 자동 업데이트 (V3/알약식) ─────────────────────────────────
    앱이 켜지면 조용히 최신 버전을 확인 → 새 버전이면 팝업 → 받아서 무인 재설치.
-   판단(compareVersions)은 테스트된 순수 로직, 다운로드·설치는 Rust 명령. */
+   판단(compareVersions·verifyIntegrity)은 테스트된 순수 로직, 다운로드·설치는 Rust 명령.
+
+   무결성: 릴리스에 함께 올라간 latest.json의 signature(설치파일 SHA-256)를 읽어,
+   받은 파일의 해시와 대조한 뒤에만 실행한다. 서명이 없으면 설치하지 않는다
+   (fail closed). Rust의 apply_update가 실행 직전에 한 번 더 대조한다. */
+
+/** 릴리스 자산에서 latest.json을 찾아 설치파일의 SHA-256을 읽는다. 없으면 null. */
+async function fetchExpectedHash(assets: any[]): Promise<string | null> {
+  const manifest = assets.find((a: any) => a.name === 'latest.json')
+  if (!manifest) return null
+  try {
+    const res = await fetch(manifest.browser_download_url, { cache: 'no-store' })
+    if (!res.ok) return null
+    const json = await res.json()
+    return typeof json?.signature === 'string' ? json.signature : null
+  } catch {
+    return null
+  }
+}
+
 async function checkUpdate() {
   try {
     const res = await fetch(LATEST_API, { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store' })
     if (!res.ok) return
     const r = await res.json()
     const version = (r.tag_name ?? '').replace(/^v/, '')
-    const exe = (r.assets ?? []).find((a: any) => /\.exe$/i.test(a.name))
+    const assets = r.assets ?? []
+    const exe = assets.find((a: any) => /\.exe$/i.test(a.name))
     if (!version || !exe || compareVersions(version, APP_VERSION) <= 0) return // 최신이거나 더 낮음 → 조용히 넘어감
+    const expectedHash = await fetchExpectedHash(assets)
     const m = { version, url: exe.browser_download_url, notes: (r.body ?? '').split('\n')[0] }
 
     const modal = $('update-modal')
@@ -319,9 +340,23 @@ async function checkUpdate() {
       progress.style.display = 'block'
       try {
         progress.textContent = '새 버전을 받는 중…'
-        const path = await TAURI.core.invoke('download_update', { url: m.url })
+        const got = await TAURI.core.invoke('download_update', { url: m.url })
+
+        // ★ 받은 파일이 릴리스에 게시된 그 파일인지 확인한 뒤에만 실행한다.
+        progress.textContent = '받은 파일을 검증하는 중…'
+        const expected = normalizeSha256(expectedHash) // 장부에 적힌 값
+        const check = verifyIntegrity(expected, got?.sha256)
+        if (!check.ok || !expected) {
+          throw new Error(
+            `${check.reason ?? '업데이트를 검증할 수 없어요'}. 안전을 위해 설치하지 않았어요 — 릴리스 페이지에서 직접 받아주세요.`
+          )
+        }
+
         progress.textContent = '설치하고 다시 시작할게요…'
-        await TAURI.core.invoke('apply_update', { installerPath: path }) // 앱은 여기서 종료·재설치된다
+        // 앱은 여기서 종료·재설치된다.
+        // 넘기는 건 '장부에 적힌 값'이다 — 다운로드가 계산해 준 값을 되돌려주면
+        // Rust가 자기 계산값과 자기를 비교하는 셈이라 재검증이 의미를 잃는다.
+        await TAURI.core.invoke('apply_update', { installerPath: got.path, expectedSha256: expected })
       } catch (err) {
         progress.textContent = '업데이트에 실패했어요: ' + (err as Error).message
         ;($('um-now') as HTMLButtonElement).disabled = false

@@ -18,6 +18,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # 자동 업데이트 다운로드용
 reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
+# 업데이트 무결성 검증 — 받은 설치파일의 SHA-256을 계산해 릴리스 값과 대조한다
+sha2 = "0.10"
 tokio = { version = "1", features = ["full"] }
 
 [profile.release]

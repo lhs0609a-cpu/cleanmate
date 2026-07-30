@@ -3,8 +3,10 @@
 #   git tag v0.1.0 && git push origin v0.1.0
 #     → 이 워크플로가 클라우드(윈도우)에서:
 #         1. 프론트엔드(vite) + Tauri(Rust) 빌드
-#         2. 이노셋업으로 CleanMate-Setup-x.y.z.exe 생성
-#         3. GitHub Release에 설치파일 + 업데이트 장부(latest.json) 게시
+#         2. (인증서가 있으면) 앱 바이너리 코드 서명
+#         3. 이노셋업으로 CleanMate-Setup-x.y.z.exe 생성 → 설치파일도 서명
+#         4. 설치파일 SHA-256을 계산해 업데이트 장부(latest.json)에 박고
+#            GitHub Release에 설치파일과 함께 게시
 #
 # ★ 로컬에 아무것도 설치할 필요 없다. 드라이브 폴더의 빌드 문제도 여기선 없다
 #   (깨끗한 환경에서 npm install을 새로 한다).
@@ -40,6 +42,19 @@ jobs:
         # lock이 뒤처질 수 있다. install은 스스로 맞춘다.
         run: npm install
 
+      - name: 엔진 테스트 (여기서 막아야 사고가 안 나간다)
+        # npm test 대신 직접 부른다. `src/**/*.test.ts`는 globstar가 꺼져 있으면
+        # `src/*/*.test.ts`로 줄어 최상위 테스트(quarantine·updater)를 놓친다.
+        # 셸마다 다르게 동작할 여지를 없애려고 명시적으로 켠다.
+        shell: bash
+        run: |
+          shopt -s globstar
+          node --experimental-strip-types --no-warnings --test src/**/*.test.ts
+
+      - name: 브랜드 자산 생성 (og.png · favicon)
+        # 이미지 도구 없이 벡터로 굽는다. 빌드마다 새로 만들어 소스와 어긋나지 않게.
+        run: node scripts/make-brand.mjs
+
       - name: 프론트엔드 빌드 (→ dist/)
         run: npm run build
 
@@ -52,8 +67,8 @@ jobs:
         run: npx tauri build
 
       # ★ 엔진 사이드카: 검증된 TS 엔진을 단일 exe로 포장한다.
-      #   esbuild로 한 덩어리 CJS로 묶고(의존성 0이라 간단), pkg로 Node 런타임
-      #   내장 exe를 만든다. 사용자는 Node를 안 깔아도 된다.
+      #   esbuild로 한 덩어리 CJS로 묶고, Node 내장 SEA로 런타임을 심는다.
+      #   사용자는 Node를 안 깔아도 된다.
       - name: 엔진 번들 (esbuild → CJS)
         run: npx esbuild src/engine-cli.ts --bundle --platform=node --format=cjs --outfile=dist-engine/engine.cjs
 
@@ -74,16 +89,82 @@ jobs:
           cp src-tauri/target/release/cleanmate.exe dist-app/
           ls -la dist-app/
 
+      # ── 코드 서명 ───────────────────────────────────────────────
+      # 인증서 시크릿이 없으면 아래 세 단계를 모두 건너뛴다(빌드는 계속 성공).
+      # 서명 없이 나가면 첫 실행 때 SmartScreen "알 수 없는 게시자" 경고가 뜬다.
+      #
+      # 준비물 (GitHub → Settings → Secrets and variables → Actions)
+      #   CODESIGN_PFX_BASE64   OV/EV 코드서명 인증서 .pfx 를 base64로 인코딩한 문자열
+      #                         만들기: certutil -encode cert.pfx cert.txt → 헤더/꼬리 줄 제거
+      #   CODESIGN_PFX_PASSWORD 그 .pfx 의 비밀번호
+      - name: 인증서 준비
+        id: cert
+        if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        env:
+          PFX: ${{ secrets.CODESIGN_PFX_BASE64 }}
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP 'cert.pfx'
+          [IO.File]::WriteAllBytes($path, [Convert]::FromBase64String($env:PFX))
+          # signtool은 윈도우 러너의 Windows SDK에 들어 있다. 가장 최신 SDK를 쓴다.
+          $st = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $st) { throw 'signtool.exe를 찾지 못했어요 — Windows SDK 경로 확인 필요' }
+          "pfx=$path" >> $env:GITHUB_OUTPUT
+          "signtool=$($st.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: 앱 바이너리 서명 (설치파일에 담기기 전에)
+        if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        env:
+          PFX_PASSWORD: ${{ secrets.CODESIGN_PFX_PASSWORD }}
+        run: |
+          & '${{ steps.cert.outputs.signtool }}' sign `
+            /f '${{ steps.cert.outputs.pfx }}' /p $env:PFX_PASSWORD `
+            /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
+            dist-app\cleanmate.exe dist-app\cleanmate-engine.exe
+          if ($LASTEXITCODE -ne 0) { throw '앱 바이너리 서명 실패' }
+
       - name: 이노셋업 설치
         run: choco install innosetup --no-progress -y
 
       - name: 설치파일 생성 (CleanMate-Setup-x.y.z.exe)
         run: iscc /DAppVersion=${{ steps.ver.outputs.version }} installer/cleanmate.iss
 
-      - name: 업데이트 장부(latest.json) 갱신
+      - name: 설치파일 서명
+        if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        env:
+          PFX_PASSWORD: ${{ secrets.CODESIGN_PFX_PASSWORD }}
+        run: |
+          & '${{ steps.cert.outputs.signtool }}' sign `
+            /f '${{ steps.cert.outputs.pfx }}' /p $env:PFX_PASSWORD `
+            /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
+            "dist-installer\CleanMate-Setup-${{ steps.ver.outputs.version }}.exe"
+          if ($LASTEXITCODE -ne 0) { throw '설치파일 서명 실패' }
+          Remove-Item '${{ steps.cert.outputs.pfx }}' -Force
+
+      # ★ 업데이트 장부 — signature에 설치파일의 SHA-256을 박는다.
+      #   앱은 받은 파일의 해시가 이 값과 같을 때만 실행한다
+      #   (updater.ts의 verifyIntegrity + main.rs의 실행 직전 재대조).
+      #   서명이 비면 앱이 업데이트를 거절하므로, 계산이 실패하면 릴리스를 내지 않는다.
+      #
+      #   ★ 순서 주의: 반드시 서명 '뒤에' 계산해야 한다. 서명하면 파일이 바뀌어
+      #     해시도 바뀐다. 앞에서 계산하면 모든 업데이트가 불일치로 거절된다.
+      - name: 업데이트 장부(latest.json) 생성 + SHA-256 서명
+        id: manifest
         shell: bash
         run: |
+          set -euo pipefail
           VER=${{ steps.ver.outputs.version }}
+          EXE="dist-installer/CleanMate-Setup-${VER}.exe"
+          SHA=$(sha256sum "$EXE" | cut -d' ' -f1)
+          echo "설치파일 SHA-256: $SHA"
+          # 64자 16진수가 아니면 여기서 멈춘다 — 빈 서명이 배포되면 안 된다
+          if ! echo "$SHA" | grep -Eq '^[0-9a-f]{64}$'; then
+            echo "SHA-256 계산 실패 — 릴리스를 중단합니다" >&2
+            exit 1
+          fi
           URL="https://github.com/${{ github.repository }}/releases/download/v${VER}/CleanMate-Setup-${VER}.exe"
           cat > latest.json <<EOF
           {
@@ -91,9 +172,11 @@ jobs:
             "notes": "자동 생성 릴리스",
             "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "url": "${URL}",
-            "signature": ""
+            "signature": "${SHA}"
           }
           EOF
+          cat latest.json
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
 
       - name: GitHub Release 게시
         uses: softprops/action-gh-release@v2
@@ -105,3 +188,10 @@ jobs:
             클린메이트 ${{ steps.ver.outputs.version }}
 
             설치파일을 받아 실행하세요. 이후 새 버전은 앱이 조용히 자동 업데이트합니다.
+
+            **설치파일 SHA-256**
+            `${{ steps.manifest.outputs.sha }}`
+
+            앱은 받은 파일의 해시가 이 값과 같을 때만 설치합니다. 직접 받으셨다면
+            `certutil -hashfile CleanMate-Setup-${{ steps.ver.outputs.version }}.exe SHA256`
+            으로 대조해 보실 수 있습니다.

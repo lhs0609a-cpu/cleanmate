@@ -42,8 +42,9 @@ SolidCompression=yes
 WizardStyle=modern
 OutputDir=..\dist-installer
 OutputBaseFilename=CleanMate-Setup-{#AppVersion}
-; 서명은 CI에서 인증서가 있을 때만 켠다(§배포-아키텍처 서명 절):
-; SignTool=signtool $f
+; 서명은 이 파일이 아니라 CI(release.yml)가 한다 — 앱 바이너리는 iscc 전에,
+; 설치파일은 iscc 뒤에 signtool로 서명한다. 인증서 시크릿이 없으면 건너뛴다.
+; (여기에 SignTool= 를 쓰면 iscc가 서명 도구 설정을 따로 요구해 이중관리가 된다.)
 SetupLogging=yes
 
 [Languages]
