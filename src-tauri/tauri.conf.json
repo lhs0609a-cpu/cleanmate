@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "클린PT",
+        "title": "테라클린",
         "width": 900,
         "height": 680,
         "minWidth": 720,

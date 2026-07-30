@@ -2,7 +2,7 @@
 name = "cleanmate"
 version = "0.4.0"
 description = "확실한 건 알아서, 애매한 것만 딱 물어보는 정리 도구"
-authors = ["CleanPT"]
+authors = ["TeraClean"]
 edition = "2021"
 
 # 데스크톱 전용이라 라이브러리 크레이트가 필요 없다. main.rs 하나로 된 바이너리.

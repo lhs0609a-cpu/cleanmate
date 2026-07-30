@@ -214,7 +214,7 @@ const CHECK = [
   [TILE.cx - 14, TILE.cy + 1, TILE.cx - 4, TILE.cy + 11],
   [TILE.cx - 4, TILE.cy + 11, TILE.cx + 15, TILE.cy - 11],
 ]
-const WORDMARK = layoutText('CLEANPT', 172, 120, 26, { tracking: 0.09 })
+const WORDMARK = layoutText('TERACLEAN', 172, 120, 26, { tracking: 0.09 })
 const KICKER = layoutText('SAFE TO DELETE', 84, 252, 19, { tracking: 0.24 })
 const BIGNUM = layoutText('14.6 GB', 80, 348, 74, { tracking: 0.03 })
 const LOCKED = layoutText('LOCKED 41.8 GB · UNTOUCHED', 84, 428, 17, { tracking: 0.13 })
