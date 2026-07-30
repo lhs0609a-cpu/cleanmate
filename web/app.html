@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>클린메이트 — 뭘 지우면 안 되는지 아는 정리 도구</title>
-<meta name="description" content="확실한 건 알아서, 애매한 것만 딱 물어보는 정리 도구. 파일은 기기를 떠나지 않습니다." />
+<title>클린PT — 정리도 PT가 필요합니다</title>
+<meta name="description" content="지워도 되는 것과 건드리면 안 되는 것을 알려주고 함께 정리합니다. 파일은 기기를 떠나지 않습니다." />
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="/favicon-180.png" />
 <style>
@@ -14,8 +14,12 @@
     --accent:#0B6F76; --accent-ink:#FFFFFF; --accent-soft:#E3F1F1;
     --safe:#1A7F4B; --amb:#A96206; --lock:#B3261E;
     --safe-soft:#E4F3EA; --amb-soft:#FBEFDD; --lock-soft:#FBE7E5;
-    --sans:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Segoe UI",-apple-system,system-ui,sans-serif;
-    --mono:ui-monospace,"Cascadia Code","Consolas","SF Mono","D2Coding",monospace;
+    /* 한글 우선 스택. CSP가 외부 폰트를 막으므로 웹폰트 없이 스택을 넓게 잡는다. */
+    --sans:"Pretendard Variable","Pretendard","Apple SD Gothic Neo",
+           "Segoe UI Variable Text","Segoe UI","Malgun Gothic","맑은 고딕",
+           "Noto Sans KR",-apple-system,system-ui,sans-serif;
+    /* 숫자·영문 전용. 한글에는 쓰지 않는다 — 고정폭 한글은 읽기 나쁘다. */
+    --mono:ui-monospace,"Cascadia Code","Consolas","SF Mono",monospace;
   }
   @media (prefers-color-scheme:dark){
     :root{
@@ -27,10 +31,14 @@
     }
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.65;
-       -webkit-font-smoothing:antialiased}
-  h1,h2,h3{text-wrap:balance;line-height:1.25;margin:0}
-  p{margin:0}
+  /* word-break:keep-all — 없으면 브라우저가 한글을 아무 글자에서나 끊는다
+     ("정해집니 / 다"). 어절 단위로만 줄바꿈되게 한다. overflow-wrap과 짝으로. */
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+       font-size:16px;line-height:1.75;letter-spacing:-.003em;
+       word-break:keep-all;overflow-wrap:anywhere;
+       -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+  h1,h2,h3{text-wrap:balance;line-height:1.32;letter-spacing:-.022em;margin:0;word-break:keep-all}
+  p{margin:0;text-wrap:pretty}
   button{font-family:inherit}
   .wrap{max-width:880px;margin:0 auto;padding:0 20px}
 
@@ -74,21 +82,22 @@
            display:flex;gap:8px;align-items:flex-start;justify-content:center;text-align:center;line-height:1.5}
   .privacy .d{color:var(--safe);font-weight:800}
 
-  #status{font-family:var(--mono);font-size:12px;color:var(--muted);text-align:center;min-height:1.2em;margin-top:8px}
+  #status{font-size:13px;color:var(--muted);text-align:center;min-height:1.2em;margin-top:8px;font-variant-numeric:tabular-nums}
 
   /* ── 존 막대 ── */
   .zbars{display:flex;flex-direction:column;gap:11px}
   .zrow{display:grid;grid-template-columns:96px 1fr 118px;gap:12px;align-items:center;font-size:13px}
-  .zlabel{font-family:var(--mono);font-size:11.5px;color:var(--z);font-weight:700}
+  .zlabel{font-size:12.5px;color:var(--z);font-weight:750;white-space:nowrap}
   .ztrack{height:10px;background:var(--surface-2);border-radius:3px;overflow:hidden}
   .zfill{height:100%;background:var(--z);width:0;transition:width .6s ease;border-radius:3px}
-  .zval{font-family:var(--mono);font-size:12px;text-align:right;color:var(--ink-2);font-variant-numeric:tabular-nums}
+  .zval{font-size:12.5px;text-align:right;color:var(--ink-2);font-variant-numeric:tabular-nums}
   .zsafe{--z:var(--safe)} .zamb{--z:var(--amb)} .zlock{--z:var(--lock)}
   .zdesc{font-size:12px;color:var(--muted);margin-top:3px}
 
   .sechead{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
   .sechead h2{font-size:18px;font-weight:750;letter-spacing:-.02em}
-  .sechead .k{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.1em;text-transform:uppercase}
+  /* 한글 라벨이라 고정폭·넓은 자간을 쓰지 않는다 — 자모가 흩어져 보인다. */
+  .sechead .k{font-size:12.5px;color:var(--accent);font-weight:750;white-space:nowrap}
   .lede{font-size:13.5px;color:var(--ink-2)}
 
   /* ── 정리 계획 3분할 ── */
@@ -103,7 +112,7 @@
   /* ── 질문 카드 ── */
   .q{border:1px solid var(--line);border-left:3px solid var(--amb);border-radius:10px;
      background:var(--surface);padding:16px}
-  .q-n{font-family:var(--mono);font-size:11px;color:var(--amb);font-weight:700}
+  .q-n{font-size:12.5px;color:var(--amb);font-weight:750}
   .q-text{font-size:15px;font-weight:650;margin:6px 0 6px}
   .q-why{font-size:12px;color:var(--muted);margin-bottom:12px}
   .opts{display:flex;flex-wrap:wrap;gap:8px}
@@ -113,7 +122,7 @@
   .opt.chosen{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
   .opt.keep.chosen{background:var(--safe);border-color:var(--safe);color:#fff}
   .q-answered{font-size:12.5px;color:var(--safe);font-weight:600;margin-top:10px}
-  .q-stake{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:10px}
+  .q-stake{font-size:12.5px;color:var(--muted);margin-top:10px;font-variant-numeric:tabular-nums}
 
   /* ── 숨은 공간 / 설명 ── */
   .expl{display:flex;flex-direction:column;gap:14px}
@@ -150,7 +159,7 @@
 
 <div class="topbar">
   <div class="wrap">
-    <a class="brand" href="/" style="text-decoration:none;color:inherit">클린메이트<span class="dot">.</span></a>
+    <a class="brand" href="/" style="text-decoration:none;color:inherit">클린PT<span class="dot">.</span></a>
     <nav class="nav">
       <button data-go="home" class="on">홈</button>
       <button data-go="hidden">숨은 공간</button>
@@ -250,7 +259,7 @@
 </main>
 
 <footer>
-  클린메이트 (CleanMate) — 확실한 건 알아서, 애매한 것만 딱 물어보는 정리 도구<br>
+  클린PT (CleanPT) — 정리도 PT가 필요합니다<br>
   이 화면은 실제 데스크톱 앱의 프론트엔드입니다 · 파일은 기기를 떠나지 않습니다
 </footer>
 </div>

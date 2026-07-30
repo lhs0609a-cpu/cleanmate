@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "클린메이트",
+        "title": "클린PT",
         "width": 900,
         "height": 680,
         "minWidth": 720,

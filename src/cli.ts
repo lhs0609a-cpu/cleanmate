@@ -1,5 +1,5 @@
 /**
- * 클린메이트 엔진 프로토타입 CLI
+ * 클린PT 엔진 프로토타입 CLI
  *
  * ⚠️ 이 프로토타입은 아무것도 삭제하지 않는다. 오직 분석과 질문 생성만.
  *    제1 개발 원칙(기획서 10): "되돌릴 수 있는 그릇(격리·복구)이 준비되기 전엔
@@ -40,7 +40,7 @@ async function main() {
   }
 
   console.log()
-  console.log(C.bold('  클린메이트 엔진 프로토타입') + C.dim('  (분석 전용 — 아무것도 삭제하지 않습니다)'))
+  console.log(C.bold('  클린PT 엔진 프로토타입') + C.dim('  (분석 전용 — 아무것도 삭제하지 않습니다)'))
   console.log('  ' + C.dim('─'.repeat(66)))
   console.log(`  대상: ${root}`)
 

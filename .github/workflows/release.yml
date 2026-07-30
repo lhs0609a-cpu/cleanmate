@@ -4,7 +4,7 @@
 #     → 이 워크플로가 클라우드(윈도우)에서:
 #         1. 프론트엔드(vite) + Tauri(Rust) 빌드
 #         2. (인증서가 있으면) 앱 바이너리 코드 서명
-#         3. 이노셋업으로 CleanMate-Setup-x.y.z.exe 생성 → 설치파일도 서명
+#         3. 이노셋업으로 CleanPT-Setup-x.y.z.exe 생성 → 설치파일도 서명
 #         4. 설치파일 SHA-256을 계산해 업데이트 장부(latest.json)에 박고
 #            GitHub Release에 설치파일과 함께 게시
 #
@@ -128,7 +128,7 @@ jobs:
       - name: 이노셋업 설치
         run: choco install innosetup --no-progress -y
 
-      - name: 설치파일 생성 (CleanMate-Setup-x.y.z.exe)
+      - name: 설치파일 생성 (CleanPT-Setup-x.y.z.exe)
         run: iscc /DAppVersion=${{ steps.ver.outputs.version }} installer/cleanmate.iss
 
       - name: 설치파일 서명
@@ -140,7 +140,7 @@ jobs:
           & '${{ steps.cert.outputs.signtool }}' sign `
             /f '${{ steps.cert.outputs.pfx }}' /p $env:PFX_PASSWORD `
             /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
-            "dist-installer\CleanMate-Setup-${{ steps.ver.outputs.version }}.exe"
+            "dist-installer\CleanPT-Setup-${{ steps.ver.outputs.version }}.exe"
           if ($LASTEXITCODE -ne 0) { throw '설치파일 서명 실패' }
           Remove-Item '${{ steps.cert.outputs.pfx }}' -Force
 
@@ -157,7 +157,7 @@ jobs:
         run: |
           set -euo pipefail
           VER=${{ steps.ver.outputs.version }}
-          EXE="dist-installer/CleanMate-Setup-${VER}.exe"
+          EXE="dist-installer/CleanPT-Setup-${VER}.exe"
           SHA=$(sha256sum "$EXE" | cut -d' ' -f1)
           echo "설치파일 SHA-256: $SHA"
           # 64자 16진수가 아니면 여기서 멈춘다 — 빈 서명이 배포되면 안 된다
@@ -165,7 +165,7 @@ jobs:
             echo "SHA-256 계산 실패 — 릴리스를 중단합니다" >&2
             exit 1
           fi
-          URL="https://github.com/${{ github.repository }}/releases/download/v${VER}/CleanMate-Setup-${VER}.exe"
+          URL="https://github.com/${{ github.repository }}/releases/download/v${VER}/CleanPT-Setup-${VER}.exe"
           cat > latest.json <<EOF
           {
             "version": "${VER}",
@@ -182,10 +182,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist-installer/CleanMate-Setup-${{ steps.ver.outputs.version }}.exe
+            dist-installer/CleanPT-Setup-${{ steps.ver.outputs.version }}.exe
             latest.json
           body: |
-            클린메이트 ${{ steps.ver.outputs.version }}
+            클린PT ${{ steps.ver.outputs.version }}
 
             설치파일을 받아 실행하세요. 이후 새 버전은 앱이 조용히 자동 업데이트합니다.
 
@@ -193,5 +193,5 @@ jobs:
             `${{ steps.manifest.outputs.sha }}`
 
             앱은 받은 파일의 해시가 이 값과 같을 때만 설치합니다. 직접 받으셨다면
-            `certutil -hashfile CleanMate-Setup-${{ steps.ver.outputs.version }}.exe SHA256`
+            `certutil -hashfile CleanPT-Setup-${{ steps.ver.outputs.version }}.exe SHA256`
             으로 대조해 보실 수 있습니다.

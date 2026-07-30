@@ -3,23 +3,23 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>클린메이트 — 지워도 되는 것만 지웁니다</title>
-<meta name="description" content="뭘 지우는지 알고 지우는 정리 도구. 지울 파일을 이름과 이유로 먼저 보여주고, 확실한 건 알아서, 애매한 건 딱 물어보고, 위험한 건 아예 잠급니다. 30일 되돌리기 · 100% 온디바이스." />
+<title>클린PT — 정리도 PT가 필요합니다</title>
+<meta name="description" content="트레이너가 대신 운동해주지 않듯, 클린PT는 대신 다 지워버리지 않습니다. 지워도 되는 것과 건드리면 안 되는 것을 알려주고 함께 정리합니다. 프로그램은 무료 · 30일 되돌리기 · 100% 온디바이스." />
 <link rel="canonical" href="https://cleanmate-henna.vercel.app/" />
 
 <meta property="og:type" content="website" />
-<meta property="og:site_name" content="클린메이트" />
+<meta property="og:site_name" content="클린PT" />
 <meta property="og:url" content="https://cleanmate-henna.vercel.app/" />
-<meta property="og:title" content="클린메이트 — 지워도 되는 것만 지웁니다" />
-<meta property="og:description" content="뭘 지우는지 알고 지우는 정리 도구. 지울 파일을 이유와 함께 먼저 보여줍니다. 30일 되돌리기 · 100% 온디바이스." />
+<meta property="og:title" content="클린PT — 정리도 PT가 필요합니다" />
+<meta property="og:description" content="지워도 되는 것과 건드리면 안 되는 것을 알려주고 함께 정리합니다. 프로그램은 무료 · 30일 되돌리기 · 100% 온디바이스." />
 <meta property="og:image" content="https://cleanmate-henna.vercel.app/og.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
-<meta property="og:image:alt" content="클린메이트 — 지워도 되는 것으로 확인된 용량 14.6GB, 잠근 용량 41.8GB" />
+<meta property="og:image:alt" content="클린PT — 지워도 되는 것으로 확인된 용량 14.6GB, 잠근 용량 41.8GB" />
 <meta property="og:locale" content="ko_KR" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="클린메이트 — 지워도 되는 것만 지웁니다" />
-<meta name="twitter:description" content="뭘 지우는지 알고 지우는 정리 도구. 30일 되돌리기 · 100% 온디바이스." />
+<meta name="twitter:title" content="클린PT — 정리도 PT가 필요합니다" />
+<meta name="twitter:description" content="지워도 되는 것과 건드리면 안 되는 것을 알려주고 함께 정리합니다. 프로그램은 무료." />
 <meta name="twitter:image" content="https://cleanmate-henna.vercel.app/og.png" />
 
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
@@ -28,34 +28,57 @@
 <style>
   :root{
     --bg:#07090D; --bg-2:#0B0F16; --surface:#10151E; --surface-2:#161D28; --line:#1E2733; --line-2:#2A3644;
-    --ink:#F3F7FB; --ink-2:#C2CDD9; --muted:#7C8898; --faint:#59636F;
+    --ink:#F3F7FB; --ink-2:#C5D0DB; --muted:#8A96A5; --faint:#5F6975;
     --acc:#2FE4D2; --acc-2:#38BDF8; --acc-3:#5B8DEF; --acc-ink:#04241F;
     --safe:#4ADE80; --amb:#FBBF24; --lock:#FB7185;
-    --sans:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Segoe UI",-apple-system,system-ui,sans-serif;
-    --mono:ui-monospace,"Cascadia Code","Consolas","SF Mono","D2Coding",monospace;
+
+    /* 한글 우선 스택. Pretendard가 깔려 있으면 그걸 쓰고, 없으면 각 OS의
+       기본 한글 산세리프로 떨어진다. CSP가 외부 폰트를 막으므로(default-src
+       'self') 웹폰트를 불러오지 않는다 — 대신 스택을 넓게 잡는다. */
+    --sans:"Pretendard Variable","Pretendard","Apple SD Gothic Neo",
+           "Segoe UI Variable Text","Segoe UI","Malgun Gothic","맑은 고딕",
+           "Noto Sans KR",-apple-system,system-ui,sans-serif;
+    /* 숫자·영문 전용. 한글에는 쓰지 않는다 — 고정폭 한글은 가독성이 나쁘다. */
+    --mono:ui-monospace,"Cascadia Code","Consolas","SF Mono",monospace;
+
     --glow:0 0 0 1px rgba(47,228,210,.12), 0 20px 60px -20px rgba(47,228,210,.25);
-    --r:16px;
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
-  h1,h2,h3{margin:0;line-height:1.12;letter-spacing:-.035em;text-wrap:balance}
-  p{margin:0}
+
+  /* ── 한국어 타이포그래피 기본기 ──────────────────────────────
+     word-break:keep-all — 이게 없으면 브라우저가 한글을 아무 글자에서나
+     끊는다("정해집니 / 다"). 어절 단위로만 줄바꿈되게 강제한다.
+     overflow-wrap:anywhere — 대신 node_modules 같은 긴 영문/경로는
+     끊어서 넘치지 않게. 이 둘은 짝으로 써야 한다. */
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font-family:var(--sans);
+    font-size:16.5px;
+    line-height:1.75;
+    letter-spacing:-.003em;
+    word-break:keep-all;
+    overflow-wrap:anywhere;
+    -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+    text-rendering:optimizeLegibility;
+    overflow-x:hidden;
+  }
+  /* 한글 제목은 라틴 알파벳만큼 자간을 좁히면 답답해진다. 얕게만 좁힌다. */
+  h1,h2,h3{margin:0;line-height:1.28;letter-spacing:-.022em;text-wrap:balance;font-weight:800}
+  p{margin:0;text-wrap:pretty}
+  /* 숫자는 자리가 흔들리지 않게 */
+  .num,.stat .n,.m-num,.del-hero .big,.krow .v{font-variant-numeric:tabular-nums}
   a{color:inherit;text-decoration:none}
   .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
   .grad{background:linear-gradient(103deg,var(--acc),var(--acc-2) 55%,var(--acc-3));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
   .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
   .reveal.in{opacity:1;transform:none}
 
-  /* 스크린리더 전용 — 화면에선 안 보이고 보조기기엔 읽힌다 */
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
-  /* 키보드 사용자를 위한 건너뛰기 링크 */
   .skip{position:absolute;left:-9999px;top:0;z-index:100}
   .skip:focus{left:16px;top:12px;background:var(--acc);color:var(--acc-ink);padding:10px 16px;border-radius:10px;font-weight:700}
-  /* 포커스 링 — 마우스 클릭엔 안 뜨고 키보드 이동에만 뜬다 */
   :focus-visible{outline:2px solid var(--acc);outline-offset:3px;border-radius:6px}
 
-  /* 애니메이션을 줄여달라고 설정한 사용자는 전부 정지 상태로 본다 */
   @media (prefers-reduced-motion:reduce){
     html{scroll-behavior:auto}
     *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
@@ -63,7 +86,7 @@
   }
 
   /* 버튼 */
-  .btn{display:inline-flex;align-items:center;gap:9px;font-family:var(--sans);font-weight:650;border-radius:12px;cursor:pointer;transition:.18s;border:1px solid transparent;white-space:nowrap}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;font-family:inherit;font-weight:700;border-radius:12px;cursor:pointer;transition:.18s;border:1px solid transparent;white-space:nowrap;letter-spacing:-.01em}
   .btn-pri{background:linear-gradient(103deg,var(--acc),var(--acc-2));color:var(--acc-ink);padding:12px 20px;font-size:15px;box-shadow:0 8px 24px -8px rgba(47,228,210,.5)}
   .btn-pri:hover{transform:translateY(-2px);box-shadow:0 14px 34px -8px rgba(47,228,210,.6)}
   .btn-ghost{background:rgba(255,255,255,.03);color:var(--ink);border-color:var(--line-2);padding:11px 18px;font-size:15px}
@@ -71,19 +94,19 @@
   .btn-lg{padding:16px 30px;font-size:16.5px;border-radius:14px}
 
   /* 헤더 */
-  header{position:sticky;top:0;z-index:50;background:rgba(7,9,13,.72);backdrop-filter:blur(14px) saturate(140%);border-bottom:1px solid transparent;transition:border-color .3s}
+  header{position:sticky;top:0;z-index:50;background:rgba(7,9,13,.74);backdrop-filter:blur(14px) saturate(140%);border-bottom:1px solid transparent;transition:border-color .3s}
   header.scrolled{border-bottom-color:var(--line)}
-  .bar{display:flex;align-items:center;height:64px;gap:8px}
-  .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px;letter-spacing:-.03em}
-  .logo .mk{width:26px;height:26px;border-radius:8px;background:linear-gradient(145deg,var(--acc),var(--acc-2));display:grid;place-items:center;color:var(--acc-ink);font-size:15px;font-weight:900;box-shadow:0 4px 14px -4px rgba(47,228,210,.6)}
-  .bar nav{display:none;gap:30px;margin-left:38px;font-size:14.5px;color:var(--ink-2);font-weight:500}
-  .bar nav a{position:relative;transition:.15s}
+  .bar{display:flex;align-items:center;height:66px;gap:8px}
+  .logo{display:flex;align-items:center;gap:10px;font-weight:850;font-size:18px;letter-spacing:-.03em;flex:none}
+  .logo .mk{width:27px;height:27px;border-radius:8px;background:linear-gradient(145deg,var(--acc),var(--acc-2));display:grid;place-items:center;color:var(--acc-ink);font-size:15px;font-weight:900;box-shadow:0 4px 14px -4px rgba(47,228,210,.6)}
+  .bar nav{display:none;gap:28px;margin-left:36px;font-size:15px;color:var(--ink-2);font-weight:550}
+  .bar nav a{transition:.15s;white-space:nowrap}
   .bar nav a:hover{color:var(--ink)}
   .bar .sp{margin-left:auto}
-  @media(min-width:860px){.bar nav{display:flex}}
+  @media(min-width:900px){.bar nav{display:flex}}
 
   /* 히어로 */
-  .hero{position:relative;padding:96px 0 40px;text-align:center;isolation:isolate}
+  .hero{position:relative;padding:92px 0 40px;text-align:center;isolation:isolate}
   .hero .aurora{position:absolute;inset:-20% -10% auto -10%;height:640px;z-index:-1;
     background:
       radial-gradient(50% 45% at 30% 20%,rgba(47,228,210,.20),transparent 70%),
@@ -96,17 +119,16 @@
     background-size:56px 56px;opacity:.25;
     -webkit-mask-image:radial-gradient(ellipse 70% 50% at 50% 0%,#000 40%,transparent 75%);
             mask-image:radial-gradient(ellipse 70% 50% at 50% 0%,#000 40%,transparent 75%)}
-  .pill{display:inline-flex;align-items:center;gap:9px;font-size:12.5px;font-weight:600;color:var(--ink-2);
-    background:rgba(255,255,255,.04);border:1px solid var(--line-2);padding:7px 15px;border-radius:999px}
-  .pill .d{width:7px;height:7px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 4px rgba(47,228,210,.18)}
-  h1{font-size:clamp(40px,7.6vw,80px);font-weight:860;margin-top:26px;letter-spacing:-.045em}
-  .hero .lede{margin:26px auto 0;max-width:60ch;font-size:clamp(16px,2.1vw,20px);color:var(--ink-2);line-height:1.65}
-  .hero .lede b{color:var(--ink);font-weight:650}
+  .pill{display:inline-flex;align-items:center;gap:9px;font-size:13px;font-weight:600;color:var(--ink-2);
+    background:rgba(255,255,255,.04);border:1px solid var(--line-2);padding:8px 16px;border-radius:999px;letter-spacing:-.01em}
+  .pill .d{width:7px;height:7px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 4px rgba(47,228,210,.18);flex:none}
+  h1{font-size:clamp(38px,6.6vw,72px);font-weight:850;margin-top:26px;letter-spacing:-.032em;line-height:1.2}
+  .hero .lede{margin:28px auto 0;max-width:44ch;font-size:clamp(16px,1.9vw,19.5px);color:var(--ink-2);line-height:1.8}
+  .hero .lede b{color:var(--ink);font-weight:700}
   .cta{display:flex;flex-wrap:wrap;gap:13px;justify-content:center;margin-top:36px}
-  .dlmeta{margin-top:16px;font-size:12.5px;color:var(--muted);font-family:var(--mono)}
-  /* macOS 방문자에게만 보이는 안내 — 스크립트가 켠다 */
-  .osnote{display:none;margin:14px auto 0;max-width:52ch;font-size:13px;color:var(--amb);
-    background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.22);border-radius:12px;padding:11px 16px}
+  .dlmeta{margin-top:16px;font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .osnote{display:none;margin:14px auto 0;max-width:52ch;font-size:14px;color:var(--amb);line-height:1.7;
+    background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.22);border-radius:12px;padding:12px 18px}
   .osnote.on{display:block}
 
   /* 앱 목업 */
@@ -114,112 +136,142 @@
   .mockwrap::after{content:"";position:absolute;inset:auto 8% -30px 8%;height:80px;background:radial-gradient(50% 100% at 50% 0,rgba(47,228,210,.28),transparent 70%);filter:blur(20px);z-index:-1}
   .win{background:linear-gradient(180deg,var(--surface),var(--bg-2));border:1px solid var(--line-2);border-radius:16px;overflow:hidden;box-shadow:0 40px 120px -40px rgba(0,0,0,.8),var(--glow);text-align:left}
   .win-top{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
-  .dot{width:11px;height:11px;border-radius:50%}
-  .win-title{margin-left:10px;font-size:12.5px;color:var(--muted);font-weight:600}
+  .dot{width:11px;height:11px;border-radius:50%;flex:none}
+  .win-title{margin-left:10px;font-size:13px;color:var(--muted);font-weight:600}
   .win-body{padding:clamp(20px,3vw,34px)}
   .m-top{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
-  .m-num{font-family:var(--mono);font-size:clamp(30px,5vw,46px);font-weight:850;letter-spacing:-.04em;line-height:1}
-  .m-cap{font-size:13px;color:var(--muted);margin-bottom:5px}
-  .m-btn{margin-left:auto;background:linear-gradient(103deg,var(--acc),var(--acc-2));color:var(--acc-ink);font-weight:750;font-size:14px;padding:11px 20px;border-radius:11px}
-  .m-bars{margin-top:26px;display:flex;flex-direction:column;gap:14px}
-  .m-row{display:grid;grid-template-columns:88px 1fr auto;gap:14px;align-items:center;font-size:13px}
-  .m-lab{font-family:var(--mono);font-size:11.5px;font-weight:700;color:var(--z)}
-  .m-track{height:11px;border-radius:4px;background:rgba(255,255,255,.05);overflow:hidden}
-  .m-fill{height:100%;border-radius:4px;background:var(--z);width:var(--w)}
-  .m-val{font-family:var(--mono);font-size:12px;color:var(--ink-2);white-space:nowrap}
+  .m-num{font-size:clamp(30px,5vw,46px);font-weight:850;letter-spacing:-.035em;line-height:1}
+  .m-cap{font-size:13.5px;color:var(--muted);margin-bottom:6px}
+  .m-btn{margin-left:auto;background:linear-gradient(103deg,var(--acc),var(--acc-2));color:var(--acc-ink);font-weight:750;font-size:14.5px;padding:11px 20px;border-radius:11px;white-space:nowrap}
+  .m-bars{margin-top:26px;display:flex;flex-direction:column;gap:15px}
+  .m-row{display:grid;grid-template-columns:96px 1fr auto;gap:14px;align-items:center;font-size:13.5px}
+  .m-lab{font-size:13px;font-weight:750;color:var(--z);white-space:nowrap}
+  .m-track{height:11px;border-radius:5px;background:rgba(255,255,255,.05);overflow:hidden}
+  .m-fill{height:100%;border-radius:5px;background:var(--z);width:var(--w)}
+  .m-val{font-size:13px;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+  @media(max-width:560px){
+    .m-row{grid-template-columns:1fr auto;gap:6px 12px}
+    .m-track{grid-column:1/-1;order:3}
+  }
   .zA{--z:var(--safe)} .zB{--z:var(--amb)} .zC{--z:var(--lock)}
-  .m-kept{margin-top:22px;display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:rgba(74,222,128,.05)}
-  .m-kept .k{font-family:var(--mono);font-weight:800;color:var(--safe);font-size:18px}
-  .m-kept .kt{font-size:13.5px;color:var(--ink-2)}
-  /* 재현물임을 밝힌다 — 실제 스크린샷으로 교체 예정 */
-  .mocknote{margin-top:14px;text-align:center;font-size:11.5px;color:var(--faint)}
+  .m-kept{margin-top:22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:rgba(74,222,128,.05)}
+  .m-kept .k{font-weight:850;color:var(--safe);font-size:18px;font-variant-numeric:tabular-nums}
+  .m-kept .kt{font-size:14px;color:var(--ink-2)}
+  .mocknote{margin-top:14px;text-align:center;font-size:12.5px;color:var(--faint)}
 
   /* 스탯 밴드 */
   .band{border-block:1px solid var(--line);margin-top:80px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.015))}
-  .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:1px 0}
-  @media(min-width:760px){.stats{grid-template-columns:repeat(4,1fr)}}
-  .stat{padding:34px 20px;text-align:center;position:relative}
+  .stats{display:grid;grid-template-columns:repeat(2,1fr)}
+  @media(min-width:820px){.stats{grid-template-columns:repeat(4,1fr)}}
+  .stat{padding:34px 18px;text-align:center;position:relative}
   .stat:not(:last-child)::after{content:"";position:absolute;right:0;top:22%;height:56%;width:1px;background:var(--line);display:none}
-  @media(min-width:760px){.stat:not(:last-child)::after{display:block}}
-  .stat .n{font-family:var(--mono);font-size:clamp(26px,4vw,38px);font-weight:850;letter-spacing:-.03em}
-  .stat .l{font-size:13px;color:var(--muted);margin-top:8px}
+  @media(min-width:820px){.stat:not(:last-child)::after{display:block}}
+  .stat .n{font-size:clamp(28px,4vw,40px);font-weight:850;letter-spacing:-.03em;line-height:1.1}
+  .stat .n .u{font-size:.5em;font-weight:750}
+  .stat .l{font-size:13.5px;color:var(--muted);margin-top:10px;line-height:1.55}
 
   /* 섹션 */
   section{padding:96px 0}
-  .kick{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--acc);font-weight:600}
-  .stitle{font-size:clamp(28px,4.4vw,46px);font-weight:820;margin-top:14px}
-  .ssub{margin:18px auto 0;max-width:58ch;color:var(--ink-2);font-size:17px;line-height:1.65}
+  /* 킥커: 한글엔 넓은 자간을 주지 않는다(자모가 흩어져 보인다).
+     라틴 부분만 .en으로 감싸 자간을 준다. */
+  .kick{display:inline-block;font-size:13px;letter-spacing:-.005em;color:var(--acc);font-weight:750}
+  .kick .en{font-family:var(--mono);letter-spacing:.14em;text-transform:uppercase;font-size:.92em}
+  .stitle{font-size:clamp(27px,4vw,44px);font-weight:850;margin-top:14px;letter-spacing:-.028em;line-height:1.3}
+  .ssub{margin:20px auto 0;max-width:46ch;color:var(--ink-2);font-size:17px;line-height:1.8}
+  .ssub b{color:var(--ink);font-weight:700}
   .center{text-align:center}
 
-  /* 차별점 — 지울 목록이 주인공, 잠근 목록은 근거 */
-  .del-hero{margin-top:44px;border:1px solid var(--line-2);border-radius:24px;padding:clamp(30px,5vw,56px);text-align:center;
+  /* 차별점 */
+  .del-hero{margin-top:44px;border:1px solid var(--line-2);border-radius:24px;padding:clamp(28px,5vw,56px);text-align:center;
     background:radial-gradient(120% 140% at 50% 0,rgba(47,228,210,.09),transparent 60%),linear-gradient(180deg,var(--surface),var(--bg-2));box-shadow:var(--glow)}
-  .del-hero .big{font-family:var(--mono);font-size:clamp(52px,11vw,96px);font-weight:860;letter-spacing:-.06em;line-height:.9;
+  .del-hero .big{font-size:clamp(48px,10vw,92px);font-weight:860;letter-spacing:-.05em;line-height:1;
     background:linear-gradient(103deg,var(--acc),var(--acc-2) 60%,var(--acc-3));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-  .del-hero .cap{margin-top:16px;color:var(--ink-2);font-size:15.5px}
-  .rowlist{margin:32px auto 0;max-width:640px;display:flex;flex-direction:column;gap:11px;text-align:left}
-  .krow{display:flex;gap:14px;align-items:center;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:13px;padding:16px 18px;font-size:14.5px}
-  .krow .mk{font-weight:900;flex:none;font-size:15px}
-  .krow .why{color:var(--muted);font-size:13px;display:block;margin-top:2px}
-  .krow .v{margin-left:auto;font-family:var(--mono);font-weight:750;white-space:nowrap}
-  /* 지울 것 */
-  .krow.del .mk{color:var(--acc)} .krow.del .v{color:var(--acc)}
-  /* 잠근 것 — 근거 층이라 한 단 작고 조용하다 */
+  .del-hero .cap{margin-top:16px;color:var(--ink-2);font-size:16px;line-height:1.7}
+  .rowlist{margin:32px auto 0;max-width:660px;display:flex;flex-direction:column;gap:11px;text-align:left}
+  .krow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:13px;padding:16px 18px;font-size:15.5px;font-weight:600;line-height:1.6}
+  .krow .mk{font-weight:900;flex:none;font-size:15px;line-height:1.6}
+  .krow .nm{flex:1 1 14rem;min-width:0}
+  .krow .why{display:block;color:var(--muted);font-size:13.5px;font-weight:450;margin-top:3px;line-height:1.6}
+  .krow .v{margin-left:auto;font-weight:800;white-space:nowrap;flex:none}
+  .krow.del .mk,.krow.del .v{color:var(--acc)}
   .lockwrap{margin-top:40px;padding-top:32px;border-top:1px solid var(--line)}
-  .lockwrap .lt{font-size:14.5px;color:var(--ink-2)}
-  .lockwrap .lt b{color:var(--lock);font-family:var(--mono);font-weight:800}
+  .lockwrap .lt{font-size:15.5px;color:var(--ink-2);line-height:1.75}
+  .lockwrap .lt b{color:var(--lock);font-weight:800}
   .lockwrap .rowlist{margin-top:18px}
-  .lockwrap .krow{padding:12px 16px;font-size:13.5px;background:transparent}
-  .krow.lock .mk{color:var(--lock)} .krow.lock .v{color:var(--muted);font-size:12.5px}
+  .lockwrap .krow{padding:13px 16px;font-size:14.5px;background:transparent}
+  .krow.lock .mk{color:var(--lock)}
+  .krow.lock .v{color:var(--muted);font-size:13.5px;font-weight:700}
 
   /* 존 */
   .zones{display:grid;gap:18px;grid-template-columns:1fr;margin-top:44px}
-  @media(min-width:760px){.zones{grid-template-columns:repeat(3,1fr)}}
-  .zone{background:linear-gradient(180deg,var(--surface),var(--bg-2));border:1px solid var(--line);border-radius:18px;padding:28px;position:relative;overflow:hidden;transition:.2s;text-align:left}
+  @media(min-width:800px){.zones{grid-template-columns:repeat(3,1fr)}}
+  .zone{background:linear-gradient(180deg,var(--surface),var(--bg-2));border:1px solid var(--line);border-radius:18px;padding:30px 28px;position:relative;overflow:hidden;transition:.2s;text-align:left}
   .zone:hover{transform:translateY(-4px);border-color:var(--z)}
   .zone::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--z)}
-  .zone .zt{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--z);font-weight:700}
-  .zone h3{margin:14px 0 8px;font-size:20px}
-  .zone p{font-size:14.5px;color:var(--ink-2)}
-  .zA2{--z:var(--safe)} .zB2{--z:var(--amb)} .zC2{--z:var(--lock)}
+  .zone .zt{display:block;font-size:12px;color:var(--z);font-weight:800}
+  .zone .zt .en{font-family:var(--mono);letter-spacing:.12em}
+  .zone h3{margin:14px 0 10px;font-size:21px;letter-spacing:-.025em}
+  .zone p{font-size:15px;color:var(--ink-2);line-height:1.75}
 
   /* 기능 */
   .feat{display:grid;gap:18px;grid-template-columns:1fr;margin-top:44px}
-  @media(min-width:760px){.feat{grid-template-columns:repeat(2,1fr)}}
-  .card{background:linear-gradient(180deg,var(--surface),var(--bg-2));border:1px solid var(--line);border-radius:18px;padding:28px;transition:.2s}
+  @media(min-width:800px){.feat{grid-template-columns:repeat(2,1fr)}}
+  .card{background:linear-gradient(180deg,var(--surface),var(--bg-2));border:1px solid var(--line);border-radius:18px;padding:30px 28px;transition:.2s}
   .card:hover{border-color:var(--line-2);transform:translateY(-3px)}
   .card .ic{width:46px;height:46px;border-radius:12px;background:rgba(47,228,210,.1);border:1px solid rgba(47,228,210,.2);display:grid;place-items:center;color:var(--acc);margin-bottom:18px}
   .card .ic svg{width:22px;height:22px}
-  .card h3{font-size:18.5px;margin-bottom:9px}
-  .card p{font-size:14.5px;color:var(--ink-2)}
+  .card h3{font-size:19.5px;margin-bottom:10px;letter-spacing:-.025em}
+  .card p{font-size:15px;color:var(--ink-2);line-height:1.75}
 
   /* 비교 */
   .cmp{margin-top:40px;border:1px solid var(--line);border-radius:18px;overflow:hidden}
   .cmp .scroll{overflow-x:auto}
-  table{width:100%;border-collapse:collapse;font-size:15px;min-width:560px}
-  th,td{padding:18px 20px;text-align:left;border-bottom:1px solid var(--line)}
-  tbody tr:last-child td{border-bottom:0}
-  th{font-weight:700;font-size:13px;color:var(--muted);background:rgba(255,255,255,.02)}
-  td:first-child{color:var(--ink-2)}
-  .no{color:var(--muted)} .yes{color:var(--ink);font-weight:650}
+  table{width:100%;border-collapse:collapse;font-size:15.5px;min-width:620px}
+  th,td{padding:18px 20px;text-align:left;border-bottom:1px solid var(--line);line-height:1.65}
+  tbody tr:last-child td,tbody tr:last-child th{border-bottom:0}
+  thead th{font-weight:750;font-size:13.5px;color:var(--muted);background:rgba(255,255,255,.02)}
+  tbody th{font-weight:600;color:var(--ink-2)}
+  .no{color:var(--muted)}
   .colus{background:rgba(47,228,210,.06)}
-  th.colus{color:var(--acc);font-weight:800}
-  td.colus{color:var(--acc);font-weight:700}
+  thead th.colus{color:var(--acc);font-weight:850}
+  td.colus{color:var(--acc);font-weight:750}
+
+  /* 로드맵 — 사업 확장 */
+  .steps{display:grid;gap:18px;grid-template-columns:1fr;margin-top:44px;text-align:left}
+  @media(min-width:800px){.steps{grid-template-columns:repeat(3,1fr)}}
+  .step{position:relative;background:linear-gradient(180deg,var(--surface),var(--bg-2));border:1px solid var(--line);border-radius:18px;padding:30px 28px;display:flex;flex-direction:column;gap:10px}
+  .step.now{border-color:rgba(47,228,210,.42);box-shadow:var(--glow)}
+  .step .sn{font-family:var(--mono);font-size:12px;letter-spacing:.12em;color:var(--muted);font-weight:700}
+  .step.now .sn{color:var(--acc)}
+  .step h3{font-size:20px;letter-spacing:-.025em}
+  .step p{font-size:15px;color:var(--ink-2);line-height:1.75}
+  .badge{align-self:flex-start;font-size:12.5px;font-weight:750;padding:5px 12px;border-radius:999px;letter-spacing:-.01em}
+  .badge.on{background:rgba(47,228,210,.14);color:var(--acc);border:1px solid rgba(47,228,210,.3)}
+  .badge.soon{background:rgba(255,255,255,.04);color:var(--muted);border:1px solid var(--line-2)}
+  .why-free{margin:36px auto 0;max-width:60ch;padding:22px 26px;border:1px dashed var(--line-2);border-radius:16px;
+    font-size:15.5px;color:var(--ink-2);line-height:1.8;text-align:left;background:rgba(255,255,255,.015)}
+  .why-free b{color:var(--ink);font-weight:750}
+  .partner{margin-top:22px;padding:clamp(26px,4vw,40px);border-radius:20px;text-align:left;
+    background:linear-gradient(120deg,rgba(47,228,210,.08),rgba(91,141,239,.07));border:1px solid var(--line-2);
+    display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+  .partner .pt{flex:1 1 22rem;min-width:0}
+  .partner h3{font-size:21px;letter-spacing:-.025em;margin-bottom:8px}
+  .partner p{font-size:15px;color:var(--ink-2);line-height:1.75}
 
   /* 최종 CTA */
-  .final{position:relative;border-radius:28px;padding:clamp(44px,7vw,84px);text-align:center;overflow:hidden;
+  .final{position:relative;border-radius:28px;padding:clamp(42px,7vw,80px);text-align:center;overflow:hidden;
     background:linear-gradient(135deg,rgba(47,228,210,.14),rgba(56,189,248,.1) 55%,rgba(91,141,239,.12));border:1px solid var(--line-2)}
   .final::before{content:"";position:absolute;inset:0;z-index:-1;background:radial-gradient(60% 100% at 50% 0,rgba(47,228,210,.18),transparent 70%)}
-  .final h2{font-size:clamp(30px,5vw,52px);font-weight:850}
-  .final p{margin:18px auto 0;max-width:50ch;color:var(--ink-2);font-size:17px}
+  .final h2{font-size:clamp(28px,4.6vw,48px);font-weight:850;letter-spacing:-.03em}
+  .final p{margin:18px auto 0;max-width:42ch;color:var(--ink-2);font-size:17px;line-height:1.8}
   .final .btn-lg{margin-top:32px}
-  .final .meta{margin-top:16px;font-size:12.5px;color:var(--muted);font-family:var(--mono)}
+  .final .meta{margin-top:16px;font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 
   footer{border-top:1px solid var(--line);padding:56px 0 72px;margin-top:40px}
-  .foot{display:flex;flex-wrap:wrap;gap:18px;align-items:center;font-size:14px;color:var(--muted)}
+  .foot{display:flex;flex-wrap:wrap;gap:20px;align-items:center;font-size:14.5px;color:var(--muted)}
   .foot .sp{margin-left:auto}
   .foot a:hover{color:var(--acc)}
-  .fineprint{margin-top:18px;font-size:12.5px;color:var(--faint);line-height:1.7}
+  .fineprint{margin-top:20px;font-size:13px;color:var(--faint);line-height:1.8}
 </style>
 </head>
 <body>
@@ -228,15 +280,16 @@
 
 <header id="hdr">
   <div class="wrap bar">
-    <a class="logo" href="/"><span class="mk" aria-hidden="true">✓</span>클린메이트</a>
+    <a class="logo" href="/"><span class="mk" aria-hidden="true">✓</span>클린PT</a>
     <nav aria-label="주요 메뉴">
       <a href="#why">왜 다른가</a>
       <a href="#how">작동 방식</a>
       <a href="#compare">비교</a>
+      <a href="#roadmap">로드맵</a>
       <a href="/app.html">체험</a>
     </nav>
     <div class="sp"></div>
-    <a class="btn btn-pri" id="nav-dl" href="#get">다운로드</a>
+    <a class="btn btn-pri" id="nav-dl" href="#get">무료 다운로드</a>
   </div>
 </header>
 
@@ -247,10 +300,12 @@
   <div class="grid-bg" aria-hidden="true"></div>
   <div class="aurora" aria-hidden="true"></div>
   <div class="wrap">
-    <span class="pill"><span class="d" aria-hidden="true"></span>100% 온디바이스 · 30일 되돌리기 · 오픈 규칙</span>
-    <h1>지워도 되는 것만<br><span class="grad">지웁니다.</span></h1>
-    <p class="lede">용량은 차는데 뭘 지워야 할지 모르겠죠. 클린메이트는 <b>지울 파일을 이유와 함께 먼저 보여주고</b> 지웁니다.
-      확실한 건 알아서, <b>애매한 건 딱 3~4개만</b> 묻고, <b>위험한 건 아예 잠급니다.</b></p>
+    <span class="pill"><span class="d" aria-hidden="true"></span>프로그램 무료 · 100% 온디바이스 · 30일 되돌리기</span>
+    <h1>정리도 <span class="grad">PT</span>가<br>필요합니다.</h1>
+    <p class="lede">PT는 트레이너가 <b>대신 운동해주는 게 아닙니다.</b>
+      뭘 어떻게 해야 하는지 알려주고 자세를 잡아줍니다.
+      클린PT도 그렇습니다 — 대신 다 지워버리지 않고,
+      <b>지워도 되는 것과 건드리면 안 되는 것을 알려드립니다.</b></p>
     <div class="cta">
       <a class="btn btn-pri btn-lg" id="hero-dl" href="#get">Windows용 무료 다운로드</a>
       <a class="btn btn-ghost btn-lg" href="/app.html">브라우저에서 체험 →</a>
@@ -260,12 +315,12 @@
 
     <!-- 앱 목업 (HTML 재현물 — 실제 스크린샷 대기 중) -->
     <div class="mockwrap reveal">
-      <div class="win" role="img" aria-label="클린메이트 앱 화면 예시: 이 PC에서 정리 가능 14.6GB, 존 A 안전 2.1GB는 자동 정리, 존 B 애매 12.5GB는 질문 후 정리, 존 C 잠금 41.8GB는 건드리지 않음.">
+      <div class="win" role="img" aria-label="클린PT 앱 화면 예시: 이 PC에서 정리 가능 14.6GB, 존 A 안전 2.1GB는 자동 정리, 존 B 애매 12.5GB는 질문 후 정리, 존 C 잠금 41.8GB는 건드리지 않음.">
         <div class="win-top" aria-hidden="true">
           <span class="dot" style="background:#FB7185"></span>
           <span class="dot" style="background:#FBBF24"></span>
           <span class="dot" style="background:#4ADE80"></span>
-          <span class="win-title">클린메이트</span>
+          <span class="win-title">클린PT</span>
         </div>
         <div class="win-body" aria-hidden="true">
           <div class="m-top">
@@ -273,7 +328,7 @@
               <div class="m-cap">이 PC에서 정리 가능</div>
               <div class="m-num grad">14.6 GB</div>
             </div>
-            <span class="m-btn">원클릭 최적화</span>
+            <span class="m-btn">원클릭 정리</span>
           </div>
           <div class="m-bars">
             <div class="m-row zA"><span class="m-lab">존 A 안전</span><span class="m-track"><span class="m-fill" style="--w:34%"></span></span><span class="m-val">2.1GB · 알아서</span></div>
@@ -291,32 +346,32 @@
 <!-- 스탯 밴드 -->
 <div class="band">
   <div class="wrap stats">
-    <div class="stat reveal"><div class="n grad">14.6<span style="font-size:.5em">GB</span></div><div class="l">지워도 되는 것으로 확인된 용량</div></div>
-    <div class="stat reveal"><div class="n grad">3~4<span style="font-size:.5em">개</span></div><div class="l">정리 전 묻는 질문 수</div></div>
-    <div class="stat reveal"><div class="n grad">30<span style="font-size:.5em">일</span></div><div class="l">되돌리기 유예</div></div>
-    <div class="stat reveal"><div class="n grad">100<span style="font-size:.5em">%</span></div><div class="l">온디바이스 처리</div></div>
+    <div class="stat reveal"><div class="n grad">14.6<span class="u">GB</span></div><div class="l">지워도 되는 것으로<br>확인된 용량</div></div>
+    <div class="stat reveal"><div class="n grad">3~4<span class="u">개</span></div><div class="l">정리 전<br>묻는 질문 수</div></div>
+    <div class="stat reveal"><div class="n grad">30<span class="u">일</span></div><div class="l">되돌리기<br>유예 기간</div></div>
+    <div class="stat reveal"><div class="n grad">0<span class="u">원</span></div><div class="l">프로그램<br>이용료</div></div>
   </div>
 </div>
 
 <!-- 차별점 -->
 <section id="why">
   <div class="wrap center">
-    <span class="kick reveal">왜 다른가</span>
+    <span class="kick reveal"><span class="en">Why</span> · 왜 다른가</span>
     <h2 class="stitle reveal">뭘 지우는지 <span class="grad">알고</span> 지웁니다</h2>
     <p class="ssub reveal">다른 도구는 "정리 완료"만 알려줍니다. 뭘 지웠는지는 안 알려줍니다.
-      클린메이트는 <b style="color:var(--ink)">지울 것을 이름과 이유로 먼저 보여주고</b>, 그다음에 지웁니다.</p>
+      클린PT는 <b>지울 것을 이름과 이유로 먼저 보여주고</b>, 그다음에 지웁니다.</p>
     <div class="del-hero reveal">
       <div class="big">14.6GB</div>
       <div class="cap">이 PC에서 지워도 되는 것으로 확인된 용량 — 하나하나 이유가 있습니다</div>
       <div class="rowlist">
         <div class="krow del"><span class="mk" aria-hidden="true">✓</span>
-          <span>브라우저·앱 캐시<span class="why">지워도 다시 생깁니다. 손실이 없어 묻지 않고 정리합니다.</span></span>
+          <span class="nm">브라우저·앱 캐시<span class="why">지워도 다시 생깁니다. 손실이 없어 묻지 않고 정리합니다.</span></span>
           <span class="v">2.1GB</span></div>
         <div class="krow del"><span class="mk" aria-hidden="true">✓</span>
-          <span>다 쓴 설치파일·오래된 다운로드<span class="why">"이거 백업해두셨어요?" 한 번만 확인하고 정리합니다.</span></span>
+          <span class="nm">다 쓴 설치파일·오래된 다운로드<span class="why">"이거 백업해두셨어요?" 한 번만 확인하고 정리합니다.</span></span>
           <span class="v">8.4GB</span></div>
         <div class="krow del"><span class="mk" aria-hidden="true">✓</span>
-          <span>끝난 프로젝트의 빌드 산출물<span class="why">명령 한 줄로 다시 만들 수 있습니다. 원본 코드는 그대로 둡니다.</span></span>
+          <span class="nm">끝난 프로젝트의 빌드 산출물<span class="why">명령 한 줄로 다시 만들 수 있습니다. 원본 코드는 그대로 둡니다.</span></span>
           <span class="v">4.1GB</span></div>
       </div>
 
@@ -324,13 +379,13 @@
         <p class="lt">그리고 건드리면 안 되는 <b>41.8GB</b>는 잠갔습니다 — 이게 위 숫자를 믿을 수 있는 이유입니다.</p>
         <div class="rowlist">
           <div class="krow lock"><span class="mk" aria-hidden="true">✕</span>
-            <span>구글 드라이브 동기화 장부<span class="why">옮겼으면 동기화가 통째로 깨졌을 것</span></span>
+            <span class="nm">구글 드라이브 동기화 장부<span class="why">옮겼으면 동기화가 통째로 깨졌을 것</span></span>
             <span class="v">26.5GB</span></div>
           <div class="krow lock"><span class="mk" aria-hidden="true">✕</span>
-            <span>WSL·Docker 가상디스크<span class="why">지웠으면 개발환경이 통째로 사라졌을 것</span></span>
+            <span class="nm">WSL·Docker 가상디스크<span class="why">지웠으면 개발환경이 통째로 사라졌을 것</span></span>
             <span class="v">8.2GB</span></div>
           <div class="krow lock"><span class="mk" aria-hidden="true">✕</span>
-            <span>설치된 앱 속 node_modules 635곳<span class="why">지웠으면 앱이 깨졌을 것</span></span>
+            <span class="nm">설치된 앱 속 node_modules 635곳<span class="why">지웠으면 앱이 깨졌을 것</span></span>
             <span class="v">앱 보호</span></div>
         </div>
       </div>
@@ -341,16 +396,16 @@
 <!-- 작동 방식 -->
 <section id="how">
   <div class="wrap center">
-    <span class="kick reveal">작동 방식</span>
+    <span class="kick reveal"><span class="en">How</span> · 작동 방식</span>
     <h2 class="stitle reveal">모든 파일을 3가지로 나눕니다</h2>
     <p class="ssub reveal">확신도에 따라 자동으로 처리할지, 물어볼지, 아예 잠글지가 정해집니다.
-      모르는 건 <b style="color:var(--ink)">절대 지운다고 추측하지 않습니다.</b></p>
+      모르는 건 <b>절대 지운다고 추측하지 않습니다.</b></p>
     <div class="zones">
-      <div class="zone zA2 reveal"><span class="zt">ZONE A · 확신-안전</span><h3>알아서 처리</h3>
+      <div class="zone zA2 reveal"><span class="zt"><span class="en">ZONE A</span> · 확신-안전</span><h3>알아서 처리</h3>
         <p>캐시·로그처럼 다시 생기고 손실 없는 것. 규칙이 확증한 것만 자동으로, 그것도 30일 되돌리기로.</p></div>
-      <div class="zone zB2 reveal"><span class="zt">ZONE B · 애매</span><h3>딱 이것만 물어봄</h3>
+      <div class="zone zB2 reveal"><span class="zt"><span class="en">ZONE B</span> · 애매</span><h3>딱 이것만 물어봄</h3>
         <p>사용자만 아는 것. "이거 백업해두셨어요?" 답 하나가 수백 개를 한 번에 정리합니다.</p></div>
-      <div class="zone zC2 reveal"><span class="zt">ZONE C · 확신-위험</span><h3>아예 잠금</h3>
+      <div class="zone zC2 reveal"><span class="zt"><span class="en">ZONE C</span> · 확신-위험</span><h3>아예 잠금</h3>
         <p>시스템·앱 설정·미동기화 클라우드. AI가 뭐라 해도 삭제 불가.</p></div>
     </div>
   </div>
@@ -359,7 +414,7 @@
 <!-- 기능 -->
 <section>
   <div class="wrap">
-    <div class="center"><span class="kick reveal">핵심</span><h2 class="stitle reveal">정직하게, 안전하게, 똑똑하게</h2></div>
+    <div class="center"><span class="kick reveal"><span class="en">Core</span> · 핵심</span><h2 class="stitle reveal">정직하게, 안전하게, 똑똑하게</h2></div>
     <div class="feat">
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/></svg></div>
         <h3>30일 되돌리기</h3><p>지운 건 바로 사라지지 않고 격리함에 30일 머뭅니다. 언제든 원래 자리로. 되돌리기 없는 청소 도구가 사고를 낸 그 자리를 대신합니다.</p></div>
@@ -376,20 +431,66 @@
 <!-- 비교 -->
 <section id="compare">
   <div class="wrap center">
-    <span class="kick reveal">비교</span>
+    <span class="kick reveal"><span class="en">Compare</span> · 비교</span>
     <h2 class="stitle reveal">왜 다른 도구를 못 믿었을까</h2>
     <div class="cmp reveal">
       <div class="scroll"><table>
-        <caption class="sr-only">일반 청소 도구와 클린메이트의 동작 비교</caption>
-        <thead><tr><th scope="col"><span class="sr-only">비교 항목</span></th><th scope="col">일반 청소 도구</th><th scope="col" class="colus">클린메이트</th></tr></thead>
+        <caption class="sr-only">일반 청소 도구와 클린PT의 동작 비교</caption>
+        <thead><tr><th scope="col"><span class="sr-only">비교 항목</span></th><th scope="col">일반 청소 도구</th><th scope="col" class="colus">클린PT</th></tr></thead>
         <tbody>
           <tr><th scope="row">지우기 직전에</th><td class="no">"정리 완료"만 통보</td><td class="colus">뭘 왜 지우는지 먼저 보여줌</td></tr>
           <tr><th scope="row">모르는 파일을 만나면</th><td class="no">지워도 된다고 추측</td><td class="colus">물어봅니다</td></tr>
           <tr><th scope="row">실수로 지웠을 때</th><td class="no">복구 불가인 경우 많음</td><td class="colus">30일 되돌리기</td></tr>
           <tr><th scope="row">내 파일이 나가는가</th><td class="no">서버로 전송하기도</td><td class="colus">기기를 안 떠남</td></tr>
-          <tr><th scope="row">결제</th><td class="no">자동전환 함정</td><td class="colus">투명한 청구</td></tr>
+          <tr><th scope="row">가격</th><td class="no">자동전환 함정</td><td class="colus">프로그램은 무료</td></tr>
         </tbody>
       </table></div>
+    </div>
+  </div>
+</section>
+
+<!-- 로드맵 — 사업 확장 -->
+<section id="roadmap">
+  <div class="wrap center">
+    <span class="kick reveal"><span class="en">Roadmap</span> · 로드맵</span>
+    <h2 class="stitle reveal">정리는 PC에서 끝나지 않습니다</h2>
+    <p class="ssub reveal">PT가 헬스장에서만 끝나지 않듯이. PC 정리를 시작으로,
+      <b>집과 공간의 정리까지</b> 이어갑니다.</p>
+
+    <div class="steps">
+      <div class="step now reveal">
+        <span class="sn">STEP 1</span>
+        <span class="badge on">지금 이용 가능</span>
+        <h3>PC 정리 프로그램</h3>
+        <p>지워도 되는 것을 알려주고 함께 정리합니다. 지금 받아서 쓸 수 있고, 앞으로도 무료입니다.</p>
+      </div>
+      <div class="step reveal">
+        <span class="sn">STEP 2</span>
+        <span class="badge soon">준비 중</span>
+        <h3>집 청소 연결</h3>
+        <p>PC를 정리하고 나면 방이 보입니다. 검증된 청소 업체를 필요한 만큼만 연결해 드릴 계획입니다.</p>
+      </div>
+      <div class="step reveal">
+        <span class="sn">STEP 3</span>
+        <span class="badge soon">준비 중</span>
+        <h3>정리정돈 전문가</h3>
+        <p>버릴지 말지, 어디에 둘지까지. 정리수납 전문가와 이어드리는 단계입니다.</p>
+      </div>
+    </div>
+
+    <p class="why-free reveal"><b>프로그램이 왜 무료인가요?</b><br>
+      정리의 첫 단계를 무료로 열어야, 그다음 단계에서 만날 수 있으니까요.
+      PC 정리로는 돈을 받지 않습니다. 나중에 청소·정리정돈이 필요해졌을 때
+      믿을 만한 곳을 연결하는 것 — 거기서 수익을 냅니다.
+      그래서 <b>지금 이 프로그램에 결제 유도나 광고를 넣을 이유가 없습니다.</b></p>
+
+    <div class="partner reveal">
+      <div class="pt">
+        <h3>청소·정리정돈 업체를 운영하고 계신가요?</h3>
+        <p>클린PT에는 "정리를 해야겠다"고 마음먹은 사람들이 모입니다.
+          제휴할 업체를 찾고 있습니다 — 함께 만들 분을 기다립니다.</p>
+      </div>
+      <a class="btn btn-pri btn-lg" href="https://github.com/lhs0609a-cpu/cleanmate/issues/new?title=%EC%A0%9C%ED%9C%B4%20%EB%AC%B8%EC%9D%98" target="_blank" rel="noopener">제휴 문의하기<span class="sr-only"> (새 창)</span></a>
     </div>
   </div>
 </section>
@@ -399,8 +500,8 @@
   <div class="wrap">
     <div class="final reveal">
       <h2>보면서 정리하세요</h2>
-      <p>설치하고 원클릭. 지울 목록을 이유와 함께 보여드립니다. 무료입니다.</p>
-      <a class="btn btn-pri btn-lg" id="final-dl" href="https://github.com/lhs0609a-cpu/cleanmate/releases">Windows용 다운로드</a>
+      <p>설치하고 원클릭. 지울 목록을 이유와 함께 보여드립니다. 프로그램은 무료입니다.</p>
+      <a class="btn btn-pri btn-lg" id="final-dl" href="https://github.com/lhs0609a-cpu/cleanmate/releases">Windows용 무료 다운로드</a>
       <div class="meta" id="final-ver" aria-live="polite">최신 버전 확인 중…</div>
     </div>
     <p class="center fineprint">Windows 10/11 · 설치 시 "알 수 없는 게시자" 경고가 뜨면 <b style="color:var(--ink-2)">추가 정보 → 실행</b>을 눌러주세요 (코드 서명 준비 중).</p>
@@ -411,15 +512,16 @@
 
 <footer>
   <div class="wrap foot">
-    <a class="logo" href="/"><span class="mk" aria-hidden="true">✓</span>클린메이트</a>
+    <a class="logo" href="/"><span class="mk" aria-hidden="true">✓</span>클린PT</a>
     <div class="sp"></div>
-    <nav aria-label="바닥글 메뉴" style="display:flex;gap:18px">
+    <nav aria-label="바닥글 메뉴" style="display:flex;gap:20px;flex-wrap:wrap">
+      <a href="#roadmap">로드맵</a>
       <a href="/app.html">체험</a>
       <a href="https://github.com/lhs0609a-cpu/cleanmate" target="_blank" rel="noopener">GitHub<span class="sr-only"> (새 창)</span></a>
       <a href="https://github.com/lhs0609a-cpu/cleanmate/releases" target="_blank" rel="noopener">릴리스<span class="sr-only"> (새 창)</span></a>
     </nav>
   </div>
-  <div class="wrap fineprint">지울 것을 이유와 함께 보여주는 정리 도구 · 파일은 기기를 떠나지 않습니다 · © 클린메이트</div>
+  <div class="wrap fineprint">정리도 PT가 필요합니다 · 지울 것을 이유와 함께 보여주는 정리 도구 · 파일은 기기를 떠나지 않습니다 · © 클린PT</div>
 </footer>
 
 <script type="module" src="/src/landing.ts"></script>

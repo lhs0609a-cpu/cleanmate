@@ -1,9 +1,9 @@
 ; ============================================================
-;  클린메이트 이노셋업 스크립트
+;  클린PT 이노셋업 스크립트
 ;  V3/알약 스타일: 자동설치 · 자동시작(상주) · 조용한 자동업데이트
 ;
 ;  빌드: iscc /DAppVersion=1.0.0 installer\cleanmate.iss
-;        → dist-installer\CleanMate-Setup-1.0.0.exe
+;        → dist-installer\CleanPT-Setup-1.0.0.exe
 ;
 ;  이 exe 하나가 두 가지로 쓰인다:
 ;    1) 사용자 첫 설치 — 마법사 UI로 "다음 > 다음 > 완료"
@@ -15,11 +15,14 @@
   #define AppVersion "0.0.0"
 #endif
 
-#define AppName "클린메이트"
-#define AppNameEn "CleanMate"
-#define AppPublisher "CleanMate"
+#define AppName "클린PT"
+#define AppNameEn "CleanPT"
+#define AppPublisher "CleanPT"
+; 실행파일 이름은 Cargo 패키지명(cleanmate)에서 나온다 — 빌드 산출물과 반드시
+; 같아야 해서 리브랜딩과 무관하게 그대로 둔다(release.yml이 이 이름으로 복사한다).
 #define AppExeName "cleanmate.exe"
-; ★ 자동 업데이트 시 "현재 실행 중인 앱"을 안전히 닫기 위한 고유 식별자
+; ★ 자동 업데이트 시 "현재 실행 중인 앱"을 안전히 닫기 위한 고유 식별자.
+;   바꾸면 기존 설치를 '다른 앱'으로 보고 나란히 설치된다 — 이름이 바뀌어도 유지한다.
 #define AppId "{{8F3A1C24-9B7E-4D2A-8E6F-CLEANMATE0001}"
 
 [Setup]
@@ -41,7 +44,7 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 OutputDir=..\dist-installer
-OutputBaseFilename=CleanMate-Setup-{#AppVersion}
+OutputBaseFilename=CleanPT-Setup-{#AppVersion}
 ; 서명은 이 파일이 아니라 CI(release.yml)가 한다 — 앱 바이너리는 iscc 전에,
 ; 설치파일은 iscc 뒤에 signtool로 서명한다. 인증서 시크릿이 없으면 건너뛴다.
 ; (여기에 SignTool= 를 쓰면 iscc가 서명 도구 설정을 따로 요구해 이중관리가 된다.)
