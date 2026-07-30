@@ -15,7 +15,16 @@
 
 export {} // 모듈로 취급되게 (import 없어도)
 
-const REPO = 'lhs0609a-cpu/cleanmate'
+/**
+ * ★ 배포 저장소 — 소스 저장소(비공개)가 아니다.
+ *
+ * 소스는 비공개인데 방문자와 설치된 앱은 "최신 버전이 뭐고 어디서 받나"를 읽어야 한다.
+ * 비공개 저장소의 릴리스 API는 인증 없이 부르면 404다(있는데 없다고 답한다) —
+ * 그러면 이 fetch가 실패하고 폴백이 릴리스 페이지로 보내는데 그 페이지도 404여서
+ * 다운로드가 통째로 막힌다. 실제로 그 상태였다.
+ * 그래서 설치파일만 두는 공개 저장소를 따로 뒀다.
+ */
+const REPO = 'lhs0609a-cpu/teraclean-releases'
 const RELEASES_PAGE = `https://github.com/${REPO}/releases`
 const LATEST_API = `https://api.github.com/repos/${REPO}/releases/latest`
 

@@ -56,6 +56,33 @@ npm run build
 
 GitHub → Vercel 자동 배포. `master`에 푸시하면 프로덕션에 나간다.
 
+### 저장소가 둘이다 (소스 비공개 / 배포 공개)
+
+| 저장소 | 공개 | 내용 |
+| --- | --- | --- |
+| `lhs0609a-cpu/cleanmate` | 🔒 비공개 | 소스 전체. CI가 여기서 빌드한다. |
+| `lhs0609a-cpu/teraclean-releases` | 🌐 공개 | 설치파일 + `latest.json` 만. 랜딩·앱이 여기 릴리스 API를 읽는다. |
+
+> **왜 나눴나.** 앱과 홈페이지는 "최신 버전이 뭐고 어디서 받나"를 GitHub 릴리스 API로
+> 읽는다. **비공개 저장소의 릴리스 API는 인증 없이 부르면 404를 준다** — 있는데 없다고
+> 답한다. 그래서 랜딩의 `fetchLatest()`가 실패하고, 폴백이 릴리스 페이지로 보내는데
+> 그 페이지도 404여서 **다운로드가 통째로 막혀 있었다.** 소스를 비공개로 두면서
+> 배포만 공개하려면 저장소를 나누는 게 가장 깔끔하다.
+>
+> 로컬에서 `gh`로 확인하면 인증돼 있어서 멀쩡해 보인다. **방문자 조건(인증 없이)으로
+> 확인해야 한다** — `curl -sS -o /dev/null -w "%{http_code}" <릴리스 URL>`.
+
+**필요한 시크릿** — `RELEASES_REPO_TOKEN`
+`GITHUB_TOKEN`은 자기 저장소에만 쓸 수 있어서, 배포 저장소에 게시하려면 PAT가 따로 필요하다.
+
+1. GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens**
+2. Repository access: `lhs0609a-cpu/teraclean-releases` 만 선택
+3. Permissions: **Contents = Read and write**
+4. 이 저장소의 Settings → Secrets and variables → Actions 에 `RELEASES_REPO_TOKEN`으로 등록
+
+없으면 릴리스 단계가 **명시적으로 실패한다**(조용히 건너뛰지 않는다 — 게시되지 않은
+릴리스가 성공으로 보고되면 안 된다).
+
 ### CSP는 페이지별로 다르다 (한 덩어리로 묶으면 깨진다)
 
 `vercel.json`이 문서마다 다른 `connect-src`를 준다. 두 페이지가 원하는 게 정반대다.

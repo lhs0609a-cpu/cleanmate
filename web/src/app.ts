@@ -17,8 +17,12 @@ import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
 const APP_VERSION = '0.4.0'
-/** GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨). */
-const LATEST_API = 'https://api.github.com/repos/lhs0609a-cpu/cleanmate/releases/latest'
+/**
+ * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
+ * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
+ *   404를 주고, 그러면 설치된 앱이 업데이트를 영원히 못 찾는다. (landing.ts의 REPO 주석 참고)
+ */
+const LATEST_API = 'https://api.github.com/repos/lhs0609a-cpu/teraclean-releases/releases/latest'
 
 const $ = (id: string) => document.getElementById(id)!
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)

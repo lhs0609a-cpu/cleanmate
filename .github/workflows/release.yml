@@ -18,7 +18,16 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write # GitHub Release 생성용
+  contents: read # 이 저장소엔 아무것도 쓰지 않는다 — 릴리스는 배포 저장소로 나간다
+
+env:
+  # ★ 설치파일을 게시하는 '공개' 저장소. 이 저장소(소스)는 비공개다.
+  #
+  #   왜 나눴나: 앱과 홈페이지가 릴리스 API로 "최신 버전이 뭐고 어디서 받나"를 읽는다.
+  #   비공개 저장소의 릴리스 API는 인증 없이 부르면 404를 준다(있는데 없다고 답한다).
+  #   그러면 홈페이지 다운로드 버튼과 설치된 앱의 자동 업데이트가 통째로 막힌다.
+  #   실제로 그 상태였다 — 그래서 설치파일만 두는 공개 저장소를 따로 뒀다.
+  RELEASES_REPO: lhs0609a-cpu/teraclean-releases
 
 jobs:
   build:
@@ -165,7 +174,8 @@ jobs:
             echo "SHA-256 계산 실패 — 릴리스를 중단합니다" >&2
             exit 1
           fi
-          URL="https://github.com/${{ github.repository }}/releases/download/v${VER}/TeraClean-Setup-${VER}.exe"
+          # ★ 이 저장소가 아니라 '배포 저장소'의 URL이다 (아래 게시 단계 주석 참고)
+          URL="https://github.com/${RELEASES_REPO}/releases/download/v${VER}/TeraClean-Setup-${VER}.exe"
           cat > latest.json <<EOF
           {
             "version": "${VER}",
@@ -178,9 +188,31 @@ jobs:
           cat latest.json
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
 
-      - name: GitHub Release 게시
+      # 시크릿이 없으면 여기서 '조용히 넘어가지 않고' 멈춘다.
+      # 게시가 안 된 릴리스는 성공으로 보고돼선 안 된다 — 그게 다운로드가 막혀 있는데
+      # 초록불이 켜져 있던 원인이다.
+      - name: 배포 토큰 확인
+        if: ${{ secrets.RELEASES_REPO_TOKEN == '' }}
+        run: |
+          echo "::error::RELEASES_REPO_TOKEN 시크릿이 없어 배포 저장소($RELEASES_REPO)에 게시할 수 없습니다."
+          echo "::error::GitHub → Settings → Secrets and variables → Actions 에 등록하세요."
+          echo "::error::필요 권한: $RELEASES_REPO 의 Contents=Read and write (fine-grained PAT)"
+          exit 1
+
+      # ★ 이 저장소가 아니라 배포 저장소로 게시한다.
+      #   GITHUB_TOKEN은 자기 저장소에만 쓸 수 있어서 별도 PAT가 필요하다.
+      #   tag_name을 명시해야 한다 — 태그는 이 저장소에 있고 대상 저장소엔 없다
+      #   (액션이 대상 저장소의 기본 브랜치에 태그를 만든다).
+      - name: GitHub Release 게시 (배포 저장소)
         uses: softprops/action-gh-release@v2
         with:
+          repository: ${{ env.RELEASES_REPO }}
+          token: ${{ secrets.RELEASES_REPO_TOKEN }}
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: 테라클린 ${{ steps.ver.outputs.version }}
+          # 파일이 하나라도 안 붙으면 실패시킨다 — 자산 없는 릴리스가 나가면
+          # 홈페이지가 exe를 못 찾아 다운로드가 폴백으로 떨어진다.
+          fail_on_unmatched_files: true
           files: |
             dist-installer/TeraClean-Setup-${{ steps.ver.outputs.version }}.exe
             latest.json
