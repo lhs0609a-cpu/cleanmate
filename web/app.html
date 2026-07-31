@@ -163,6 +163,8 @@
     <nav class="nav">
       <button data-go="home" class="on">홈</button>
       <button data-go="hidden">숨은 공간</button>
+      <button data-go="programs">안 쓴 프로그램</button>
+      <button data-go="move">드라이브 옮기기</button>
       <button data-go="quar">격리함</button>
     </nav>
   </div>
@@ -243,6 +245,42 @@
   </section>
 
   <!-- ════ 격리함 ════ -->
+  <!-- 오래 안 쓴 프로그램 -->
+  <section class="screen" id="s-programs">
+    <div class="card pad">
+      <div class="sechead"><span class="k">프로그램</span><h2>오래 안 쓴 프로그램</h2></div>
+      <p class="lede" style="margin-top:6px">
+        <b style="color:var(--ink)">실행 기록이 있는 것만</b> 판단합니다. 기록이 없으면
+        "안 쓰신다"고 넘겨짚지 않고 그냥 빼둡니다 — 터미널로만 쓰는 도구는 기록이 안 남거든요.
+        제거는 <b style="color:var(--ink)">제조사가 등록한 정식 제거 프로그램</b>을 띄웁니다.
+        폴더를 직접 지우지 않아요. 지우면 찌꺼기가 남고 재설치도 막힙니다.
+      </p>
+      <div class="note" style="margin-top:12px">
+        ⚠️ 프로그램 제거는 <b>격리로 되돌릴 수 없습니다.</b> 그래서 한 번에 하나씩만 확인받습니다.
+      </div>
+      <div style="margin-top:12px"><span class="pill desk">실제 목록·제거는 데스크톱 앱</span></div>
+      <div id="programs-body"><div class="empty">'안 쓴 프로그램' 탭을 열면 이 PC를 실측합니다.</div></div>
+    </div>
+  </section>
+
+  <!-- 다른 드라이브로 옮기기 -->
+  <section class="screen" id="s-move">
+    <div class="card pad">
+      <div class="sechead"><span class="k">옮기기</span><h2>지우긴 아까운 것들</h2></div>
+      <p class="lede" style="margin-top:6px">
+        용량 부족의 절반은 "지울 순 없는데 자리를 차지하는 것"입니다. 그건 지우는 게 아니라
+        <b style="color:var(--ink)">옮겨야 해요.</b> 100MB 넘는 파일 중 옮겨도 안전한 것만 고릅니다.
+      </p>
+      <p class="lede" style="margin-top:8px">
+        프로그램이 설치된 폴더·앱 설정·동기화 폴더는 <b style="color:var(--ink)">옮기지 않습니다.</b>
+        파일이 살아 있어도 그 경로를 찾던 프로그램이 깨지거든요.
+        옮긴 기록은 대상 드라이브에 함께 저장돼서 언제든 되돌릴 수 있습니다.
+      </p>
+      <div style="margin-top:12px"><span class="pill desk">실제 이동은 데스크톱 앱</span></div>
+      <div id="move-body"><div class="empty">'드라이브 옮기기' 탭을 열면 옮길 수 있는 것을 찾습니다.</div></div>
+    </div>
+  </section>
+
   <section class="screen" id="s-quar">
     <div class="card pad">
       <div class="sechead"><span class="k">격리함</span><h2>지운 것, 30일간 되돌리기</h2></div>

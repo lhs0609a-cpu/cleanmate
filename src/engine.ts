@@ -11,7 +11,7 @@
  *   LLM은 나중에 질문 '표현'(문구 다듬기)에만 쓴다. 선정 권한은 주지 않는다.
  */
 
-import type { Classified, Cluster, Question, Unknown } from './types.ts'
+import type { Classified, Cluster, Question, Unknown, Outcome } from './types.ts'
 
 /** 질문 상한 — 넘기면 피로 → 만족도 급락 */
 const MAX_QUESTIONS = 4
@@ -48,7 +48,16 @@ interface UnknownSpec {
    *   "지워도 돼요"가 보존으로 매핑돼 있었다. 삭제 도구에서 이런 반전은
    *   그냥 버그가 아니라 사고다.
    */
-  yesOutcome?: 'CANDIDATE' | 'KEEP' | 'REVIEW_ONE_BY_ONE'
+  yesOutcome?: Outcome
+  /**
+   * 이 질문에만 있는 추가 선택지. 예/아니오로 안 갈리는 질문이 있다 —
+   * "지울까요?"에 대한 답이 "지우기 싫은데 옮기고는 싶다"일 수 있다.
+   */
+  extraOption?: {
+    label: string
+    outcome: Outcome
+    preview: (bytes: string, count: number) => string
+  }
 }
 
 const SPECS: Record<Unknown, UnknownSpec> = {
@@ -111,15 +120,19 @@ const SPECS: Record<Unknown, UnknownSpec> = {
   U7_MOVE_OR_DELETE: {
     infoGain: 0.85,
     ease: 0.85,
-    question: (b, c) => `아주 큰 파일 ${c}개(${b})가 있어요. 지우기는 아까운데 — 지워도 될까요?`,
-    rationale: '용량은 크지만 필요할 수 있어서, 지우기 전에 먼저 여쭤봅니다.',
+    question: (b, c) =>
+      `아주 큰 파일 ${c}개(${b})가 있어요. 지우기는 아까운데 — 지울까요, 다른 드라이브로 옮길까요?`,
+    rationale: '용량은 크지만 필요할 수 있어서, 지우기 전에 옮기는 선택지를 함께 드립니다.',
     // 정리에 동의하는 쪽을 첫 선택지로 둔다. 반대로 두면 "옮길래요"(= 지우지 말 것)가
     // 삭제 후보가 된다 — 실제로 그렇게 돼 있었다.
     yesLabel: '네, 지워도 돼요',
     yesPreview: (b, c) => `${c}개(${b})를 삭제 후보로. 바로 지우지 않고 목록을 먼저 보여드려요.`,
-    // 다른 드라이브로 '옮기기'는 아직 구현이 없다. 없는 기능을 있는 것처럼
-    // 제안하지 않고, 그대로 두는 선택지로만 남긴다. (docs/다음-작업.md)
-    noLabel: '아니요, 옮길 거라 둘래요',
+    noLabel: '아니요, 그대로 둘래요',
+    extraOption: {
+      label: '다른 드라이브로 옮길래요',
+      outcome: 'MOVE',
+      preview: (b, c) => `${c}개(${b})를 이동 후보로. 지우지 않고 옮길 드라이브를 고르실 수 있어요.`,
+    },
   },
 }
 
@@ -189,9 +202,20 @@ export function buildQuestions(clusters: Cluster[]): Question[] {
             outcome: spec.yesOutcome ?? 'CANDIDATE',
             preview: spec.yesPreview(b, c.count),
           },
+          // 질문별 추가 선택지 (예: "옮길래요"). 보존 선택지보다 앞에 둔다 —
+          // 뭔가 해주는 선택지끼리 붙어 있어야 읽기 쉽다.
+          ...(spec.extraOption
+            ? [
+                {
+                  label: spec.extraOption.label,
+                  outcome: spec.extraOption.outcome,
+                  preview: spec.extraOption.preview(b, c.count),
+                },
+              ]
+            : []),
           {
             label: spec.noLabel,
-            outcome: 'KEEP',
+            outcome: 'KEEP' as const,
             preview: '그대로 두겠습니다. 아무것도 건드리지 않아요.',
           },
           // 첫 선택지가 이미 '하나씩 보기'면 같은 선택지를 두 번 주지 않는다.

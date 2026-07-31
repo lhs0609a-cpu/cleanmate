@@ -94,6 +94,34 @@ async fn download_update(url: String) -> Result<DownloadedUpdate, String> {
     })
 }
 
+/// 설치 제거 — 프로그램이 등록해 둔 **정식 언인스톨러**를 띄운다.
+///
+/// ★ 우리가 프로그램 파일을 지우는 경로는 어디에도 없다. 폴더를 직접 지우면
+///   레지스트리·서비스·셸 확장이 남아 시스템이 지저분해지고 재설치도 막힌다.
+///   그래서 레지스트리의 UninstallString을 그대로 실행하고, 그 다음은
+///   제조사의 제거 마법사와 사용자에게 맡긴다.
+///
+/// 격리로 되돌릴 수 없는 유일한 동작이라, UI가 하나씩 확인을 받은 뒤에만 부른다.
+/// (일괄 제거 API를 만들지 않는 이유 — src/probes/programs.ts 머리말)
+#[tauri::command]
+fn run_uninstaller(command: String) -> Result<(), String> {
+    let cmd = command.trim();
+    if cmd.is_empty() {
+        return Err("제거 명령이 비어 있어요".into());
+    }
+    // 레지스트리에서 읽은 값만 들어온다는 전제지만, 실행 파일을 가리키는지 최소한 확인한다.
+    let lower = cmd.to_lowercase();
+    if !(lower.contains(".exe") || lower.contains("msiexec")) {
+        return Err("실행 파일을 가리키지 않는 제거 명령이라 실행하지 않았어요".into());
+    }
+    // UninstallString은 따옴표·인자가 섞인 원시 명령줄이라 cmd에 그대로 넘긴다.
+    StdCommand::new("cmd")
+        .args(["/C", cmd])
+        .spawn()
+        .map_err(|e| format!("제거 프로그램을 실행하지 못했어요: {e}"))?;
+    Ok(())
+}
+
 /// ★ 엔진 사이드카 호출 — UI와 검증된 TS 엔진을 잇는 유일한 통로.
 /// 명령+인자를 주면 cleanmate-engine.exe가 JSON을 돌려준다(engine-cli.ts 규약).
 /// 엔진 exe는 앱 exe 바로 옆에 있다(이노셋업이 함께 설치).
@@ -124,7 +152,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             apply_update,
             download_update,
-            run_engine
+            run_engine,
+            run_uninstaller
         ])
         .run(tauri::generate_context!())
         .expect("클린메이트 실행 중 오류");

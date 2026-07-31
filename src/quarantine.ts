@@ -192,8 +192,11 @@ export async function quarantine(
 /**
  * 같은 드라이브면 rename(즉시), 다른 드라이브면 복사+삭제.
  * rename이 EXDEV로 실패하는 경우가 드라이브를 넘는 경우다.
+ *
+ * relocate.ts(다른 드라이브로 옮기기)도 이걸 쓴다 — EXDEV 처리와
+ * "복사 성공 뒤에만 원본 삭제" 순서를 두 군데서 각자 구현하면 언젠가 어긋난다.
  */
-async function moveFile(from: string, to: string): Promise<void> {
+export async function moveFile(from: string, to: string): Promise<void> {
   try {
     await rename(from, to)
   } catch (err) {

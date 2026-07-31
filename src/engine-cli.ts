@@ -13,11 +13,19 @@
  *   진행 로그·경고는 전부 stderr로 (stdout을 오염시키지 않는다).
  *
  * 사용: cleanmate-engine <command> [json-args]
- *   scan-plan   <path>          스캔 → 3-존 + 정리 계획 + 질문
- *   apply-sweep <path>          존 A 자동 정리(격리로 이동)
- *   quar-list                   격리함 목록
- *   restore     <id|--all>      되돌리기
- *   probe                       숨은 공간(hiberfil 등)
+ *   scan-plan      <path>            스캔 → 3-존 + 정리 계획 + 질문
+ *   apply-sweep    <path>            존 A 자동 정리(격리로 이동)
+ *   quar-list                        격리함 목록
+ *   restore        <id|--all>        되돌리기
+ *   probe                            숨은 공간(hiberfil 등)
+ *   relocate-plan  <path> <destRoot> 다른 드라이브로 옮길 계획(미리보기)
+ *   relocate-apply <path> <destRoot> 실제 이동
+ *   relocate-list  <destRoot>        옮긴 목록
+ *   relocate-undo  <destRoot> <id|--all>  이동 되돌리기
+ *   programs                         오래 안 쓴 설치 프로그램 (제안만)
+ *
+ * ★ 프로그램 '제거'는 여기 없다. 정식 언인스톨러를 띄우는 건 셸(Tauri)이 한다 —
+ *   엔진은 파일도 프로그램도 임의로 지우지 않는다.
  */
 
 import { scan } from './scanner.ts'
@@ -33,7 +41,65 @@ import {
 } from './quarantine.ts'
 import { gatherFacts } from './probes/facts.ts'
 import { probeHiberfil } from './probes/hiberfil.ts'
+import { probePrograms } from './probes/programs.ts'
+import {
+  isRelocatable,
+  planRelocate,
+  applyRelocate,
+  readRelocateLedger,
+  undoRelocate,
+  movedFolderOn,
+  freeSpaceOn,
+  hasEnoughSpace,
+  type RelocateItem,
+} from './relocate.ts'
+import { stampMtime } from './quarantine.ts'
 import type { Classified } from './types.ts'
+
+/** 이보다 작은 파일은 옮겨봐야 체감이 없다 — 목록만 길어진다. */
+const RELOCATE_MIN_BYTES = 100 * 1024 * 1024 // 100MB
+
+/**
+ * 옮길 후보를 고른다. 스캔 → 옮겨도 되는 것만 → 큰 것만.
+ * 계획 단계라 아무것도 건드리지 않는다.
+ */
+async function relocateCandidates(path: string): Promise<{ items: RelocateItem[]; refused: { path: string; reason: string }[] }> {
+  const scanned = await scan(path)
+  const items: RelocateItem[] = []
+  const refused: { path: string; reason: string }[] = []
+
+  for (const f of scanned.files) {
+    if (f.size < RELOCATE_MIN_BYTES) continue
+    const c = classifyOne(f)
+    const ok = isRelocatable(c)
+    if (!ok.ok) {
+      refused.push({ path: f.path, reason: ok.reason ?? '옮길 수 없습니다' })
+      continue
+    }
+    items.push({
+      path: f.path,
+      size: f.size,
+      meaning: c.verdict.meaning,
+      reason: c.verdict.reason,
+      mtimeMs: stampMtime(f.mtime.getTime()),
+    })
+  }
+  return { items, refused }
+}
+
+/** 대상 드라이브에 넣을 수 있는지 확인한다. 못 넣으면 이유를 준다. */
+async function checkDestination(destRoot: string, needBytes: number) {
+  const free = await freeSpaceOn(destRoot)
+  if (free === null) return { ok: false as const, reason: '대상 드라이브의 남은 공간을 확인할 수 없어요' }
+  if (!hasEnoughSpace(free, needBytes)) {
+    return {
+      ok: false as const,
+      reason: '대상 드라이브에 여유가 부족해요. 꽉 채우면 그 드라이브가 다음 문제가 됩니다.',
+      freeBytes: free,
+    }
+  }
+  return { ok: true as const, freeBytes: free }
+}
 
 function out(data: unknown): never {
   process.stdout.write(JSON.stringify({ ok: true, data }))
@@ -179,6 +245,86 @@ async function main() {
             fastStartupEnabled: facts.fastStartupEnabled,
           },
           findings: [hiber].filter(Boolean),
+        })
+        break
+      }
+      case 'relocate-plan': {
+        if (!args[0] || !args[1]) fail('경로와 옮길 드라이브가 필요합니다.')
+        const { items, refused } = await relocateCandidates(args[0])
+        const plan = planRelocate(items, args[1])
+        const dest = await checkDestination(args[1], plan.bytes)
+        out({
+          destFolder: plan.destFolder,
+          bytes: plan.bytes,
+          count: plan.items.length,
+          items: plan.items.slice(0, 200).map(({ item, dest: to }) => ({
+            path: item.path, size: item.size, meaning: item.meaning, dest: to,
+          })),
+          skipped: plan.skipped,
+          refused: refused.slice(0, 50),
+          refusedCount: refused.length,
+          destination: dest,
+        })
+        break
+      }
+      case 'relocate-apply': {
+        if (!args[0] || !args[1]) fail('경로와 옮길 드라이브가 필요합니다.')
+        const { items } = await relocateCandidates(args[0])
+        const plan = planRelocate(items, args[1])
+        // 실행 직전에 다시 확인한다. 계획을 세운 뒤 다른 게 대상 드라이브를 채웠을 수 있다.
+        const dest = await checkDestination(args[1], plan.bytes)
+        if (!dest.ok) fail(dest.reason)
+        const r = await applyRelocate(plan)
+        out(r)
+        break
+      }
+      case 'relocate-list': {
+        if (!args[0]) fail('드라이브가 필요합니다.')
+        const folder = movedFolderOn(args[0])
+        const entries = await readRelocateLedger(folder)
+        out({
+          destFolder: folder,
+          items: entries,
+          totalBytes: entries.reduce((s, e) => s + e.size, 0),
+        })
+        break
+      }
+      case 'relocate-undo': {
+        if (!args[0] || !args[1]) fail('드라이브와 되돌릴 id(또는 --all)가 필요합니다.')
+        const folder = movedFolderOn(args[0])
+        const entries = await readRelocateLedger(folder)
+        const ids = args[1] === '--all'
+          ? entries.map((e) => e.id)
+          : entries.filter((e) => e.id.startsWith(args[1])).map((e) => e.id)
+        const r = await undoRelocate(ids, folder)
+        out({
+          restoredCount: r.restored.length,
+          restoredBytes: r.restored.reduce((s, e) => s + e.size, 0),
+          failed: r.failed.map((f) => ({ path: f.entry.originalPath, reason: f.reason })),
+        })
+        break
+      }
+      case 'programs': {
+        // 제안만 한다. 제거는 셸이 정식 언인스톨러를 띄워서 한다.
+        const r = await probePrograms()
+        out({
+          totalScanned: r.totalScanned,
+          suggestibleBytes: r.suggestibleBytes,
+          suggestions: r.suggestions.map((s) => ({
+            key: s.key,
+            name: s.name,
+            publisher: s.publisher,
+            version: s.version,
+            bytes: s.estimatedBytes,
+            unusedDays: s.unusedDays,
+            runCount: s.runCount,
+            reason: s.verdict.reason,
+            uninstallString: s.uninstallString,
+            installLocation: s.installLocation,
+          })),
+          // 안 건드린 것도 보여준다 — "무엇을 제외했는지"가 신뢰의 근거다.
+          excluded: r.excluded.slice(0, 60),
+          excludedCount: r.excluded.length,
         })
         break
       }

@@ -75,13 +75,20 @@ export interface Question {
   rationale: string
 }
 
+/**
+ * 답변의 결과. 삭제가 아니라 '재분류'만 한다 —
+ * 어떤 답도 즉시 완전삭제를 유발하지 않는다(엔진 안전규칙).
+ *
+ *   CANDIDATE          정리 후보. 격리를 거친다(30일 되돌리기).
+ *   MOVE               다른 드라이브로 이동 후보. 지우지 않는다(relocate.ts).
+ *   KEEP               그대로 둔다.
+ *   REVIEW_ONE_BY_ONE  목록으로 보여주고 하나씩 고르게 한다.
+ */
+export type Outcome = 'CANDIDATE' | 'MOVE' | 'KEEP' | 'REVIEW_ONE_BY_ONE'
+
 export interface QuestionOption {
   label: string
-  /**
-   * 답변의 결과. 삭제가 아니라 '재분류'만 한다 —
-   * 어떤 답도 즉시 완전삭제를 유발하지 않는다(엔진 안전규칙).
-   */
-  outcome: 'CANDIDATE' | 'KEEP' | 'REVIEW_ONE_BY_ONE'
+  outcome: Outcome
   /** 이 선택 시 무슨 일이 일어나는가 (사전 미리보기) */
   preview: string
 }

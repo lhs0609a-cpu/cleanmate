@@ -83,6 +83,26 @@ test('★U7 — "지워도 되나요"에 아니라고 하면 절대 삭제 후�
   assert.equal(거절!.outcome, 'KEEP', '거절이 삭제 후보가 되면 안 된다')
 })
 
+test('★U7 — "옮길래요"는 MOVE지 삭제가 아니다', () => {
+  // 이 매핑이 뒤집혀 있었다. 지우지 말라는 답이 삭제 후보가 됐다.
+  const q = questionFor('U7_MOVE_OR_DELETE')
+  const 이동 = q.options.find((o) => o.label.includes('옮길래요'))
+  assert.ok(이동, '이동 선택지가 있어야 한다')
+  assert.equal(이동!.outcome, 'MOVE')
+  assert.ok(!/삭제 후보/.test(이동!.preview), `이동인데 삭제라고 안내한다: "${이동!.preview}"`)
+})
+
+test('MOVE 선택지는 U7에만 있다 — 아무 질문에나 붙으면 안 된다', () => {
+  const 나머지: Unknown[] = [
+    'U1_BACKED_UP', 'U2_PROJECT_ACTIVE', 'U3_APP_IN_USE',
+    'U4_NEED_LATER', 'U5_FOLDER_INTENT', 'U6_WHICH_ORIGINAL',
+  ]
+  for (const u of 나머지) {
+    const q = questionFor(u)
+    assert.ok(!q.options.some((o) => o.outcome === 'MOVE'), `${u}에 MOVE 선택지가 붙었다`)
+  }
+})
+
 test('U6 — "확인할게요"는 삭제 동의가 아니라 하나씩 보기다', () => {
   const q = questionFor('U6_WHICH_ORIGINAL')
   const 확인 = q.options.find((o) => o.label === '확인할게요')
@@ -96,13 +116,23 @@ test('같은 선택지가 두 번 나오지 않는다', () => {
   assert.equal(new Set(outcomes).size, outcomes.length, `중복된 결과: ${outcomes.join(', ')}`)
 })
 
-test('없는 기능을 제안하지 않는다 — 이동 위치 선택은 아직 없다', () => {
-  // "옮길 위치를 고르실 수 있어요"라고 안내했지만 이동 실행 경로가 없었다.
-  const q = questionFor('U7_MOVE_OR_DELETE')
-  for (const o of q.options) {
-    assert.ok(
-      !/옮길 위치|이동 대상으로/.test(o.preview),
-      `구현 없는 이동 기능을 약속하고 있다: "${o.preview}"`
-    )
+test('미리보기가 실제 결과와 어긋나지 않는다', () => {
+  // 안내 문구와 outcome이 다른 말을 하면 사용자는 안내를 믿고 고른다.
+  const unknowns: Unknown[] = [
+    'U1_BACKED_UP', 'U2_PROJECT_ACTIVE', 'U3_APP_IN_USE',
+    'U4_NEED_LATER', 'U5_FOLDER_INTENT', 'U6_WHICH_ORIGINAL', 'U7_MOVE_OR_DELETE',
+  ]
+  for (const u of unknowns) {
+    for (const o of questionFor(u).options) {
+      if (o.outcome === 'KEEP') {
+        assert.ok(!/삭제|지웁|옮깁/.test(o.preview), `${u}: 보존인데 뭔가 한다고 안내: "${o.preview}"`)
+      }
+      if (o.outcome === 'MOVE') {
+        assert.ok(!/삭제 후보/.test(o.preview), `${u}: 이동인데 삭제라고 안내: "${o.preview}"`)
+      }
+      if (o.outcome === 'CANDIDATE') {
+        assert.ok(!/옮길|이동/.test(o.preview), `${u}: 삭제 후보인데 이동이라고 안내: "${o.preview}"`)
+      }
+    }
   }
 })

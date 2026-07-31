@@ -76,13 +76,15 @@ function buildBrowserReport(files: FileEntry[], elapsedMs: number): Report {
 }
 
 /* ── 화면 전환 ─────────────────────────────────────────────── */
-const screens = ['home', 'hidden', 'quar']
-let hiddenLoaded = false, quarLoaded = false
+const screens = ['home', 'hidden', 'programs', 'move', 'quar']
+let hiddenLoaded = false, quarLoaded = false, programsLoaded = false, moveLoaded = false
 function go(name: string) {
   for (const s of screens) $(`s-${s}`).classList.toggle('on', s === name)
   document.querySelectorAll<HTMLButtonElement>('.nav button').forEach((b) => b.classList.toggle('on', b.dataset.go === name))
   if (inTauri && name === 'hidden' && !hiddenLoaded) { hiddenLoaded = true; loadHidden() }
   if (inTauri && name === 'quar' && !quarLoaded) { quarLoaded = true; loadQuar() }
+  if (inTauri && name === 'programs' && !programsLoaded) { programsLoaded = true; loadPrograms() }
+  if (inTauri && name === 'move' && !moveLoaded) { moveLoaded = true; loadMove() }
 }
 document.querySelectorAll<HTMLButtonElement>('.nav button').forEach((b) => b.addEventListener('click', () => go(b.dataset.go!)))
 
@@ -261,6 +263,141 @@ function explainCard(f: any): string {
       ${blk('안 지우면요', `<p>${esc(e.ifKept)}</p>`)}
     </div>
     <div style="margin-top:16px"><span class="pill desk">실행(관리자 권한)은 다음 업데이트에서 연결됩니다</span></div>`
+}
+
+/* ── 오래 안 쓴 프로그램 ──────────────────────────────────────
+   제거는 격리로 되돌릴 수 없다. 그래서 일괄 처리 버튼을 만들지 않고
+   항목마다 개별 확인을 받는다. (src/probes/programs.ts 머리말) */
+async function loadPrograms() {
+  const host = $('programs-body')
+  host.innerHTML = `<div class="empty">설치된 프로그램과 실행 기록을 읽는 중…</div>`
+  try {
+    const d = await engine('programs')
+    const head = `<div style="display:flex;align-items:baseline;gap:10px;margin:14px 0 10px">
+        <h2 style="font-size:16px;font-weight:750">제거 후보 ${d.suggestions.length}개 · ${fmtBytes(d.suggestibleBytes)}</h2>
+        <span style="margin-left:auto;font-size:12.5px;color:var(--muted)">설치 항목 ${d.totalScanned}개 중</span>
+      </div>`
+
+    if (!d.suggestions.length) {
+      host.innerHTML = head + `<div class="empty">오래 안 쓴 프로그램을 찾지 못했어요. 실행 기록으로 확인할 수 있는 것만 제안합니다.</div>`
+        + excludedBlock(d)
+      return
+    }
+
+    host.innerHTML = head + d.suggestions.map((p: any, i: number) => `
+      <div style="padding:12px 0;border-top:1px solid var(--line)">
+        <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+          <b style="font-size:14.5px">${esc(p.name)}</b>
+          ${p.version ? `<span style="font-size:12px;color:var(--muted)">${esc(p.version)}</span>` : ''}
+          <span style="margin-left:auto;font-size:13px;font-weight:700">${fmtBytes(p.bytes)}</span>
+        </div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:4px">${esc(p.reason)}</div>
+        ${p.installLocation ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(p.installLocation)}</div>` : ''}
+        <button class="opt" data-uninstall="${i}" style="margin-top:8px">제거 프로그램 열기</button>
+      </div>`).join('') + excludedBlock(d)
+
+    host.querySelectorAll<HTMLButtonElement>('[data-uninstall]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const p = d.suggestions[+btn.dataset.uninstall!]
+        // 되돌릴 수 없는 유일한 동작 — 반드시 개별로 확인받는다.
+        if (!confirm(`"${p.name}"의 제거 프로그램을 실행할까요?\n\n제조사가 만든 정식 제거 마법사가 열립니다. 이 작업은 되돌릴 수 없어요.`)) return
+        try {
+          await TAURI.core.invoke('run_uninstaller', { command: p.uninstallString })
+          btn.textContent = '제거 프로그램을 열었어요'
+          btn.disabled = true
+        } catch (err) {
+          alert('제거 프로그램을 실행하지 못했어요: ' + (err as Error).message)
+        }
+      })
+    })
+  } catch (err) {
+    host.innerHTML = `<div class="note">프로그램 목록을 읽지 못했어요: ${esc((err as Error).message)}</div>`
+  }
+}
+
+/** 무엇을 왜 제외했는지 — "안 건드린 것"을 보여주는 게 신뢰의 근거다. */
+function excludedBlock(d: any): string {
+  if (!d.excluded?.length) return ''
+  return `<details style="margin-top:16px">
+    <summary style="cursor:pointer;font-size:13px;color:var(--muted)">제안하지 않은 ${d.excludedCount}개와 그 이유</summary>
+    <div style="margin-top:8px">${d.excluded.map((e: any) =>
+      `<div style="font-size:12px;color:var(--muted);padding:3px 0">${esc(e.name)} — ${esc(e.reason)}</div>`).join('')}</div>
+  </details>`
+}
+
+/* ── 다른 드라이브로 옮기기 ──────────────────────────────────── */
+let moveDest: string | null = null
+
+async function loadMove() {
+  const host = $('move-body')
+  host.innerHTML = `<div class="card"><div class="empty">옮길 폴더와 대상 드라이브를 고르면 계획을 보여드려요.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      <button class="opt" id="mv-src">옮길 폴더 고르기</button>
+      <button class="opt" id="mv-dst">대상 드라이브 고르기</button>
+    </div>
+    <div id="mv-status" style="font-size:12.5px;color:var(--muted);margin-top:10px"></div></div>`
+
+  let src: string | null = null
+  const status = () => {
+    $('mv-status').textContent =
+      `${src ? '옮길 폴더: ' + src : '옮길 폴더를 고르세요'} · ${moveDest ? '대상: ' + moveDest : '대상 드라이브를 고르세요'}`
+  }
+  status()
+
+  const pick = async () => (await TAURI.dialog.open({ directory: true })) as string | null
+
+  $('mv-src').addEventListener('click', async () => {
+    src = await pick(); status(); if (src && moveDest) planMove(src, moveDest)
+  })
+  $('mv-dst').addEventListener('click', async () => {
+    moveDest = await pick(); status(); if (src && moveDest) planMove(src, moveDest)
+  })
+}
+
+async function planMove(src: string, dest: string) {
+  const host = $('move-body')
+  const prev = host.innerHTML
+  host.innerHTML = prev + `<div class="empty">옮길 수 있는 것을 찾는 중…</div>`
+  try {
+    const d = await engine('relocate-plan', [src, dest])
+    if (!d.destination.ok) {
+      host.innerHTML = prev + `<div class="note">${esc(d.destination.reason)}</div>`
+      return
+    }
+    if (!d.count) {
+      host.innerHTML = prev + `<div class="empty">옮길 만한 파일(100MB 이상)이 없어요.${
+        d.refusedCount ? ` 안전을 위해 제외한 항목이 ${d.refusedCount}개 있습니다.` : ''}</div>`
+      return
+    }
+    host.innerHTML = prev + `<div class="card" style="margin-top:12px">
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <h2 style="font-size:16px;font-weight:750">${d.count.toLocaleString()}개 · ${fmtBytes(d.bytes)}</h2>
+        <span style="margin-left:auto;font-size:12.5px;color:var(--muted)">→ ${esc(d.destFolder)}</span>
+      </div>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:4px">지우지 않습니다. 옮긴 기록이 남아 언제든 되돌릴 수 있어요.</div>
+      ${d.items.slice(0, 30).map((it: any) => `<div style="padding:7px 0;border-top:1px solid var(--line);font-size:12.5px">
+        <div style="color:var(--ink-2)">${esc(it.path)}</div>
+        <div style="color:var(--muted)">${fmtBytes(it.size)} · ${esc(it.meaning)}</div></div>`).join('')}
+      ${d.refusedCount ? `<div style="font-size:12px;color:var(--muted);margin-top:10px">옮기면 위험해서 제외한 항목 ${d.refusedCount}개 (프로그램 폴더·앱 설정·동기화 폴더 등)</div>` : ''}
+      <button class="oneclick" id="mv-apply" style="margin-top:14px">${fmtBytes(d.bytes)} 옮기기</button>
+    </div>`
+
+    $('mv-apply').addEventListener('click', async () => {
+      const btn = $('mv-apply') as HTMLButtonElement
+      btn.disabled = true; btn.textContent = '옮기는 중…'
+      try {
+        const r = await engine('relocate-apply', [src, dest])
+        alert(`${r.movedCount.toLocaleString()}개(${fmtBytes(r.movedBytes)})를 옮겼어요.` +
+          (r.failed.length ? `\n${r.failed.length}개는 건너뛰었습니다.` : ''))
+        loadMove()
+      } catch (err) {
+        alert('옮기지 못했어요: ' + (err as Error).message)
+        btn.disabled = false
+      }
+    })
+  } catch (err) {
+    host.innerHTML = prev + `<div class="note">계획을 세우지 못했어요: ${esc((err as Error).message)}</div>`
+  }
 }
 
 /* ── 격리함 (데스크톱: 실제 목록 + 되돌리기) ─────────────────── */
