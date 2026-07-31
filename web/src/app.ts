@@ -334,7 +334,12 @@ async function checkUpdate() {
     const body = $('um-body')
     const progress = $('um-progress')
     $('um-title').textContent = `업데이트 v${m.version}이 있어요`
-    body.innerHTML = `지금 버전은 v${APP_VERSION}이에요. ` + (m.notes ? esc(m.notes) + ' ' : '') + '받아서 자동으로 설치할게요 — 추가로 누르실 건 없어요.'
+    // "추가로 누르실 건 없어요"는 이 버튼을 누른 '뒤'의 얘기다 — 버튼 옆에서 하면
+    // 안 눌러도 되는 것처럼 읽힌다. 확인이 필요하다는 걸 먼저 말한다.
+    body.innerHTML =
+      `지금 버전은 v${APP_VERSION}이에요. ` +
+      (m.notes ? esc(m.notes) + ' ' : '') +
+      '확인하시면 받아서 검증한 뒤 설치할게요 — 그 뒤로 누르실 건 없어요.'
     modal.style.display = 'flex'
 
     $('um-later').onclick = () => { modal.style.display = 'none' }

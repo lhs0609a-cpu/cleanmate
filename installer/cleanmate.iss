@@ -75,9 +75,11 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
   Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
-; 설치/업데이트 후 앱 실행.
+; 설치/업데이트 후 앱 실행 — 경로에 따라 아래 두 줄 중 하나만 탄다(배타적).
+;   수동 설치: 1번 줄. postinstall이라 완료 화면의 체크박스가 되고, 창을 띄운다.
+;   자동 업데이트: 2번 줄. WizardSilent일 때만 돌고 트레이로 조용히 재시작한다.
 ; nowait: 설치 프로그램이 앱을 기다리지 않고 끝남.
-; skipifsilent 아님 — 자동 업데이트(silent) 후에도 앱을 다시 띄워야 하므로 항상 실행.
+; runasoriginaluser: 업데이트 설치가 승격돼 있어도 앱은 원래 사용자 권한으로 띄운다.
 Filename: "{app}\{#AppExeName}"; Parameters: "--updated"; \
   Description: "{#AppName} 실행"; Flags: nowait postinstall skipifsilent
 ; 무인(자동 업데이트) 경로에서는 트레이로 조용히 재시작
