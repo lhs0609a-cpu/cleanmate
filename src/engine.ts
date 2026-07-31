@@ -39,6 +39,16 @@ interface UnknownSpec {
   yesLabel: string
   yesPreview: (bytes: string, count: number) => string
   noLabel: string
+  /**
+   * 첫 번째 선택지가 실제로 뜻하는 결과. 기본은 CANDIDATE(정리 후보).
+   *
+   * ★ 이걸 명시할 수 있어야 하는 이유: 첫 선택지를 무조건 CANDIDATE로 박아두면,
+   *   라벨이 "옮길래요"·"확인할게요"처럼 정리와 반대인 질문에서 사용자 의도가
+   *   뒤집힌다. 실제로 U7에서 "옮길래요"(= 지우지 말고 이동)가 삭제 후보로,
+   *   "지워도 돼요"가 보존으로 매핑돼 있었다. 삭제 도구에서 이런 반전은
+   *   그냥 버그가 아니라 사고다.
+   */
+  yesOutcome?: 'CANDIDATE' | 'KEEP' | 'REVIEW_ONE_BY_ONE'
 }
 
 const SPECS: Record<Unknown, UnknownSpec> = {
@@ -93,17 +103,23 @@ const SPECS: Record<Unknown, UnknownSpec> = {
     question: (b, c) => `같은 내용으로 보이는 파일 ${c}개(${b})가 있는데, 어느 게 원본인지 확실하지 않아요. 확인해주시겠어요?`,
     rationale: '자동 판단에 실패한 중복이라 원본을 잘못 지울 위험이 있습니다.',
     yesLabel: '확인할게요',
+    // '확인할게요'는 정리 동의가 아니라 '하나씩 보겠다'는 뜻이다.
+    yesOutcome: 'REVIEW_ONE_BY_ONE',
     yesPreview: (b, c) => `${c}개를 하나씩 비교해서 보여드려요.`,
     noLabel: '나중에',
   },
   U7_MOVE_OR_DELETE: {
     infoGain: 0.85,
     ease: 0.85,
-    question: (b, c) => `아주 큰 파일 ${c}개(${b})가 있어요. 지우기는 아까운 것 같은데 — 지울까요, 아니면 다른 드라이브나 클라우드로 옮길까요?`,
-    rationale: '용량은 크지만 필요할 수 있어서, 삭제 말고 이동이라는 선택지를 먼저 드립니다.',
-    yesLabel: '옮길래요',
-    yesPreview: (b, c) => `${c}개(${b})를 이동 대상으로. 옮길 위치를 고르실 수 있어요.`,
-    noLabel: '지워도 돼요',
+    question: (b, c) => `아주 큰 파일 ${c}개(${b})가 있어요. 지우기는 아까운데 — 지워도 될까요?`,
+    rationale: '용량은 크지만 필요할 수 있어서, 지우기 전에 먼저 여쭤봅니다.',
+    // 정리에 동의하는 쪽을 첫 선택지로 둔다. 반대로 두면 "옮길래요"(= 지우지 말 것)가
+    // 삭제 후보가 된다 — 실제로 그렇게 돼 있었다.
+    yesLabel: '네, 지워도 돼요',
+    yesPreview: (b, c) => `${c}개(${b})를 삭제 후보로. 바로 지우지 않고 목록을 먼저 보여드려요.`,
+    // 다른 드라이브로 '옮기기'는 아직 구현이 없다. 없는 기능을 있는 것처럼
+    // 제안하지 않고, 그대로 두는 선택지로만 남긴다. (docs/다음-작업.md)
+    noLabel: '아니요, 옮길 거라 둘래요',
   },
 }
 
@@ -170,7 +186,7 @@ export function buildQuestions(clusters: Cluster[]): Question[] {
         options: [
           {
             label: spec.yesLabel,
-            outcome: 'CANDIDATE',
+            outcome: spec.yesOutcome ?? 'CANDIDATE',
             preview: spec.yesPreview(b, c.count),
           },
           {
@@ -178,11 +194,16 @@ export function buildQuestions(clusters: Cluster[]): Question[] {
             outcome: 'KEEP',
             preview: '그대로 두겠습니다. 아무것도 건드리지 않아요.',
           },
-          {
-            label: '하나씩 볼게요',
-            outcome: 'REVIEW_ONE_BY_ONE',
-            preview: `${c.count}개를 목록으로 보여드릴게요.`,
-          },
+          // 첫 선택지가 이미 '하나씩 보기'면 같은 선택지를 두 번 주지 않는다.
+          ...(spec.yesOutcome === 'REVIEW_ONE_BY_ONE'
+            ? []
+            : [
+                {
+                  label: '하나씩 볼게요',
+                  outcome: 'REVIEW_ONE_BY_ONE' as const,
+                  preview: `${c.count}개를 목록으로 보여드릴게요.`,
+                },
+              ]),
         ],
       }
     })
