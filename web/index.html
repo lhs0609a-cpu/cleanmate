@@ -3,23 +3,23 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>테라클린 — 지워도 되는 것만 지웁니다</title>
-<meta name="description" content="테라클린은 대신 다 지워버리지 않습니다. 지울 파일을 이유와 함께 먼저 보여주고, 확실한 건 알아서, 애매한 건 딱 물어보고, 위험한 건 아예 잠급니다. 프로그램은 무료 · 30일 되돌리기 · 100% 온디바이스." />
+<title>테라클린 — 다 지웠는데도 용량이 안 줄죠</title>
+<meta name="description" content="다 지웠는데도 용량이 안 주는 이유가 있습니다 — 정작 자리를 차지하는 건 탐색기에 안 보입니다. 테라클린은 그걸 찾아내고, 지워도 되는 것만 이유와 함께 보여줍니다. 무료 · 30일 되돌리기 · 100% 온디바이스." />
 <link rel="canonical" href="https://cleanmate-henna.vercel.app/" />
 
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="테라클린" />
 <meta property="og:url" content="https://cleanmate-henna.vercel.app/" />
-<meta property="og:title" content="테라클린 — 지워도 되는 것만 지웁니다" />
-<meta property="og:description" content="지워도 되는 것과 건드리면 안 되는 것을 알려주고 함께 정리합니다. 프로그램은 무료 · 30일 되돌리기 · 100% 온디바이스." />
+<meta property="og:title" content="테라클린 — 다 지웠는데도 용량이 안 줄죠" />
+<meta property="og:description" content="정작 자리를 차지하는 건 탐색기에 안 보입니다. 실측한 PC에서 40.7GB가 스캐너에 0으로 보였습니다. 테라클린은 그걸 찾아내고, 지워도 되는 것만 이유와 함께 보여줍니다." />
 <meta property="og:image" content="https://cleanmate-henna.vercel.app/og.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <meta property="og:image:alt" content="테라클린 — 지워도 되는 것으로 확인된 용량 14.6GB, 잠근 용량 41.8GB" />
 <meta property="og:locale" content="ko_KR" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="테라클린 — 지워도 되는 것만 지웁니다" />
-<meta name="twitter:description" content="지워도 되는 것과 건드리면 안 되는 것을 알려주고 함께 정리합니다. 프로그램은 무료." />
+<meta name="twitter:title" content="테라클린 — 다 지웠는데도 용량이 안 줄죠" />
+<meta name="twitter:description" content="정작 자리를 차지하는 건 탐색기에 안 보입니다. 테라클린은 그걸 찾아내고, 지워도 되는 것만 이유와 함께 보여줍니다. 무료." />
 <meta name="twitter:image" content="https://cleanmate-henna.vercel.app/og.png" />
 
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
@@ -126,7 +126,22 @@
   .hero .lede{margin:28px auto 0;max-width:44ch;font-size:clamp(16px,1.9vw,19.5px);color:var(--ink-2);line-height:1.8}
   .hero .lede b{color:var(--ink);font-weight:700}
   .cta{display:flex;flex-wrap:wrap;gap:13px;justify-content:center;margin-top:36px}
-  .dlmeta{margin-top:16px;font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .trust{margin-top:18px;font-size:13.5px;color:var(--ink-2);font-weight:600}
+  .dlmeta{margin-top:8px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+  /* 통증 섹션 — 왜 계속 부족한가 */
+  .pains{display:grid;gap:18px;grid-template-columns:1fr;margin-top:44px;text-align:left}
+  @media(min-width:800px){.pains{grid-template-columns:repeat(3,1fr)}}
+  .pain{background:linear-gradient(180deg,var(--surface),var(--bg-2));border:1px solid var(--line);
+    border-radius:18px;padding:30px 28px;transition:.2s}
+  .pain:hover{border-color:var(--line-2);transform:translateY(-3px)}
+  .pain .pn{font-size:clamp(34px,5vw,46px);font-weight:860;letter-spacing:-.04em;line-height:1;
+    font-variant-numeric:tabular-nums}
+  .pain .pn .u{font-size:.42em;font-weight:750;letter-spacing:-.01em}
+  .pain h3{font-size:19px;margin:16px 0 10px;letter-spacing:-.025em}
+  .pain p{font-size:15px;color:var(--ink-2);line-height:1.75}
+  .pain p b{color:var(--ink);font-weight:700}
+  .measured{margin:30px auto 0;max-width:60ch;font-size:13.5px;color:var(--faint);line-height:1.7}
   .osnote{display:none;margin:14px auto 0;max-width:52ch;font-size:14px;color:var(--amb);line-height:1.7;
     background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.22);border-radius:12px;padding:12px 18px}
   .osnote.on{display:block}
@@ -300,16 +315,17 @@
   <div class="grid-bg" aria-hidden="true"></div>
   <div class="aurora" aria-hidden="true"></div>
   <div class="wrap">
-    <span class="pill"><span class="d" aria-hidden="true"></span>프로그램 무료 · 100% 온디바이스 · 30일 되돌리기</span>
-    <h1>지워도 되는 것만<br><span class="grad">지웁니다.</span></h1>
-    <p class="lede">테라 단위로 쌓이는데 뭘 지워야 할지는 모르겠죠.
-      테라클린은 대신 다 지워버리지 않습니다 —
-      <b>지울 파일을 이유와 함께 먼저 보여주고</b> 지웁니다.
+    <span class="pill"><span class="d" aria-hidden="true"></span>"저장 공간이 부족합니다" — 이번 달에만 몇 번째인가요</span>
+    <h1>다 지웠는데도<br><span class="grad">용량이 안 줄죠.</span></h1>
+    <p class="lede">큰 파일을 지워도, 청소 프로그램을 돌려도 그대로인 <b>이유가 있습니다.</b>
+      정작 자리를 차지하는 건 <b>탐색기에 아예 안 보이거든요.</b>
+      테라클린은 그걸 찾아내고, 지워도 되는 것만 이유와 함께 보여줍니다 —
       확실한 건 알아서, <b>애매한 건 딱 3~4개만</b> 묻고, <b>위험한 건 아예 잠급니다.</b></p>
     <div class="cta">
       <a class="btn btn-pri btn-lg" id="hero-dl" href="#get">Windows용 무료 다운로드</a>
       <a class="btn btn-ghost btn-lg" href="/app.html">브라우저에서 체험 →</a>
     </div>
+    <p class="trust">무료 · 30일 되돌리기 · 파일은 기기를 떠나지 않습니다</p>
     <div class="dlmeta" id="hero-ver" aria-live="polite">최신 버전 확인 중…</div>
     <p class="osnote" id="os-note"></p>
 
@@ -352,6 +368,41 @@
     <div class="stat reveal"><div class="n grad">0<span class="u">원</span></div><div class="l">프로그램<br>이용료</div></div>
   </div>
 </div>
+
+<!-- 통증 — 왜 계속 부족한가 -->
+<section id="pain">
+  <div class="wrap center">
+    <span class="kick reveal"><span class="en">The real cause</span> · 왜 계속 부족한가</span>
+    <h2 class="stitle reveal">큰 파일이 문제가 아닙니다</h2>
+    <p class="ssub reveal">지울 게 없는 게 아니라, <b>찾을 수 없는 곳에 쌓입니다.</b>
+      그래서 아무리 정리해도 며칠이면 원위치입니다.</p>
+    <div class="pains">
+      <div class="pain reveal">
+        <div class="pn grad">40.7<span class="u">GB</span></div>
+        <h3>탐색기가 못 보는 용량</h3>
+        <p>최대절전 파일·가상메모리는 윈도우가 잠가둬서 용량 계산에 아예 안 잡힙니다.
+          실측한 PC에서 이 40.7GB가 <b>스캐너에 0으로 보였습니다.</b>
+          아무리 뒤져도 못 찾는 게 당연했던 겁니다.</p>
+      </div>
+      <div class="pain reveal">
+        <div class="pn grad">39<span class="u">만 개</span></div>
+        <h3>열어봐도 알 수 없는 것들</h3>
+        <p>AppData 한 폴더에만 39만 개, 89.2GB가 쌓여 있었습니다.
+          이름만 봐서는 지워도 되는 건지 알 수 없으니
+          <b>결국 그대로 닫게 됩니다.</b></p>
+      </div>
+      <div class="pain reveal">
+        <div class="pn grad">며칠</div>
+        <h3>지워도 다시 차는 주기</h3>
+        <p>눈에 보이는 큰 파일부터 지우면 잠깐은 줄어듭니다.
+          쌓이는 원인은 그대로라 며칠이면 돌아옵니다.
+          <b>이게 반복되면 만성이 됩니다.</b></p>
+      </div>
+    </div>
+    <p class="measured reveal">위 숫자는 개발용 PC 한 대를 실제로 측정한 값입니다(윈도우 11, RAM 31.7GB).
+      환경마다 다르지만, <b style="color:var(--ink-2)">"안 보이는 곳에 쌓인다"는 구조는 같습니다.</b></p>
+  </div>
+</section>
 
 <!-- 차별점 -->
 <section id="why">
@@ -419,7 +470,7 @@
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/></svg></div>
         <h3>30일 되돌리기</h3><p>지운 건 바로 사라지지 않고 격리함에 30일 머뭅니다. 언제든 원래 자리로. 되돌리기 없는 청소 도구가 사고를 낸 그 자리를 대신합니다.</p></div>
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></div>
-        <h3>숨은 공간까지</h3><p>"정리해도 안 줄던" 진짜 이유 — 최대절전 파일·가상메모리 같은 숨은 수십 GB를, 파일 삭제가 아니라 안전한 공식 명령으로 회수합니다.</p></div>
+        <h3>숨은 공간 회수</h3><p>탐색기가 못 보는 최대절전 파일·가상메모리를 별도 경로로 찾아냅니다. 파일을 지우는 게 아니라 윈도우 공식 명령으로 회수하고, 원하면 되돌릴 수 있습니다.</p></div>
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
         <h3>기기를 떠나지 않음</h3><p>분석은 전부 당신 컴퓨터 안에서. 서버도 업로드도 없습니다. 웹 데모 화면은 브라우저가 네트워크를 아예 차단하도록 배포했습니다.</p></div>
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></div>
@@ -499,8 +550,9 @@
 <section id="get">
   <div class="wrap">
     <div class="final reveal">
-      <h2>보면서 정리하세요</h2>
-      <p>설치하고 원클릭. 지울 목록을 이유와 함께 보여드립니다. 프로그램은 무료입니다.</p>
+      <h2>이번엔 원인부터 찾으세요</h2>
+      <p>설치하고 원클릭이면, 안 보이던 용량까지 찾아 지울 목록을 이유와 함께 보여드립니다.
+        지운 건 30일간 되돌릴 수 있고, 프로그램은 무료입니다.</p>
       <a class="btn btn-pri btn-lg" id="final-dl" href="https://github.com/lhs0609a-cpu/teraclean-releases/releases">Windows용 무료 다운로드</a>
       <div class="meta" id="final-ver" aria-live="polite">최신 버전 확인 중…</div>
     </div>
