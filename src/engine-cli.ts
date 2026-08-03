@@ -57,6 +57,15 @@ import { probeHiberfil } from './probes/hiberfil.ts'
 import { gatherReclaimFacts, probeRecycleBin, probeUpdateCache } from './probes/reclaim.ts'
 import { probeStartup, setStartupEnabled } from './probes/startup.ts'
 import {
+  planFolderTidy,
+  applyFolderTidy,
+  undoFolderTidy,
+  readFolderEntries,
+  tidyFolderName,
+  type FolderEntry,
+} from './tidyfolder.ts'
+import { quarantine } from './quarantine.ts'
+import {
   ROUTINES,
   emptyState,
   markDone,
@@ -172,6 +181,60 @@ async function writeTidy(state: TidyState): Promise<void> {
   const file = tidyFile()
   await mkdir(dirname(file), { recursive: true })
   await writeFile(file, JSON.stringify(state), 'utf8')
+}
+
+/* ── 콘텐츠가 시키는 일을 앱이 대신 한다 ───────────────────────
+   생활 정리의 '바탕화면 정리'·'다운로드 폴더 비우기' 단계를 실제로 실행한다.
+   글만 주면 대부분 안 한다. */
+
+/** 정리할 수 있는 폴더 — 임의 경로를 받지 않는다(실수로 시스템 폴더를 정리하는 사고 방지) */
+function tidyTargetPath(target: string): string | null {
+  const home = homedir()
+  switch (target) {
+    case 'desktop': return join(home, 'Desktop')
+    case 'downloads': return join(home, 'Downloads')
+    default: return null
+  }
+}
+
+/**
+ * 바로가기(.lnk)가 가리키는 대상이 아직 있는지 확인한다.
+ *
+ * 왜 PowerShell인가: .lnk는 셸 링크 바이너리라 경로가 파일 안에 그대로 있지 않다.
+ * WScript.Shell이 윈도우 공식 해석기다. 실패하면 '모른다'로 두고 안 건드린다 —
+ * 못 읽었다고 깨진 것으로 단정하면 멀쩡한 바로가기를 치운다.
+ */
+async function markBrokenLinks(entries: FolderEntry[]): Promise<FolderEntry[]> {
+  const links = entries.filter((e) => !e.isDir && e.name.toLowerCase().endsWith('.lnk'))
+  if (!links.length || process.platform !== 'win32') return entries
+
+  const script = `
+    $ErrorActionPreference = 'SilentlyContinue'
+    $sh = New-Object -ComObject WScript.Shell
+    $out = @()
+    foreach ($p in ($env:TC_LINKS -split '\\|')) {
+      if (-not $p) { continue }
+      $t = $sh.CreateShortcut($p).TargetPath
+      $out += [PSCustomObject]@{ path = $p; target = "$t"; broken = ($t -and -not (Test-Path $t)) }
+    }
+    [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($out | ConvertTo-Json -Compress -Depth 3)))
+  `
+  try {
+    const { stdout } = await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      { windowsHide: true, env: { ...process.env, TC_LINKS: links.map((l) => l.path).join('|') } }
+    )
+    const parsed = JSON.parse(Buffer.from(stdout.trim(), 'base64').toString('utf8'))
+    const rows: any[] = Array.isArray(parsed) ? parsed : [parsed]
+    const byPath = new Map(rows.map((r) => [r.path, r]))
+    return entries.map((e) => {
+      const hit = byPath.get(e.path)
+      return hit ? { ...e, linkTarget: hit.target, linkBroken: !!hit.broken } : e
+    })
+  } catch {
+    return entries // 못 읽으면 아무것도 깨진 것으로 치지 않는다
+  }
 }
 
 async function isDir(p: string): Promise<boolean> {
@@ -421,6 +484,64 @@ async function main() {
         const state = await readTidy()
         const today = args[0] ?? todayISO()
         out({ today, ...planToday(state, today), total: ROUTINES.length })
+        break
+      }
+      /**
+       * 바탕화면·다운로드 정리 — 미리보기가 기본이다.
+       * tidy-folder-plan  <desktop|downloads>  무엇을 옮길지 보여주기만 한다
+       * tidy-folder-apply <desktop|downloads>  실제로 옮긴다(깨진 바로가기는 격리)
+       * tidy-folder-undo  <desktop|downloads>  전부 원래 자리로
+       */
+      case 'tidy-folder-plan':
+      case 'tidy-folder-apply': {
+        const folder = tidyTargetPath(args[0] ?? '')
+        if (!folder) fail('정리할 곳은 desktop 또는 downloads 입니다.')
+        if (!(await isDir(folder))) fail(`폴더를 찾지 못했어요: ${folder}`)
+
+        const entries = await markBrokenLinks(await readFolderEntries(folder))
+        const plan = planFolderTidy(entries, { folder, keepDays: args[1] ? +args[1] : undefined })
+
+        if (command === 'tidy-folder-plan') {
+          out({
+            folder,
+            destFolder: plan.destFolder,
+            moves: plan.moves.slice(0, 200),
+            moveCount: plan.moves.length,
+            bytes: plan.bytes,
+            broken: plan.broken,
+            keepCount: plan.keep.length,
+          })
+          break
+        }
+
+        const moved = await applyFolderTidy(plan)
+        // 깨진 바로가기는 옮겨봐야 쓰레기가 이동할 뿐이라 격리로 보낸다(30일 되돌리기).
+        const q = plan.broken.length
+          ? await quarantine(
+              plan.broken.map((b) => ({
+                path: b.path,
+                reason: '대상이 사라진 바로가기',
+                zone: 'SAFE' as const,
+                expect: { size: b.size, mtimeMs: b.mtimeMs },
+              }))
+            )
+          : { quarantined: [], failed: [] as { path: string; reason: string }[] }
+
+        out({
+          folder,
+          destFolder: moved.destFolder,
+          movedCount: moved.movedCount,
+          movedBytes: moved.movedBytes,
+          brokenQuarantined: q.quarantined.length,
+          failed: [...moved.failed, ...q.failed],
+        })
+        break
+      }
+      case 'tidy-folder-undo': {
+        const folder = tidyTargetPath(args[0] ?? '')
+        if (!folder) fail('되돌릴 곳은 desktop 또는 downloads 입니다.')
+        const dest = join(folder, args[1] ?? tidyFolderName())
+        out({ destFolder: dest, ...(await undoFolderTidy(dest)) })
         break
       }
       case 'tidy-done':

@@ -380,6 +380,72 @@ function wireAssists(host: HTMLElement, findings: any[]) {
    판단(오늘 뭘 할 때가 됐나)은 양쪽 다 같은 순수 함수를 쓴다. */
 const TIDY_KEY = 'teraclean.tidy'
 
+/** 콘텐츠 항목 → 앱이 실제로 실행할 수 있는 폴더. 임의 경로는 받지 않는다. */
+const FOLDER_ACTION: Record<string, string> = {
+  'desktop-icons': 'desktop',
+  downloads: 'downloads',
+}
+
+/**
+ * 콘텐츠의 단계를 앱이 실행한다 — 단, 미리보기가 먼저다.
+ * "정리했습니다"라고 통보하는 도구가 되지 않으려면 이 순서를 지켜야 한다.
+ */
+async function tidyFolderFlow(target: string, host: HTMLElement) {
+  host.innerHTML = `<div style="font-size:12.5px;color:var(--muted);margin-top:10px">무엇을 옮길지 확인하는 중…</div>`
+  try {
+    const p = await engine('tidy-folder-plan', [target])
+    if (!p.moveCount && !p.broken.length) {
+      host.innerHTML = `<div style="font-size:13px;color:var(--safe);margin-top:10px">
+        이미 정리돼 있어요. 옮길 게 없습니다.</div>`
+      return
+    }
+
+    const list = p.moves.slice(0, 8).map((m: any) =>
+      `<div style="font-size:12px;color:var(--ink-2);padding:2px 0">· ${esc(m.name)}</div>`).join('')
+
+    host.innerHTML = `
+      <div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px;background:var(--surface-2)">
+        <div style="font-size:13.5px;font-weight:650">${p.moveCount.toLocaleString()}개를 옮길게요
+          ${p.bytes ? `<span style="color:var(--muted);font-weight:400">· ${fmtBytes(p.bytes)}</span>` : ''}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">
+          → ${esc(p.destFolder)}<br>최근 ${p.keepCount}개는 작업 중으로 보고 그대로 둡니다.
+          ${p.broken.length ? `<br>대상이 사라진 바로가기 ${p.broken.length}개는 격리함으로 보냅니다(30일 되돌리기).` : ''}
+        </div>
+        <div style="margin-top:8px">${list}${p.moveCount > 8 ? `<div style="font-size:12px;color:var(--muted)">…외 ${p.moveCount - 8}개</div>` : ''}</div>
+        <button class="btn" data-tidyapply="${esc(target)}" style="margin-top:10px">옮기기</button>
+        <span style="font-size:12px;color:var(--muted);margin-left:8px">지우지 않습니다. 언제든 되돌릴 수 있어요.</span>
+      </div>`
+
+    host.querySelector<HTMLButtonElement>('[data-tidyapply]')!.addEventListener('click', async (ev) => {
+      const btn = ev.currentTarget as HTMLButtonElement
+      btn.disabled = true
+      btn.textContent = '옮기는 중…'
+      try {
+        const r = await engine('tidy-folder-apply', [target])
+        host.innerHTML = `<div style="border:1px solid var(--line);border-left:3px solid var(--safe);
+              border-radius:8px;padding:12px;margin-top:10px;background:var(--surface)">
+          <div style="font-size:13.5px;font-weight:650;color:var(--safe)">${r.movedCount.toLocaleString()}개를 옮겼어요</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">
+            ${esc(r.destFolder)}<br>
+            ${r.brokenQuarantined ? `깨진 바로가기 ${r.brokenQuarantined}개는 격리함에 있어요. ` : ''}
+            ${r.failed.length ? `${r.failed.length}개는 사용 중이라 건너뛰었습니다.` : ''}</div>
+          <button class="opt" data-tidyundo="${esc(target)}" style="margin-top:10px">되돌리기</button>
+        </div>`
+        host.querySelector<HTMLButtonElement>('[data-tidyundo]')!.addEventListener('click', async (e2) => {
+          const ub = e2.currentTarget as HTMLButtonElement
+          ub.disabled = true
+          const back = await engine('tidy-folder-undo', [target])
+          ub.textContent = `${back.restoredCount.toLocaleString()}개를 원래 자리로 되돌렸어요`
+        })
+      } catch (err) {
+        host.innerHTML = `<div class="note" style="margin-top:10px">옮기지 못했어요: ${esc((err as Error).message)}</div>`
+      }
+    })
+  } catch (err) {
+    host.innerHTML = `<div class="note" style="margin-top:10px">확인하지 못했어요: ${esc((err as Error).message)}</div>`
+  }
+}
+
 function readLocalTidy(): TidyState {
   try {
     const raw = localStorage.getItem(TIDY_KEY)
@@ -432,7 +498,10 @@ async function loadTidy(mark?: { id: string; done: boolean }) {
           ${r.steps.map((s: string) => `<li>${esc(s)}</li>`).join('')}
         </ol>
         ${r.tip ? `<div style="font-size:12.5px;color:var(--muted);margin-top:8px">막히는 지점: ${esc(r.tip)}</div>` : ''}
-        ${r.appTab ? `<button class="opt" data-goto="${esc(r.appTab)}" style="margin-top:10px">이건 앱이 대신 해드릴게요 →</button>` : ''}
+        ${FOLDER_ACTION[r.id] && inTauri
+          ? `<button class="opt" data-tidyfolder="${FOLDER_ACTION[r.id]}" style="margin-top:10px">이건 앱이 대신 해드릴게요 — 먼저 보여드릴게요</button>
+             <div data-plan="${FOLDER_ACTION[r.id]}"></div>`
+          : r.appTab ? `<button class="opt" data-goto="${esc(r.appTab)}" style="margin-top:10px">이건 앱이 대신 해드릴게요 →</button>` : ''}
       </details>
     </div>`
   }
@@ -466,6 +535,14 @@ async function loadTidy(mark?: { id: string; done: boolean }) {
   })
   host.querySelectorAll<HTMLButtonElement>('[data-goto]').forEach((btn) => {
     btn.addEventListener('click', () => go(btn.dataset.goto!))
+  })
+  host.querySelectorAll<HTMLButtonElement>('[data-tidyfolder]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tidyfolder!
+      btn.disabled = true
+      const panel = host.querySelector<HTMLElement>(`[data-plan="${target}"]`)
+      if (panel) tidyFolderFlow(target, panel)
+    })
   })
 }
 
