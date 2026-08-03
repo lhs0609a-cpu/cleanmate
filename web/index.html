@@ -146,33 +146,6 @@
     background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.22);border-radius:12px;padding:12px 18px}
   .osnote.on{display:block}
 
-  /* 앱 목업 */
-  .mockwrap{margin:60px auto 0;max-width:940px;position:relative}
-  .mockwrap::after{content:"";position:absolute;inset:auto 8% -30px 8%;height:80px;background:radial-gradient(50% 100% at 50% 0,rgba(47,228,210,.28),transparent 70%);filter:blur(20px);z-index:-1}
-  .win{background:linear-gradient(180deg,var(--surface),var(--bg-2));border:1px solid var(--line-2);border-radius:16px;overflow:hidden;box-shadow:0 40px 120px -40px rgba(0,0,0,.8),var(--glow);text-align:left}
-  .win-top{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
-  .dot{width:11px;height:11px;border-radius:50%;flex:none}
-  .win-title{margin-left:10px;font-size:13px;color:var(--muted);font-weight:600}
-  .win-body{padding:clamp(20px,3vw,34px)}
-  .m-top{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
-  .m-num{font-size:clamp(30px,5vw,46px);font-weight:850;letter-spacing:-.035em;line-height:1}
-  .m-cap{font-size:13.5px;color:var(--muted);margin-bottom:6px}
-  .m-btn{margin-left:auto;background:linear-gradient(103deg,var(--acc),var(--acc-2));color:var(--acc-ink);font-weight:750;font-size:14.5px;padding:11px 20px;border-radius:11px;white-space:nowrap}
-  .m-bars{margin-top:26px;display:flex;flex-direction:column;gap:15px}
-  .m-row{display:grid;grid-template-columns:96px 1fr auto;gap:14px;align-items:center;font-size:13.5px}
-  .m-lab{font-size:13px;font-weight:750;color:var(--z);white-space:nowrap}
-  .m-track{height:11px;border-radius:5px;background:rgba(255,255,255,.05);overflow:hidden}
-  .m-fill{height:100%;border-radius:5px;background:var(--z);width:var(--w)}
-  .m-val{font-size:13px;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
-  @media(max-width:560px){
-    .m-row{grid-template-columns:1fr auto;gap:6px 12px}
-    .m-track{grid-column:1/-1;order:3}
-  }
-  .zA{--z:var(--safe)} .zB{--z:var(--amb)} .zC{--z:var(--lock)}
-  .m-kept{margin-top:22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:rgba(74,222,128,.05)}
-  .m-kept .k{font-weight:850;color:var(--safe);font-size:18px;font-variant-numeric:tabular-nums}
-  .m-kept .kt{font-size:14px;color:var(--ink-2)}
-  .mocknote{margin-top:14px;text-align:center;font-size:12.5px;color:var(--faint)}
 
   /* 스탯 밴드 */
   .band{border-block:1px solid var(--line);margin-top:80px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.015))}
@@ -287,6 +260,166 @@
   .foot .sp{margin-left:auto}
   .foot a:hover{color:var(--acc)}
   .fineprint{margin-top:20px;font-size:13px;color:var(--faint);line-height:1.8}
+  /* ── 앱 화면 목업(shot) ──────────────────────────────────────
+     /app.html(= 데스크톱 앱의 실제 프론트엔드)의 마크업·색·문구를 그대로
+     옮겨 왔다. 여기 색과 앱 색이 어긋나는 순간 "실제 화면"이라는 말이
+     거짓이 된다 — 앱 UI를 고치면 이 블록도 같이 고쳐야 한다.
+
+     치수는 전부 em이다. .shot의 font-size 하나만 바꾸면 창 전체가
+     비율 그대로 축소된다(카드 안에 넣는 .sm 변형이 이걸 쓴다). */
+  .shotwrap{position:relative;margin:56px auto 0;max-width:940px}
+  .shotwrap::after{content:"";position:absolute;inset:auto 8% -30px 8%;height:80px;
+    background:radial-gradient(50% 100% at 50% 0,rgba(47,228,210,.26),transparent 70%);filter:blur(20px);z-index:-1}
+  .shotwrap.narrow{max-width:760px}
+  .shotcap{margin-top:14px;text-align:center;font-size:12.5px;color:var(--faint);line-height:1.6}
+  .duo{display:grid;gap:24px;grid-template-columns:1fr;margin-top:44px}
+  @media(min-width:900px){.duo{grid-template-columns:1fr 1fr;align-items:start}}
+
+  .shot{
+    --s-bg:#F7F9FA; --s-surface:#FFFFFF; --s-surface-2:#F1F5F6;
+    --s-ink:#10161C; --s-ink-2:#3B4750; --s-muted:#697A85;
+    --s-line:#DDE4E8; --s-line-2:#C8D3D8;
+    --s-acc:#0B6F76; --s-acc-soft:#E3F1F1;
+    --s-safe:#1A7F4B; --s-amb:#A96206; --s-lock:#B3261E;
+    --s-safe-soft:#E4F3EA; --s-amb-soft:#FBEFDD;
+    position:relative;overflow:hidden;
+    font-size:clamp(10.5px,1.42vw,14px);line-height:1.7;text-align:left;
+    background:var(--s-bg);color:var(--s-ink);
+    border:1px solid var(--line-2);border-radius:14px;
+    box-shadow:0 40px 110px -40px rgba(0,0,0,.85),0 2px 0 rgba(255,255,255,.05) inset;
+  }
+  .shot.sm{font-size:clamp(9.5px,1.05vw,11px);border-radius:11px;box-shadow:0 20px 50px -26px rgba(0,0,0,.8)}
+  /* 랜딩 본문 규칙(.card p·.final p 등)이 목업 안까지 들어오지 못하게 막는 경계선.
+     이게 없으면 기능 카드에 넣은 축소본의 글자 크기·색이 앱과 달라진다. */
+  .shot p,.shot ul,.shot li,.shot h4{font-size:inherit;color:inherit;line-height:inherit;margin:0;max-width:none;text-align:inherit;font-weight:inherit;letter-spacing:inherit}
+  .shot h4{margin:0;font-weight:750;letter-spacing:-.02em}
+  .shot p,.shot ul{margin:0}
+
+  /* 창틀 (Windows 11) */
+  .s-chrome{display:flex;align-items:center;gap:.6em;height:2.6em;padding:0 .9em;background:#E9EEF0;border-bottom:1px solid var(--s-line)}
+  .s-chrome .ic{width:1.3em;height:1.3em;border-radius:.35em;background:linear-gradient(145deg,#0B6F76,#16A6AC);
+    color:#fff;display:grid;place-items:center;font-size:.8em;font-weight:900;flex:none}
+  .s-chrome .nm{font-size:.85em;font-weight:650;color:var(--s-ink-2)}
+  .s-chrome .wb{margin-left:auto;display:flex;gap:1.15em;color:#78878F;font-size:.78em;letter-spacing:0}
+
+  /* 앱 상단 탭 */
+  .s-top{display:flex;align-items:center;gap:1em;height:3.2em;padding:0 1.15em;background:var(--s-surface);
+    border-bottom:1px solid var(--s-line);overflow:hidden}
+  .s-brand{font-weight:800;font-size:1em;white-space:nowrap}
+  .s-brand i{color:var(--s-acc);font-style:normal}
+  .s-nav{display:flex;gap:.2em;margin-left:auto;white-space:nowrap}
+  .s-nav span{font-size:.86em;font-weight:600;color:var(--s-muted);padding:.4em .75em;border-radius:.45em}
+  .s-nav span.on{background:var(--s-acc-soft);color:var(--s-acc)}
+
+  .s-main{padding:1.3em;display:flex;flex-direction:column;gap:1.05em}
+  .s-card{background:var(--s-surface);border:1px solid var(--s-line);border-radius:.85em;padding:1.15em}
+  .s-sechead{display:flex;align-items:baseline;gap:.7em;margin-bottom:.3em}
+  .s-sechead .k{font-size:.85em;color:var(--s-acc);font-weight:750;white-space:nowrap}
+  .s-sechead h4{font-size:1.15em}
+  .shot .s-lede{font-size:.9em;color:var(--s-ink-2)}
+  .shot .s-desc{font-size:.85em;color:var(--s-muted)}
+  .shot .s-desc b,.shot .s-lede b{color:var(--s-ink)}
+
+  /* 홈 히어로 */
+  .s-hero{text-align:center;padding:.5em 0 .2em}
+  .s-big{font-family:var(--mono);font-size:3.5em;font-weight:800;letter-spacing:-.045em;line-height:1;
+    color:var(--s-acc);font-variant-numeric:tabular-nums}
+  .shot .s-hcap{font-size:.92em;color:var(--s-muted);margin-top:.6em}
+  .s-hcap b{color:var(--s-ink)}
+  .s-one{display:block;width:100%;max-width:23em;margin:1.35em auto 0;background:var(--s-acc);color:#fff;
+    border-radius:.75em;padding:1.05em;text-align:center;font-weight:750;font-size:1.05em;
+    box-shadow:0 8px 20px -10px rgba(11,111,118,.85)}
+  .s-one .s{display:block;font-size:.72em;font-weight:500;opacity:.88;margin-top:.15em}
+  .s-sub{display:block;text-align:center;margin-top:.85em;color:var(--s-acc);font-size:.85em;font-weight:600}
+  .shot .s-priv{margin:1em auto 0;max-width:36em;font-size:.82em;color:var(--s-muted);text-align:center;line-height:1.6}
+  .s-priv .d{color:var(--s-safe);font-weight:800}
+  .s-priv b{color:var(--s-ink)}
+  .s-status{text-align:center;font-size:.85em;color:var(--s-muted);margin-top:.7em;font-variant-numeric:tabular-nums}
+
+  /* 존 막대 */
+  .s-zbars{display:flex;flex-direction:column;gap:.8em;margin-top:.9em}
+  .s-zrow{display:grid;grid-template-columns:6.2em 1fr 8.6em;gap:.85em;align-items:center}
+  .s-zlab{font-size:.85em;font-weight:750;color:var(--z);white-space:nowrap}
+  .s-ztrack{height:.72em;background:var(--s-surface-2);border-radius:.22em;overflow:hidden}
+  .s-zfill{display:block;height:100%;background:var(--z);border-radius:.22em;width:var(--w)}
+  .s-zval{font-size:.85em;text-align:right;color:var(--s-ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .shot .s-zdesc{font-size:.82em;color:var(--s-muted);margin-top:.15em}
+  .sfe{--z:var(--s-safe)} .sam{--z:var(--s-amb)} .slk{--z:var(--s-lock)}
+
+  /* 3분할 통계 */
+  .s-3{display:grid;gap:.7em;grid-template-columns:repeat(3,1fr);margin-top:.9em}
+  .s-stat{border:1px solid var(--s-line);border-radius:.7em;padding:.95em}
+  .s-stat .n{font-family:var(--mono);font-size:1.5em;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .s-stat .n.g{color:var(--s-safe)} .s-stat .n.a{color:var(--s-acc)} .s-stat .n.m{color:var(--s-muted)}
+  .shot .s-stat .l{font-size:.78em;color:var(--s-muted);margin-top:.35em;line-height:1.45}
+  @media(max-width:620px){.s-3{grid-template-columns:1fr}.s-zrow{grid-template-columns:4.8em 1fr 6.8em}}
+
+  /* 버튼·배지·주석 */
+  .s-actions{display:flex;gap:.7em;align-items:center;flex-wrap:wrap;margin-top:1.05em}
+  .s-btn{display:inline-block;font-size:.92em;font-weight:650;padding:.72em 1.15em;border-radius:.6em;background:var(--s-acc);color:#fff}
+  .s-btn.ghost{background:var(--s-surface-2);color:var(--s-ink-2);border:1px solid var(--s-line-2)}
+  .s-btn.off{opacity:.5}
+  .s-pill{display:inline-flex;align-items:center;font-family:var(--mono);font-size:.72em;font-weight:700;padding:.35em .75em;border-radius:2em}
+  .s-pill.desk{background:var(--s-amb-soft);color:var(--s-amb)}
+  .s-pill.live{background:var(--s-safe-soft);color:var(--s-safe);margin-left:auto}
+  .shot .s-note{border:1px solid var(--s-line);border-left:.22em solid var(--s-muted);border-radius:.6em;
+    background:var(--s-surface);padding:.85em 1em;font-size:.85em;color:var(--s-ink-2);line-height:1.6;margin-top:.85em}
+  .s-note b{color:var(--s-ink)}
+  .s-note .ok{color:var(--s-safe);font-weight:750}
+
+  /* 질문 카드 */
+  .s-q{border:1px solid var(--s-line);border-left:.22em solid var(--s-amb);border-radius:.6em;background:var(--s-surface);padding:1em}
+  .s-qn{font-size:.82em;color:var(--s-amb);font-weight:750}
+  .shot .s-qt{font-size:1em;font-weight:650;margin:.3em 0}
+  .shot .s-qw{font-size:.8em;color:var(--s-muted);margin-bottom:.75em}
+  .s-opts{display:flex;flex-wrap:wrap;gap:.5em}
+  .s-opt{font-size:.85em;font-weight:600;padding:.55em .9em;border:1px solid var(--s-line-2);
+    background:var(--s-surface-2);border-radius:.5em;color:var(--s-ink-2)}
+  .s-opt.on{background:var(--s-acc);border-color:var(--s-acc);color:#fff}
+  .shot .s-qa{font-size:.82em;color:var(--s-safe);font-weight:600;margin-top:.7em}
+  .shot .s-qs{font-size:.82em;color:var(--s-muted);margin-top:.6em;font-variant-numeric:tabular-nums}
+
+  /* 지켜드린 것 */
+  .s-kept{border:1px solid var(--s-line);border-left:.22em solid var(--s-safe);border-radius:.6em;background:var(--s-surface);padding:1em}
+  .s-kept .h{font-size:.8em;font-weight:700;color:var(--s-safe)}
+  .s-kept .n{font-family:var(--mono);font-size:1.45em;font-weight:800;color:var(--s-safe);font-variant-numeric:tabular-nums}
+  .shot .s-kept ul{margin-top:.5em;padding-left:1.2em;font-size:.85em;color:var(--s-ink-2);line-height:1.75}
+  .s-kept .f{font-size:.78em;color:var(--s-muted);margin-top:.6em}
+
+  /* 설명 블록 (숨은 공간) */
+  .s-fhead{display:flex;align-items:baseline;gap:.7em;flex-wrap:wrap}
+  .s-fhead h4{font-size:1.1em}
+  .s-fhead .b{margin-left:auto;font-family:var(--mono);font-size:1.3em;font-weight:800;color:var(--s-safe);font-variant-numeric:tabular-nums}
+  .s-expl{display:flex;flex-direction:column;gap:.9em;margin-top:.95em}
+  .s-blk .h{font-size:.8em;font-weight:700;color:var(--s-acc);margin-bottom:.1em}
+  .s-blk.warn .h{color:var(--s-amb)}
+  .shot .s-blk p,.shot .s-blk li{font-size:.88em;color:var(--s-ink-2);line-height:1.6}
+  .shot .s-blk ul{padding-left:1.2em}
+
+  /* 목록 행 (프로그램·격리함·옮기기) */
+  .s-row{padding:.7em 0;border-top:1px solid var(--s-line)}
+  .s-row .t{display:flex;gap:.6em;align-items:baseline;flex-wrap:wrap}
+  .s-row .t b{font-size:.95em}
+  .s-row .t .ver{font-size:.8em;color:var(--s-muted)}
+  .s-row .t .v{margin-left:auto;font-size:.88em;font-weight:700;font-variant-numeric:tabular-nums}
+  .shot .s-row .why{font-size:.82em;color:var(--s-muted);margin-top:.1em}
+  .shot .s-row .path{font-size:.8em;color:var(--s-ink-2);word-break:break-all}
+  .s-row .s-opt{display:inline-block;margin-top:.6em}
+  .shot .s-fold{margin-top:1em;font-size:.85em;color:var(--s-muted)}
+  .s-fold .x{font-size:.95em;color:var(--s-muted);padding:.2em 0}
+
+  /* 업데이트 팝업 */
+  .s-mod{position:absolute;inset:0;background:rgba(6,12,16,.42);display:grid;place-items:center;padding:1.2em}
+  .s-mod .box{background:var(--s-surface);border:1px solid var(--s-line);border-radius:.9em;padding:1.3em;
+    max-width:24em;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+  .s-mod .k{font-family:var(--mono);font-size:.78em;font-weight:700;color:var(--s-acc)}
+  .s-mod h4{font-size:1.15em;margin:.35em 0 .3em}
+  .shot .s-mod p{font-size:.88em;color:var(--s-ink-2);line-height:1.6}
+  .s-mod .btns{display:flex;gap:.5em;justify-content:flex-end;margin-top:1.1em}
+  .s-mod .prog{font-size:.85em;color:var(--s-muted);margin-top:.9em}
+
+  /* 기능 카드 안에 들어가는 축소본 */
+  .card .shot{margin-top:20px}
 </style>
 </head>
 <body>
@@ -299,6 +432,7 @@
     <nav aria-label="주요 메뉴">
       <a href="#why">왜 다른가</a>
       <a href="#how">작동 방식</a>
+      <a href="#screens">화면</a>
       <a href="#compare">비교</a>
       <a href="#roadmap">로드맵</a>
       <a href="/app.html">체험</a>
@@ -329,32 +463,58 @@
     <div class="dlmeta" id="hero-ver" aria-live="polite">최신 버전 확인 중…</div>
     <p class="osnote" id="os-note"></p>
 
-    <!-- 앱 목업 (HTML 재현물 — 실제 스크린샷 대기 중) -->
-    <div class="mockwrap reveal">
-      <div class="win" role="img" aria-label="테라클린 앱 화면 예시: 이 PC에서 정리 가능 14.6GB, 존 A 안전 2.1GB는 자동 정리, 존 B 애매 12.5GB는 질문 후 정리, 존 C 잠금 41.8GB는 건드리지 않음.">
-        <div class="win-top" aria-hidden="true">
-          <span class="dot" style="background:#FB7185"></span>
-          <span class="dot" style="background:#FBBF24"></span>
-          <span class="dot" style="background:#4ADE80"></span>
-          <span class="win-title">테라클린</span>
+    <!-- 앱 화면 — /app.html(데스크톱 앱 프론트엔드)의 '홈' 탭 재현 -->
+    <div class="shotwrap reveal">
+      <div class="shot" role="img" aria-label="테라클린 앱 홈 화면: 이 폴더에서 정리 가능 14.6GB(지금 즉시 2.1GB, 물어보면 12.5GB). 확신도 3-존 막대 — 존 A 안전 34.9GB, 존 B 애매 12.5GB, 존 C 잠금 41.8GB.">
+        <div class="s-chrome" aria-hidden="true">
+          <span class="ic">✓</span><span class="nm">테라클린</span>
+          <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
         </div>
-        <div class="win-body" aria-hidden="true">
-          <div class="m-top">
-            <div>
-              <div class="m-cap">이 PC에서 정리 가능</div>
-              <div class="m-num grad">14.6 GB</div>
+        <div aria-hidden="true">
+          <div class="s-top">
+            <span class="s-brand">테라클린<i>.</i></span>
+            <span class="s-nav">
+              <span class="on">홈</span><span>숨은 공간</span><span>안 쓴 프로그램</span><span>드라이브 옮기기</span><span>격리함</span>
+            </span>
+          </div>
+          <div class="s-main">
+            <div class="s-card s-hero">
+              <div class="s-big">14.6GB</div>
+              <div class="s-hcap">이 폴더에서 <b>정리 가능</b> · 지금 즉시 2.1GB + 물어보면 12.5GB</div>
+              <span class="s-one">원클릭 최적화<span class="s">확실한 건 알아서 · 애매한 건 모아서 보여드려요</span></span>
+              <span class="s-sub">다른 폴더 고르기</span>
+              <p class="s-priv"><span class="d">●</span> 파일은 <b>기기를 한 바이트도 떠나지 않습니다.</b> 서버도 업로드도 없어요.</p>
+              <div class="s-status">390,825개 · 89.2GB · 33,180ms</div>
             </div>
-            <span class="m-btn">원클릭 정리</span>
+
+            <div class="s-card">
+              <div class="s-sechead"><span class="k">분류</span><h4>확신도 3-존</h4></div>
+              <p class="s-desc">모든 파일을 “알아서 처리 / 물어봐야 / 아예 잠금” 셋 중 하나로 나눕니다.</p>
+              <div class="s-zbars">
+                <div>
+                  <div class="s-zrow sfe"><span class="s-zlab">존 A 안전</span>
+                    <span class="s-ztrack"><span class="s-zfill" style="--w:39.1%"></span></span>
+                    <span class="s-zval">34.9GB · 12,480개</span></div>
+                  <div class="s-zdesc">캐시·로그처럼 다시 생기는 것. 규칙이 확증한 것만 자동 정리해요.</div>
+                </div>
+                <div>
+                  <div class="s-zrow sam"><span class="s-zlab">존 B 애매</span>
+                    <span class="s-ztrack"><span class="s-zfill" style="--w:14.0%"></span></span>
+                    <span class="s-zval">12.5GB · 1,240개</span></div>
+                  <div class="s-zdesc">사용자만 아는 것. 무인 삭제 안 하고 물어봅니다.</div>
+                </div>
+                <div>
+                  <div class="s-zrow slk"><span class="s-zlab">존 C 잠금</span>
+                    <span class="s-ztrack"><span class="s-zfill" style="--w:46.9%"></span></span>
+                    <span class="s-zval">41.8GB · 101,445개</span></div>
+                  <div class="s-zdesc">시스템·설정·클라우드. 지우면 뭔가 깨져서 아예 안 건드려요.</div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="m-bars">
-            <div class="m-row zA"><span class="m-lab">존 A 안전</span><span class="m-track"><span class="m-fill" style="--w:34%"></span></span><span class="m-val">2.1GB · 알아서</span></div>
-            <div class="m-row zB"><span class="m-lab">존 B 애매</span><span class="m-track"><span class="m-fill" style="--w:58%"></span></span><span class="m-val">12.5GB · 물어봄</span></div>
-            <div class="m-row zC"><span class="m-lab">존 C 잠금</span><span class="m-track"><span class="m-fill" style="--w:86%"></span></span><span class="m-val">41.8GB · 안 건드림</span></div>
-          </div>
-          <div class="m-kept"><span class="k">✓ 41.8GB</span><span class="kt">잠갔어요 — 지웠으면 뭔가 깨졌을 것들</span></div>
         </div>
       </div>
-      <p class="mocknote">화면은 실측 데이터로 만든 재현 이미지입니다.</p>
+      <p class="shotcap">실제 앱 화면 그대로입니다 — 숫자는 개발용 PC 한 대(AppData/Local 390,825개·89.2GB)를 실측한 값입니다.</p>
     </div>
   </div>
 </section>
@@ -401,6 +561,58 @@
     </div>
     <p class="measured reveal">위 숫자는 개발용 PC 한 대를 실제로 측정한 값입니다(윈도우 11, RAM 31.7GB).
       환경마다 다르지만, <b style="color:var(--ink-2)">"안 보이는 곳에 쌓인다"는 구조는 같습니다.</b></p>
+
+    <!-- 앱 화면 — '숨은 공간' 탭 -->
+    <div class="shotwrap narrow reveal">
+      <div class="shot" role="img" aria-label="테라클린 앱 숨은 공간 탭: 최대절전 파일 hiberfil.sys 12.7GB를 찾아, 이게 뭔지·왜 큰지·뭐가 쓰는지·지우면 뭐가 달라지는지·되돌릴 수 있는지·안 지우면 어떤지를 설명한다.">
+        <div class="s-chrome" aria-hidden="true">
+          <span class="ic">✓</span><span class="nm">테라클린</span>
+          <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
+        </div>
+        <div aria-hidden="true">
+          <div class="s-top">
+            <span class="s-brand">테라클린<i>.</i></span>
+            <span class="s-nav">
+              <span>홈</span><span class="on">숨은 공간</span><span>안 쓴 프로그램</span><span>드라이브 옮기기</span><span>격리함</span>
+            </span>
+          </div>
+          <div class="s-main">
+            <div class="s-card">
+              <div class="s-sechead"><span class="k">숨은 공간</span><h4>스캔에 안 보이는 용량</h4></div>
+              <p class="s-lede">“정리해도 용량이 안 줄어든다”의 1순위 원인이에요. 파일 목록엔 안 잡히는데 수십 GB를 먹는 것들입니다.
+                <b>파일 삭제가 아니라 공식 명령으로</b> 회수하고, 전부 되돌릴 수 있어요.</p>
+            </div>
+            <div class="s-card">
+              <div class="s-fhead"><h4>최대절전 파일 (hiberfil.sys)</h4><span class="b">12.7GB</span></div>
+              <div class="s-expl">
+                <div class="s-blk"><div class="h">이게 뭔가요</div>
+                  <p>컴퓨터를 완전히 끄기 전에, 지금 열어둔 것들을 통째로 저장해두는 파일이에요. 다시 켜면 어제 그 상태로 돌아오게 해줍니다.</p></div>
+                <div class="s-blk"><div class="h">왜 이렇게 큰가요</div>
+                  <p>메모리(RAM)에 있는 걸 통째로 옮겨 적어야 해서, RAM 크기의 약 40%를 미리 잡아둡니다.
+                    이 PC는 RAM이 31.7GB라서 12.7GB예요(40%). 뭔가 쌓여서 커진 게 아니라 처음부터 이 크기입니다 —
+                    그래서 파일을 아무리 정리해도 절대 줄지 않아요.</p></div>
+                <div class="s-blk"><div class="h">뭐가 이걸 쓰나요</div>
+                  <ul>
+                    <li>최대 절전 모드 — 전원을 완전히 껐다 켜도 열어둔 창이 그대로 돌아오는 기능이에요.</li>
+                    <li>빠른 시작(Fast Startup) — 윈도우를 켤 때 몇 초 빨라지는 기능이에요. 지금 켜져 있습니다. 기본값이라 쓰는 줄 모르는 분이 대부분이에요.</li>
+                  </ul></div>
+                <div class="s-blk warn"><div class="h">지우면 뭐가 달라지나요</div>
+                  <ul>
+                    <li>최대 절전 모드를 못 씁니다. 절전 모드(슬립)는 그대로 쓸 수 있어요.</li>
+                    <li>빠른 시작도 같이 꺼집니다. 부팅이 2~5초쯤 느려질 수 있어요.</li>
+                  </ul></div>
+                <div class="s-blk"><div class="h">되돌릴 수 있나요</div>
+                  <p>네, 명령 한 줄이면 원래대로 돌아옵니다. 파일을 지우는 게 아니라 기능을 끄는 거라서, 다시 켜면 윈도우가 파일을 새로 만들어요.</p></div>
+                <div class="s-blk"><div class="h">안 지우면요</div>
+                  <p>아무 문제 없습니다. 12.7GB를 계속 쓸 뿐이에요. 지금 용량이 급하지 않으면 그냥 두셔도 됩니다.</p></div>
+              </div>
+              <div class="s-actions"><span class="s-pill desk">실행(관리자 권한)은 다음 업데이트에서 연결됩니다</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="shotcap">앱이 실제로 보여주는 설명입니다 — 일반론이 아니라 이 PC의 RAM에서 계산한 값으로 씁니다.</p>
+    </div>
   </div>
 </section>
 
@@ -441,6 +653,48 @@
         </div>
       </div>
     </div>
+
+    <!-- 앱 화면 — 정리 계획 + 지켜드린 것 -->
+    <div class="shotwrap narrow reveal">
+      <div class="shot" role="img" aria-label="테라클린 앱 정리 계획 화면: 지금 정리 가능 2.1GB, 물어보면 정리 가능 12.5GB, 지켜드린 것 41.8GB. 규칙이 확증하지 못한 32.8GB는 존 A로 보여도 자동 정리에서 제외했다는 안내와, 지켜드린 항목 목록.">
+        <div class="s-chrome" aria-hidden="true">
+          <span class="ic">✓</span><span class="nm">테라클린</span>
+          <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
+        </div>
+        <div class="s-top" aria-hidden="true">
+          <span class="s-brand">테라클린<i>.</i></span>
+          <span class="s-nav"><span class="on">홈</span><span>숨은 공간</span><span>안 쓴 프로그램</span><span>드라이브 옮기기</span><span>격리함</span></span>
+        </div>
+        <div class="s-main" aria-hidden="true">
+          <div class="s-card">
+            <div class="s-sechead"><span class="k">원클릭</span><h4>정리 계획</h4><span class="s-pill live">실시간 분석</span></div>
+            <p class="s-lede">원클릭은 이렇게 해요: 확실한 캐시는 격리로 정리하고(되돌리기 가능), 애매한 건 아래 질문으로 모아서 보여드려요.</p>
+            <div class="s-3">
+              <div class="s-stat"><div class="n g">2.1GB</div><div class="l">지금 정리 가능<br>확실한 캐시 12,480개 · 규칙 확증분만</div></div>
+              <div class="s-stat"><div class="n a">12.5GB</div><div class="l">물어보면 정리 가능<br>애매한 1,240개 · 아래 질문으로</div></div>
+              <div class="s-stat"><div class="n m">41.8GB</div><div class="l">지켜드린 것<br>101,445개 · 건드리면 위험</div></div>
+            </div>
+            <div class="s-actions"><span class="s-btn">확실한 캐시 2.1GB 정리하기</span></div>
+            <p class="s-note">규칙이 확증 못 한 32.8GB는 존 A로 보여도 자동 정리에서 뺐어요.
+              추론만으로는 자동으로 안 지웁니다(오삭제 방어선).</p>
+          </div>
+
+          <div class="s-kept">
+            <div class="h">지켜드린 것 — 지웠으면 뭔가 깨졌을 것들</div>
+            <div class="n">41.8GB</div>
+            <ul>
+              <li>구글 드라이브 동기화 장부 — 26.5GB</li>
+              <li>WSL·Docker 가상디스크 — 8.2GB</li>
+              <li>설치된 앱 속 node_modules 635곳 — 4.8GB</li>
+              <li>브라우저 프로필·확장 설정 — 1.6GB</li>
+              <li>앱 설정·라이선스 — 0.7GB</li>
+            </ul>
+            <div class="f">경쟁 도구는 "지운 양"을 자랑해요. 우리는 "지킨 양"을 보여드립니다.</div>
+          </div>
+        </div>
+      </div>
+      <p class="shotcap">"규칙이 확증 못 한 32.8GB는 자동 정리에서 뺐다" — 이 문장이 앱에 그대로 뜹니다.</p>
+    </div>
   </div>
 </section>
 
@@ -459,6 +713,48 @@
       <div class="zone zC2 reveal"><span class="zt"><span class="en">ZONE C</span> · 확신-위험</span><h3>아예 잠금</h3>
         <p>시스템·앱 설정·미동기화 클라우드. AI가 뭐라 해도 삭제 불가.</p></div>
     </div>
+
+    <!-- 앱 화면 — 존 B 질문 -->
+    <div class="shotwrap narrow reveal">
+      <div class="shot" role="img" aria-label="테라클린 앱 질문 화면: 질문 1은 설치 파일 32개 8.4GB를 지울지 묻고 '네, 지워도 돼요'가 선택된 상태, 질문 2는 오래 조용한 개발 폴더 6곳 4.1GB를 아직 쓰는지 묻는다.">
+        <div class="s-chrome" aria-hidden="true">
+          <span class="ic">✓</span><span class="nm">테라클린</span>
+          <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
+        </div>
+        <div class="s-top" aria-hidden="true">
+          <span class="s-brand">테라클린<i>.</i></span>
+          <span class="s-nav"><span class="on">홈</span><span>숨은 공간</span><span>안 쓴 프로그램</span><span>드라이브 옮기기</span><span>격리함</span></span>
+        </div>
+        <div class="s-main" aria-hidden="true">
+          <div class="s-card">
+            <div class="s-sechead"><span class="k">물어보기</span><h4>애매한 것만 딱</h4></div>
+            <p class="s-lede">답 하나가 수백 개를 해결하는 질문만 골랐어요. ‘아니오/모르겠음’은 항상 그대로 둡니다.</p>
+            <div style="display:flex;flex-direction:column;gap:.85em;margin-top:1em">
+              <div class="s-q">
+                <div class="s-qn">질문 1</div>
+                <div class="s-qt">설치 파일 32개(8.4GB)가 있어요. 프로그램을 이미 설치했다면 이 설치 파일들은 필요 없는데, 지울까요?</div>
+                <div class="s-qw">왜 묻나: 설치가 끝났으면 설치 파일은 역할이 끝납니다. 다시 받을 수도 있고요.</div>
+                <div class="s-opts">
+                  <span class="s-opt on">네, 지워도 돼요</span><span class="s-opt">보관할래요</span>
+                </div>
+                <div class="s-qa">→ 설치 파일 32개(8.4GB)를 삭제 후보로.</div>
+                <div class="s-qs">걸린 용량: 8.4GB · 32개</div>
+              </div>
+              <div class="s-q">
+                <div class="s-qn">질문 2</div>
+                <div class="s-qt">개발 폴더 6곳(4.1GB)이 오래 조용하네요. 이 프로젝트들 아직 작업하시나요?</div>
+                <div class="s-qw">왜 묻나: 지워도 다시 설치·빌드할 수 있지만, 지금 쓰는 프로젝트인지는 사용자만 압니다.</div>
+                <div class="s-opts">
+                  <span class="s-opt">아니요, 안 써요</span><span class="s-opt">아직 써요</span>
+                </div>
+                <div class="s-qs">걸린 용량: 4.1GB · 6개</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="shotcap">실측에서 <b style="color:var(--ink-2)">질문 3개가 89.2GB를 판정</b>했습니다(질문당 8.94GB · 규칙 커버리지 99.6%).</p>
+    </div>
   </div>
 </section>
 
@@ -468,13 +764,199 @@
     <div class="center"><span class="kick reveal"><span class="en">Core</span> · 핵심</span><h2 class="stitle reveal">정직하게, 안전하게, 똑똑하게</h2></div>
     <div class="feat">
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/></svg></div>
-        <h3>30일 되돌리기</h3><p>지운 건 바로 사라지지 않고 격리함에 30일 머뭅니다. 언제든 원래 자리로. 되돌리기 없는 청소 도구가 사고를 낸 그 자리를 대신합니다.</p></div>
+        <h3>30일 되돌리기</h3><p>지운 건 바로 사라지지 않고 격리함에 30일 머뭅니다. 언제든 원래 자리로. 되돌리기 없는 청소 도구가 사고를 낸 그 자리를 대신합니다.</p>
+        <div class="shot sm" role="img" aria-label="테라클린 앱 격리함 화면: 격리된 1,284개 2.1GB 목록과 전부 되돌리기 버튼, 항목마다 남은 일수와 격리 이유가 적혀 있다.">
+          <div class="s-top" aria-hidden="true">
+            <span class="s-brand">테라클린<i>.</i></span>
+            <span class="s-nav"><span>홈</span><span>숨은 공간</span><span class="on">격리함</span></span>
+          </div>
+          <div class="s-main" aria-hidden="true">
+            <div class="s-card">
+              <div class="s-sechead"><h4>격리된 1,284개 · 2.1GB</h4><span class="s-btn" style="margin-left:auto">전부 되돌리기</span></div>
+              <div class="s-row">
+                <div class="path">C:\Users\me\AppData\Local\Google\Chrome\User Data\Default\Cache\f_0a3d81</div>
+                <div class="why">412MB · 27일 남음 · 브라우저 캐시</div>
+              </div>
+              <div class="s-row">
+                <div class="path">C:\Users\me\AppData\Local\Temp\vscode-typescript\tsserver.log</div>
+                <div class="why">96MB · 27일 남음 · 로그</div>
+              </div>
+              <div class="s-row">
+                <div class="path">C:\Users\me\AppData\Local\Packages\...\LocalCache\thumbs</div>
+                <div class="why">1.2GB · 12일 남음 · 썸네일 캐시</div>
+              </div>
+            </div>
+          </div>
+        </div></div>
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></div>
-        <h3>숨은 공간 회수</h3><p>탐색기가 못 보는 최대절전 파일·가상메모리를 별도 경로로 찾아냅니다. 파일을 지우는 게 아니라 윈도우 공식 명령으로 회수하고, 원하면 되돌릴 수 있습니다.</p></div>
+        <h3>숨은 공간 회수</h3><p>탐색기가 못 보는 최대절전 파일·가상메모리를 별도 경로로 찾아냅니다. 파일을 지우는 게 아니라 윈도우 공식 명령으로 회수하고, 원하면 되돌릴 수 있습니다.</p>
+        <div class="shot sm" role="img" aria-label="테라클린 앱 숨은 공간 화면 축약: 최대절전 파일 12.7GB, 지우면 달라지는 점과 되돌리는 방법이 함께 적혀 있다.">
+          <div class="s-top" aria-hidden="true">
+            <span class="s-brand">테라클린<i>.</i></span>
+            <span class="s-nav"><span>홈</span><span class="on">숨은 공간</span><span>격리함</span></span>
+          </div>
+          <div class="s-main" aria-hidden="true">
+            <div class="s-card">
+              <div class="s-fhead"><h4>최대절전 파일 (hiberfil.sys)</h4><span class="b">12.7GB</span></div>
+              <div class="s-expl">
+                <div class="s-blk warn"><div class="h">지우면 뭐가 달라지나요</div>
+                  <ul>
+                    <li>최대 절전 모드를 못 씁니다. 절전 모드(슬립)는 그대로 쓸 수 있어요.</li>
+                    <li>빠른 시작도 같이 꺼집니다. 부팅이 2~5초쯤 느려질 수 있어요.</li>
+                  </ul></div>
+                <div class="s-blk"><div class="h">되돌릴 수 있나요</div>
+                  <p>네, 명령 한 줄이면 원래대로 돌아옵니다. 파일을 지우는 게 아니라 기능을 끄는 거예요.</p></div>
+              </div>
+              <div class="s-actions"><span class="s-pill desk">실행(관리자 권한)은 다음 업데이트에서 연결됩니다</span></div>
+            </div>
+          </div>
+        </div></div>
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
-        <h3>기기를 떠나지 않음</h3><p>분석은 전부 당신 컴퓨터 안에서. 서버도 업로드도 없습니다. 웹 데모 화면은 브라우저가 네트워크를 아예 차단하도록 배포했습니다.</p></div>
+        <h3>기기를 떠나지 않음</h3><p>분석은 전부 당신 컴퓨터 안에서. 서버도 업로드도 없습니다. 웹 데모 화면은 브라우저가 네트워크를 아예 차단하도록 배포했습니다.</p>
+        <div class="shot sm" role="img" aria-label="테라클린 앱 홈 화면 축약: 파일은 기기를 한 바이트도 떠나지 않는다는 안내와, 390,825개 89.2GB를 33,180밀리초에 읽은 상태 표시.">
+          <div class="s-top" aria-hidden="true">
+            <span class="s-brand">테라클린<i>.</i></span>
+            <span class="s-nav"><span class="on">홈</span><span>숨은 공간</span><span>격리함</span></span>
+          </div>
+          <div class="s-main" aria-hidden="true">
+            <div class="s-card s-hero">
+              <div class="s-big">14.6GB</div>
+              <div class="s-hcap">이 폴더에서 <b>정리 가능</b></div>
+              <p class="s-priv"><span class="d">●</span> 파일은 <b>기기를 한 바이트도 떠나지 않습니다.</b>
+                서버도 업로드도 없어요. 분석은 전부 이 컴퓨터 안에서 끝납니다.</p>
+              <div class="s-status">390,825개 · 89.2GB · 33,180ms</div>
+            </div>
+            <div class="s-note">웹 체험 화면은 <b>connect-src 'none'</b> — 브라우저가 네트워크를 아예 막은 채로 돕니다.</div>
+          </div>
+        </div></div>
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></div>
-        <h3>검증된 업데이트</h3><p>새 버전이 나오면 <b style="color:var(--ink)">먼저 알려드립니다.</b> 누르시면 나머지는 알아서 — 받은 파일의 SHA-256이 릴리스에 게시된 값과 일치할 때만 설치합니다. 다르면 지우고 멈춥니다. 몰래 바꾸지 않습니다.</p></div>
+        <h3>검증된 업데이트</h3><p>새 버전이 나오면 <b style="color:var(--ink)">먼저 알려드립니다.</b> 누르시면 나머지는 알아서 — 받은 파일의 SHA-256이 릴리스에 게시된 값과 일치할 때만 설치합니다. 다르면 지우고 멈춥니다. 몰래 바꾸지 않습니다.</p>
+        <div class="shot sm" role="img" aria-label="테라클린 앱 업데이트 팝업: 새 버전이 있다고 알리고, 확인하면 받아서 검증한 뒤 설치한다는 안내와 나중에·지금 업데이트 버튼. 아래에 받은 파일을 검증하는 중이라는 진행 표시.">
+          <div class="s-top" aria-hidden="true">
+            <span class="s-brand">테라클린<i>.</i></span>
+            <span class="s-nav"><span class="on">홈</span><span>숨은 공간</span><span>격리함</span></span>
+          </div>
+          <div class="s-main" aria-hidden="true" style="min-height:19.5em">
+            <div class="s-card s-hero">
+              <div class="s-big">14.6GB</div>
+              <div class="s-hcap">이 폴더에서 <b>정리 가능</b></div>
+              <span class="s-one">원클릭 최적화<span class="s">확실한 건 알아서 · 애매한 건 모아서 보여드려요</span></span>
+            </div>
+          </div>
+          <div class="s-mod" aria-hidden="true">
+            <div class="box">
+              <div class="k">새 버전</div>
+              <h4>업데이트 v0.4.1이 있어요</h4>
+              <p>지금 버전은 v0.4.0이에요. 확인하시면 받아서 검증한 뒤 설치할게요 — 그 뒤로 누르실 건 없어요.</p>
+              <div class="btns"><span class="s-btn ghost">나중에</span><span class="s-btn">지금 업데이트</span></div>
+              <div class="prog">받은 파일을 검증하는 중…</div>
+            </div>
+          </div>
+        </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 화면 더 보기 — 나머지 두 탭 -->
+<section id="screens">
+  <div class="wrap center">
+    <span class="kick reveal"><span class="en">Screens</span> · 화면 더 보기</span>
+    <h2 class="stitle reveal">지우는 것만이 정리가 아닙니다</h2>
+    <p class="ssub reveal">안 쓰는 프로그램은 <b>정식 제거 마법사로</b>, 지우긴 아까운 큰 파일은
+      <b>다른 드라이브로</b>. 둘 다 넘겨짚지 않고 근거를 먼저 보여줍니다.</p>
+
+    <div class="duo">
+      <div class="reveal">
+        <div class="shot" role="img" aria-label="테라클린 앱 안 쓴 프로그램 탭: 제거 후보 3개 6.2GB 목록. 각 항목에 몇 개월째 실행하지 않았는지 근거가 적혀 있고, 제안하지 않은 125개의 이유도 펼쳐 볼 수 있다.">
+          <div class="s-chrome" aria-hidden="true">
+            <span class="ic">✓</span><span class="nm">테라클린</span>
+            <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
+          </div>
+          <div aria-hidden="true">
+            <div class="s-top">
+              <span class="s-brand">테라클린<i>.</i></span>
+              <span class="s-nav"><span>홈</span><span>숨은 공간</span><span class="on">안 쓴 프로그램</span><span>격리함</span></span>
+            </div>
+            <div class="s-main">
+              <div class="s-card">
+                <div class="s-sechead"><span class="k">프로그램</span><h4>오래 안 쓴 프로그램</h4></div>
+                <p class="s-lede"><b>실행 기록이 있는 것만</b> 판단합니다. 기록이 없으면 “안 쓰신다”고 넘겨짚지 않고 그냥 뺍니다.</p>
+                <div class="s-note">⚠️ 프로그램 제거는 <b>격리로 되돌릴 수 없습니다.</b> 그래서 한 번에 하나씩만 확인받습니다.</div>
+
+                <div class="s-sechead" style="margin-top:1.1em"><h4 style="font-size:1em">제거 후보 3개 · 6.2GB</h4>
+                  <span class="s-desc" style="margin-left:auto">설치 항목 128개 중</span></div>
+                <div class="s-row">
+                  <div class="t"><b>Unity 2019.4 LTS</b><span class="ver">2019.4.40f1</span><span class="v">3.1GB</span></div>
+                  <div class="why">22개월째 실행하지 않으셨습니다 (실행 기록 기준, 지금까지 41번 실행)</div>
+                  <div class="why">C:\Program Files\Unity\Hub\Editor\2019.4.40f1</div>
+                  <span class="s-opt">제거 프로그램 열기</span>
+                </div>
+                <div class="s-row">
+                  <div class="t"><b>곰플레이어</b><span class="v">2.1GB</span></div>
+                  <div class="why">14개월째 실행하지 않으셨습니다 (실행 기록 기준, 지금까지 3번 실행)</div>
+                  <span class="s-opt">제거 프로그램 열기</span>
+                </div>
+                <div class="s-row">
+                  <div class="t"><b>Epic Games Launcher</b><span class="v">1.0GB</span></div>
+                  <div class="why">9개월째 실행하지 않으셨습니다 (실행 기록 기준, 지금까지 12번 실행)</div>
+                  <span class="s-opt">제거 프로그램 열기</span>
+                </div>
+                <div class="s-fold">
+                  ▸ 제안하지 않은 125개와 그 이유
+                  <div class="x">V3 Lite — 보안 프로그램 — 화면에 안 떠도 계속 동작합니다</div>
+                  <div class="x">Git — 실행 기록을 찾지 못해 판단하지 않습니다</div>
+                  <div class="x">Microsoft Visual C++ 2015-2022 Redistributable — 런타임 — 다른 프로그램이 필요할 때 부릅니다</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="shotcap">실측에서 매일 쓰는 Git이 “12개월째 미사용”으로 잡혔습니다. 터미널로만 쓰면 기록이 안 남거든요 —
+          그래서 <b style="color:var(--ink-2)">모르면 제안하지 않습니다.</b></p>
+      </div>
+
+      <div class="reveal">
+        <div class="shot" role="img" aria-label="테라클린 앱 드라이브 옮기기 탭: 18개 24.6GB를 D 드라이브로 옮기는 계획. 지우지 않고 옮기며, 위험해서 제외한 항목 212개가 함께 표시된다.">
+          <div class="s-chrome" aria-hidden="true">
+            <span class="ic">✓</span><span class="nm">테라클린</span>
+            <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
+          </div>
+          <div aria-hidden="true">
+            <div class="s-top">
+              <span class="s-brand">테라클린<i>.</i></span>
+              <span class="s-nav"><span>홈</span><span>숨은 공간</span><span class="on">드라이브 옮기기</span><span>격리함</span></span>
+            </div>
+            <div class="s-main">
+              <div class="s-card">
+                <div class="s-sechead"><span class="k">옮기기</span><h4>지우긴 아까운 것들</h4></div>
+                <p class="s-lede">용량 부족의 절반은 “지울 순 없는데 자리를 차지하는 것”입니다.
+                  그건 지우는 게 아니라 <b>옮겨야 해요.</b></p>
+
+                <div class="s-sechead" style="margin-top:1.1em"><h4 style="font-size:1em">18개 · 24.6GB</h4>
+                  <span class="s-desc" style="margin-left:auto">→ D:\TeraClean-Moved</span></div>
+                <p class="s-desc">지우지 않습니다. 옮긴 기록이 남아 언제든 되돌릴 수 있어요.</p>
+                <div class="s-row">
+                  <div class="path">C:\Users\me\Videos\2024-여행-원본.mp4</div>
+                  <div class="why">6.8GB · 오래 열지 않은 대용량 영상</div>
+                </div>
+                <div class="s-row">
+                  <div class="path">C:\Users\me\Downloads\ubuntu-24.04-desktop-amd64.iso</div>
+                  <div class="why">5.7GB · 설치 이미지</div>
+                </div>
+                <div class="s-row">
+                  <div class="path">C:\Users\me\Documents\백업\사진-2019.zip</div>
+                  <div class="why">4.2GB · 압축 보관본</div>
+                </div>
+                <p class="s-desc" style="margin-top:.9em">옮기면 위험해서 제외한 항목 212개
+                  (프로그램 폴더·앱 설정·동기화 폴더 등)</p>
+                <span class="s-one" style="margin-top:1.1em">24.6GB 옮기기</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="shotcap">프로그램이 설치된 폴더·앱 설정·동기화 폴더는 옮기지 않습니다.
+          파일이 살아 있어도 <b style="color:var(--ink-2)">그 경로를 찾던 프로그램이 깨지거든요.</b></p>
+      </div>
     </div>
   </div>
 </section>
@@ -553,6 +1035,23 @@
       <h2>이번엔 원인부터 찾으세요</h2>
       <p>설치하고 원클릭이면, 안 보이던 용량까지 찾아 지울 목록을 이유와 함께 보여드립니다.
         지운 건 30일간 되돌릴 수 있고, 프로그램은 무료입니다.</p>
+
+      <!-- 앱 화면 — 정리를 끝낸 직후 상태 -->
+      <div class="shot sm" style="max-width:560px;margin:32px auto 0" role="img" aria-label="테라클린 앱 정리 완료 화면: 1,284개를 격리했고, 지금 즉시 확보는 0, 30일 뒤 2.1GB가 최종 확보되며 그 사이 언제든 되돌릴 수 있다는 안내.">
+        <div class="s-chrome" aria-hidden="true">
+          <span class="ic">✓</span><span class="nm">테라클린</span>
+          <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
+        </div>
+        <div class="s-main" aria-hidden="true">
+          <div class="s-card">
+            <div class="s-sechead"><span class="k">원클릭</span><h4>정리 계획</h4><span class="s-pill live">완료</span></div>
+            <div class="s-actions"><span class="s-btn off">정리 완료</span></div>
+            <p class="s-note"><span class="ok">1,284개를 격리했어요.</span> 지금 즉시 확보는 0 — 격리는 옮기기만 한 거예요.
+              <b>30일 뒤 2.1GB</b>가 최종 확보되고, 그 사이 언제든 격리함에서 되돌릴 수 있어요.</p>
+          </div>
+        </div>
+      </div>
+
       <a class="btn btn-pri btn-lg" id="final-dl" href="https://github.com/lhs0609a-cpu/teraclean-releases/releases">Windows용 무료 다운로드</a>
       <div class="meta" id="final-ver" aria-live="polite">최신 버전 확인 중…</div>
     </div>
