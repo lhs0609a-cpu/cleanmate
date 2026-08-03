@@ -2,7 +2,7 @@
 ;  테라클린 이노셋업 스크립트
 ;  V3/알약 스타일: 자동설치 · 자동시작(상주) · 조용한 자동업데이트
 ;
-;  빌드: iscc /DAppVersion=1.0.0 installer\cleanmate.iss
+;  빌드: iscc /DAppVersion=1.0.0 installer\teraclean.iss
 ;        → dist-installer\TeraClean-Setup-1.0.0.exe
 ;
 ;  이 exe 하나가 두 가지로 쓰인다:
@@ -18,11 +18,13 @@
 #define AppName "테라클린"
 #define AppNameEn "TeraClean"
 #define AppPublisher "TeraClean"
-; 실행파일 이름은 Cargo 패키지명(cleanmate)에서 나온다 — 빌드 산출물과 반드시
-; 같아야 해서 리브랜딩과 무관하게 그대로 둔다(release.yml이 이 이름으로 복사한다).
-#define AppExeName "cleanmate.exe"
+; 실행파일 이름은 Cargo 패키지명(teraclean)에서 나온다 — 빌드 산출물과 반드시
+; 같아야 한다(release.yml이 이 이름으로 복사한다).
+#define AppExeName "teraclean.exe"
 ; ★ 자동 업데이트 시 "현재 실행 중인 앱"을 안전히 닫기 위한 고유 식별자.
 ;   바꾸면 기존 설치를 '다른 앱'으로 보고 나란히 설치된다 — 이름이 바뀌어도 유지한다.
+;   (2026-08-03 리브랜딩 때 일괄 치환으로 한 번 바뀔 뻔했다. 여기 문자열은 브랜드가
+;    아니라 '설치 신원'이다 — 클린메이트 시절 설치본을 덮어쓰려면 그대로여야 한다.)
 #define AppId "{{8F3A1C24-9B7E-4D2A-8E6F-CLEANMATE0001}"
 
 [Setup]
@@ -87,7 +89,7 @@ Filename: "{app}\{#AppExeName}"; Parameters: "--minimized --updated"; \
   Flags: nowait runasoriginaluser; Check: WizardSilent
 
 [UninstallDelete]
-; 앱 설정/캐시는 지우되, 사용자의 격리함(.cleanmate)은 건드리지 않는다 —
+; 앱 설정/캐시는 지우되, 사용자의 격리함(.teraclean·옛 .cleanmate)은 건드리지 않는다 —
 ; 제거해도 "되돌릴 수 있는 파일"은 사용자 것이다.
 Type: filesandordirs; Name: "{localappdata}\{#AppNameEn}\cache"
 
@@ -98,5 +100,5 @@ Type: filesandordirs; Name: "{localappdata}\{#AppNameEn}\cache"
 function InitializeSetup(): Boolean;
 begin
   Result := True;
-  // (필요 시: 실행 중인 cleanmate.exe에 종료 요청 — 앱이 --updated 재시작을 처리)
+  // (필요 시: 실행 중인 teraclean.exe에 종료 요청 — 앱이 --updated 재시작을 처리)
 end;

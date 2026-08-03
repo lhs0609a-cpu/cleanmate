@@ -72,7 +72,7 @@ jobs:
       - name: 아이콘 생성
         run: npx tauri icon assets/logo.png
 
-      - name: Tauri 빌드 (→ cleanmate.exe + 리소스)
+      - name: Tauri 빌드 (→ teraclean.exe + 리소스)
         run: npx tauri build
 
       # ★ 엔진 사이드카: 검증된 TS 엔진을 단일 exe로 포장한다.
@@ -89,13 +89,13 @@ jobs:
           mkdir -p dist-app
           echo '{ "main": "dist-engine/engine.cjs", "output": "dist-engine/sea.blob" }' > dist-engine/sea-config.json
           node --experimental-sea-config dist-engine/sea-config.json
-          node -e "require('fs').copyFileSync(process.execPath, 'dist-app/cleanmate-engine.exe')"
-          npx --yes postject dist-app/cleanmate-engine.exe NODE_SEA_BLOB dist-engine/sea.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+          node -e "require('fs').copyFileSync(process.execPath, 'dist-app/teraclean-engine.exe')"
+          npx --yes postject dist-app/teraclean-engine.exe NODE_SEA_BLOB dist-engine/sea.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
 
       - name: 이노셋업이 담을 폴더 구성 (dist-app/)
         shell: bash
         run: |
-          cp src-tauri/target/release/cleanmate.exe dist-app/
+          cp src-tauri/target/release/teraclean.exe dist-app/
           ls -la dist-app/
 
       # ── 코드 서명 ───────────────────────────────────────────────
@@ -131,14 +131,14 @@ jobs:
           & '${{ steps.cert.outputs.signtool }}' sign `
             /f '${{ steps.cert.outputs.pfx }}' /p $env:PFX_PASSWORD `
             /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
-            dist-app\cleanmate.exe dist-app\cleanmate-engine.exe
+            dist-app\teraclean.exe dist-app\teraclean-engine.exe
           if ($LASTEXITCODE -ne 0) { throw '앱 바이너리 서명 실패' }
 
       - name: 이노셋업 설치
         run: choco install innosetup --no-progress -y
 
       - name: 설치파일 생성 (TeraClean-Setup-x.y.z.exe)
-        run: iscc /DAppVersion=${{ steps.ver.outputs.version }} installer/cleanmate.iss
+        run: iscc /DAppVersion=${{ steps.ver.outputs.version }} installer/teraclean.iss
 
       - name: 설치파일 서명
         if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}

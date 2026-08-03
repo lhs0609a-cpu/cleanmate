@@ -114,7 +114,7 @@ export function verifyIntegrity(expected: string | undefined | null, actual: str
  *   /VERYSILENT       — UI 없이 설치
  *   /SUPPRESSMSGBOXES — 확인창 없이
  *   /NORESTART        — 윈도우 재부팅 안 함
- * 이노셋업이 이 인자들을 표준으로 지원한다(cleanmate.iss).
+ * 이노셋업이 이 인자들을 표준으로 지원한다(teraclean.iss).
  */
 export function silentInstallArgs(): string[] {
   return ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']

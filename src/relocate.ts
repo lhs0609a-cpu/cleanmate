@@ -82,7 +82,8 @@ const NEVER_MOVE = [
   { test: /[\\/]appdata[\\/]roaming[\\/]/i, why: '앱 설정 — 옮기면 설정이 초기화됩니다' },
   { test: /[\\/]\$recycle\.bin[\\/]/i, why: '휴지통' },
   { test: /[\\/]system volume information[\\/]/i, why: '시스템 복원' },
-  { test: /[\\/]\.cleanmate[\\/]/i, why: '격리함 — 여기서 직접 옮기면 안 됩니다' },
+  // 새 이름(.teraclean)과 옛 이름(.cleanmate) 둘 다. 옛 격리함에도 사용자 파일이 들어 있다.
+  { test: /[\\/]\.(teraclean|cleanmate)[\\/]/i, why: '격리함 — 여기서 직접 옮기면 안 됩니다' },
   { test: new RegExp(`[\\\\/]${MOVED_FOLDER}[\\\\/]`, 'i'), why: '이미 옮겨둔 폴더' },
   { test: /[\\/]node_modules[\\/]/i, why: '패키지 폴더 — 옮기면 프로젝트가 깨집니다' },
   { test: /[\\/](onedrive|dropbox|google drive|drivefs)[\\/]/i, why: '동기화 폴더' },

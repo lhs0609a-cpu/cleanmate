@@ -25,6 +25,7 @@ import {
   candidateRoots,
   listQuarantineRoots,
   quarantineRoot,
+  legacyQuarantineRoot,
   manifestFile,
   GRACE_DAYS,
   type QuarantineEntry,
@@ -34,7 +35,7 @@ const DAY_MS = 86_400_000
 
 /** 격리 저장소와 작업 폴더를 임시 디렉토리에 만든다 */
 async function sandbox() {
-  const base = await mkdtemp(join(tmpdir(), 'cleanmate-q-'))
+  const base = await mkdtemp(join(tmpdir(), 'teraclean-q-'))
   const work = join(base, 'work')
   const root = join(base, 'quarantine')
   await mkdir(work, { recursive: true })
@@ -369,9 +370,36 @@ test('장부가 있는 드라이브만 격리함으로 친다', async () => {
     },
   })
   const BS = String.fromCharCode(92)
-  assert.deepEqual(roots, [quarantineRoot('C:' + BS), quarantineRoot('D:' + BS)])
+  // 새 이름(.teraclean)과 옛 이름(.cleanmate)을 드라이브마다 함께 본다
+  assert.deepEqual(roots, [
+    quarantineRoot('C:' + BS),
+    legacyQuarantineRoot('C:' + BS),
+    quarantineRoot('D:' + BS),
+    legacyQuarantineRoot('D:' + BS),
+  ])
   // 장부 파일로 판단해야 한다 — 빈 폴더가 남아 있다고 격리함인 건 아니다
-  assert.ok(seen.every((p) => p === manifestFile(quarantineRoot(p.slice(0, 3)))))
+  assert.ok(seen.every((p) => p.endsWith('manifest.jsonl')))
+})
+
+test('★ 이름을 바꿔도 옛 격리함(.cleanmate)을 계속 찾는다 — 못 찾으면 맡아둔 파일을 잃는다', async () => {
+  const seen: string[] = []
+  const roots = await listQuarantineRoots({
+    platform: 'win32',
+    // 이 PC에는 옛 이름 격리함만 남아 있는 상황(v0.4.0까지 쓰던 사용자)
+    exists: async (p) => {
+      seen.push(p)
+      return p.includes('.cleanmate') && p.startsWith('C:')
+    },
+  })
+  assert.deepEqual(roots, [legacyQuarantineRoot('C:' + String.fromCharCode(92))])
+  assert.ok(seen.some((p) => p.includes('.teraclean')), '새 이름도 함께 봐야 한다')
+})
+
+test('새로 격리하는 건 새 이름으로만 간다', () => {
+  const p = 'C:' + String.fromCharCode(92) + 'a.txt'
+  assert.ok(quarantineRoot(p).includes('.teraclean'))
+  assert.ok(!quarantineRoot(p).includes('.cleanmate'))
+  assert.ok(legacyQuarantineRoot(p).includes('.cleanmate'))
 })
 
 test('격리함이 하나도 없으면 빈 목록 — 없는 드라이브를 만들지 않는다', async () => {

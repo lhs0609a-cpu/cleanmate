@@ -1,7 +1,7 @@
-// 클린메이트 데스크톱 셸 (Tauri v2)
+// 테라클린 데스크톱 셸 (Tauri v2)
 //
 // 이 Rust 층은 얇다. 무거운 판단(분류·격리·질문·프로브)은 이미 검증된 TS 엔진이
-// cleanmate-engine.exe(사이드카)로 하고, 여기는 그걸 호출하고 창을 띄우고
+// teraclean-engine.exe(사이드카)로 하고, 여기는 그걸 호출하고 창을 띄우고
 // 권한 있는 작업(자동 업데이트)만 담당한다. (docs/배포-아키텍처.md §2)
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -85,7 +85,7 @@ async fn download_update(url: String) -> Result<DownloadedUpdate, String> {
         .await
         .map_err(|e| format!("다운로드 실패: {e}"))?;
     let mut path = std::env::temp_dir();
-    path.push("CleanMate-Update-Setup.exe");
+    path.push("TeraClean-Update-Setup.exe");
     std::fs::write(&path, &bytes).map_err(|e| format!("저장 실패: {e}"))?;
     let sha256 = file_sha256(&path)?;
     Ok(DownloadedUpdate {
@@ -123,7 +123,7 @@ fn run_uninstaller(command: String) -> Result<(), String> {
 }
 
 /// ★ 엔진 사이드카 호출 — UI와 검증된 TS 엔진을 잇는 유일한 통로.
-/// 명령+인자를 주면 cleanmate-engine.exe가 JSON을 돌려준다(engine-cli.ts 규약).
+/// 명령+인자를 주면 teraclean-engine.exe가 JSON을 돌려준다(engine-cli.ts 규약).
 /// 엔진 exe는 앱 exe 바로 옆에 있다(이노셋업이 함께 설치).
 #[tauri::command]
 async fn run_engine(command: String, args: Vec<String>) -> Result<serde_json::Value, String> {
@@ -132,7 +132,7 @@ async fn run_engine(command: String, args: Vec<String>) -> Result<serde_json::Va
         .parent()
         .ok_or("실행 경로를 찾을 수 없어요")?
         .to_path_buf();
-    let engine = exe_dir.join("cleanmate-engine.exe");
+    let engine = exe_dir.join("teraclean-engine.exe");
 
     let output = tokio::process::Command::new(&engine)
         .arg(&command)
@@ -156,5 +156,5 @@ fn main() {
             run_uninstaller
         ])
         .run(tauri::generate_context!())
-        .expect("클린메이트 실행 중 오류");
+        .expect("테라클린 실행 중 오류");
 }

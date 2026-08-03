@@ -4,7 +4,7 @@
   "version": "0.4.0",
   "notes": "자동 생성 릴리스",
   "pub_date": "2026-07-20T09:47:03Z",
-  "url": "https://github.com/lhs0609a-cpu/cleanmate/releases/download/v0.4.0/TeraClean-Setup-0.4.0.exe",
+  "url": "https://github.com/lhs0609a-cpu/teraclean-releases/releases/download/v0.4.0/TeraClean-Setup-0.4.0.exe",
   "signature": "0000000000000000000000000000000000000000000000000000000000000000",
   "_signature_comment": "설치파일의 SHA-256(64자 16진수). 앱은 받은 파일의 해시가 이 값과 같을 때만 설치한다(src/updater.ts의 verifyIntegrity, src-tauri/src/main.rs의 apply_update). 값이 비었거나 형식이 깨지면 '검증 불가'가 아니라 '거절'이다 — fail closed. 위 값은 자리를 보여주는 더미이므로 어떤 파일과도 일치하지 않는다."
 }

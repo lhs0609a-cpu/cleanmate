@@ -50,13 +50,31 @@ export interface QuarantineEntry {
   zone: Zone
 }
 
+/** 격리 폴더 이름. 드라이브 루트에 이 이름으로 만든다. */
+export const QUARANTINE_DIR = '.teraclean'
+
+/**
+ * 옛 이름(클린메이트 시절). v0.4.0까지는 여기에 격리했다.
+ *
+ * ★ 이름을 바꾼다고 옛 폴더를 잊으면 안 된다. 거기 든 파일은 사용자가
+ *   "30일 안에 되돌릴 수 있다"는 말을 믿고 맡긴 것들이다. 목록·복구·만료삭제는
+ *   옛 폴더도 함께 본다. 새로 격리하는 건 새 이름으로만 간다.
+ */
+export const LEGACY_QUARANTINE_DIR = '.cleanmate'
+
 /**
  * 격리 저장소 위치. 원본과 같은 드라이브 루트에 둔다.
  * 테스트에서 갈아끼울 수 있게 함수로 뺐다.
  */
 export function quarantineRoot(originalPath: string): string {
   const { root } = parse(originalPath)
-  return join(root, '.cleanmate', 'quarantine')
+  return join(root, QUARANTINE_DIR, 'quarantine')
+}
+
+/** 옛 이름으로 만들어진 격리함 위치 */
+export function legacyQuarantineRoot(originalPath: string): string {
+  const { root } = parse(originalPath)
+  return join(root, LEGACY_QUARANTINE_DIR, 'quarantine')
 }
 
 export interface QuarantineOptions {
@@ -86,7 +104,11 @@ export function candidateRoots(platform: NodeJS.Platform = process.platform): st
   return 'CDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((c) => `${c}:\\`)
 }
 
-/** 실제로 격리함(장부)이 있는 드라이브만 골라낸다. */
+/**
+ * 실제로 격리함(장부)이 있는 곳만 골라낸다.
+ * 새 이름(.teraclean)과 옛 이름(.cleanmate)을 둘 다 본다 —
+ * 이름을 바꿨다고 맡아둔 파일을 못 찾으면 그건 잃어버린 것이다.
+ */
 export async function listQuarantineRoots(opts: {
   platform?: NodeJS.Platform
   exists?: (p: string) => Promise<boolean>
@@ -94,8 +116,9 @@ export async function listQuarantineRoots(opts: {
   const ex = opts.exists ?? exists
   const found: string[] = []
   for (const drive of candidateRoots(opts.platform)) {
-    const root = quarantineRoot(drive)
-    if (await ex(manifestPath(root))) found.push(root)
+    for (const root of [quarantineRoot(drive), legacyQuarantineRoot(drive)]) {
+      if (await ex(manifestPath(root))) found.push(root)
+    }
   }
   return found
 }

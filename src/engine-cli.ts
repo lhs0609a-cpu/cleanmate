@@ -12,7 +12,7 @@
  *   실패 → {"ok":false,"error":"사람이 읽을 메시지"}  + exit 1
  *   진행 로그·경고는 전부 stderr로 (stdout을 오염시키지 않는다).
  *
- * 사용: cleanmate-engine <command> [json-args]
+ * 사용: teraclean-engine <command> [json-args]
  *   default-roots                    이 PC에서 기본으로 훑을 폴더 목록
  *   scan-plan      <path...>         스캔(여러 곳 가능) → 3-존 + 정리 계획 + 질문
  *   apply-sweep    <path...>         존 A 자동 정리(격리로 이동)

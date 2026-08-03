@@ -32,7 +32,7 @@ const NEVER_TOUCH = [
   /^\.ds_store$/i,
   /^정리-\d{4}-\d{2}$/,
   /^teraclean-moved$/i,
-  /^\.cleanmate$/i,
+  /^\.(teraclean|cleanmate)$/i, // 격리함(새 이름·옛 이름)
 ]
 
 /** 기본값: 최근 7일 안에 손댄 것은 '작업 중'으로 보고 그대로 둔다 */
