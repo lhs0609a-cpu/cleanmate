@@ -13,6 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "url": "app.html",
         "title": "테라클린",
         "width": 900,
         "height": 680,
