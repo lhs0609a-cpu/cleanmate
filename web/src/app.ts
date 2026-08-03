@@ -23,6 +23,12 @@ import {
   todayISO,
   type TidyState,
 } from '../../src/content/tidy.ts'
+import {
+  stuckRoutines,
+  suggestServices,
+  buildRequestSummary,
+  DISCLOSURE,
+} from '../../src/content/referral.ts'
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
@@ -384,6 +390,69 @@ const TIDY_KEY = 'teraclean.tidy'
 const FOLDER_ACTION: Record<string, string> = {
   'desktop-icons': 'desktop',
   downloads: 'downloads',
+  photos: 'photos', // 폴더 이동이 아니라 사진 전용 흐름
+}
+
+/**
+ * 사진 정리 — 스크린샷과 '내용이 완전히 같은 사본'만.
+ * 비슷한 사진 고르기는 하지 않는다. 잘못 고르면 되돌릴 수 없는 손해다.
+ */
+async function photosFlow(host: HTMLElement) {
+  host.innerHTML = `<div style="font-size:12.5px;color:var(--muted);margin-top:10px">사진을 확인하는 중… (수천 장이면 몇 분 걸릴 수 있어요)</div>`
+  try {
+    const p = await engine('photos-plan')
+    if (!p.screenshotCount && !p.dupGroupCount) {
+      host.innerHTML = `<div style="font-size:13px;color:var(--safe);margin-top:10px">
+        사진 ${p.scanned.toLocaleString()}장을 봤는데 정리할 게 없어요. 이미 깔끔합니다.</div>`
+      return
+    }
+
+    const dupPreview = p.dupGroups.slice(0, 3).map((g: any) =>
+      `<div style="font-size:12px;color:var(--ink-2);padding:2px 0">
+        · 남길 것 <b>${esc(g.keeper.name)}</b> — ${esc(g.keeperReason)} (사본 ${g.copies.length}장)</div>`).join('')
+
+    host.innerHTML = `
+      <div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px;background:var(--surface-2)">
+        <div style="font-size:12px;color:var(--muted)">사진 ${p.scanned.toLocaleString()}장을 봤어요</div>
+        ${p.screenshotCount ? `<div style="font-size:13.5px;font-weight:650;margin-top:6px">
+          오래된 스크린샷 ${p.screenshotCount.toLocaleString()}장 · ${fmtBytes(p.screenshotBytes)}</div>
+          <div style="font-size:12px;color:var(--muted)">최근 ${p.recentScreenshots}장은 아직 쓰실 수 있어 그대로 둡니다.
+            정리 폴더로 옮기기만 해요.</div>` : ''}
+        ${p.dupGroupCount ? `<div style="font-size:13.5px;font-weight:650;margin-top:8px">
+          같은 사진이 여러 벌 — ${p.dupGroupCount.toLocaleString()}묶음 · ${fmtBytes(p.dupBytes)}</div>
+          <div style="font-size:12px;color:var(--muted)">원본은 그대로 두고 사본만 격리함으로 보냅니다(30일 되돌리기).</div>
+          <div style="margin-top:6px">${dupPreview}</div>` : ''}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          ${p.screenshotCount ? `<button class="btn" data-photos="screenshots">스크린샷 정리</button>` : ''}
+          ${p.dupGroupCount ? `<button class="btn ghost" data-photos="duplicates">중복 사본만 정리</button>` : ''}
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:8px">
+          일반 사진은 아무리 오래돼도 건드리지 않습니다.</div>
+      </div>`
+
+    host.querySelectorAll<HTMLButtonElement>('[data-photos]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const what = btn.dataset.photos!
+        host.querySelectorAll<HTMLButtonElement>('[data-photos]').forEach((b) => (b.disabled = true))
+        btn.textContent = '정리 중…'
+        try {
+          const r = await engine('photos-apply', [what])
+          host.innerHTML = `<div style="border:1px solid var(--line);border-left:3px solid var(--safe);
+                border-radius:8px;padding:12px;margin-top:10px;background:var(--surface)">
+            <div style="font-size:13.5px;font-weight:650;color:var(--safe)">정리했어요</div>
+            <div style="font-size:12.5px;color:var(--ink-2);margin-top:4px">
+              ${r.movedCount ? `스크린샷 ${r.movedCount.toLocaleString()}장을 ${esc(r.destFolder)}로 옮겼어요.<br>` : ''}
+              ${r.quarantinedCount ? `중복 사본 ${r.quarantinedCount.toLocaleString()}장(${fmtBytes(r.quarantinedBytes)})을 격리함으로 보냈어요 — 30일 안에 되돌릴 수 있습니다.<br>` : ''}
+              ${r.failed.length ? `${r.failed.length}장은 사용 중이라 건너뛰었습니다.` : ''}</div>
+          </div>`
+        } catch (err) {
+          host.innerHTML = `<div class="note" style="margin-top:10px">정리하지 못했어요: ${esc((err as Error).message)}</div>`
+        }
+      })
+    })
+  } catch (err) {
+    host.innerHTML = `<div class="note" style="margin-top:10px">확인하지 못했어요: ${esc((err as Error).message)}</div>`
+  }
 }
 
 /**
@@ -525,7 +594,10 @@ async function loadTidy(mark?: { id: string; done: boolean }) {
       <summary style="cursor:pointer;font-size:13px;color:var(--muted)">아직 때가 아닌 ${d.later.length}개</summary>
       ${d.later.map((r: any) => card(r, 'later')).join('')}</details>` : ''}
     <p class="note" style="margin-top:14px">기록은 이 컴퓨터에만 있습니다.
-      <b>못 한 날을 세지 않습니다</b> — 며칠 걸러도 연속 기록은 이어집니다.</p>`
+      <b>못 한 날을 세지 않습니다</b> — 며칠 걸러도 연속 기록은 이어집니다.</p>
+    <div id="referral"></div>`
+
+  renderReferral(d)
 
   host.querySelectorAll<HTMLButtonElement>('[data-tidy]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -541,7 +613,112 @@ async function loadTidy(mark?: { id: string; done: boolean }) {
       const target = btn.dataset.tidyfolder!
       btn.disabled = true
       const panel = host.querySelector<HTMLElement>(`[data-plan="${target}"]`)
-      if (panel) tidyFolderFlow(target, panel)
+      if (!panel) return
+      if (target === 'photos') photosFlow(panel)
+      else tidyFolderFlow(target, panel)
+    })
+  })
+}
+
+/* ── 업체 연결 ─────────────────────────────────────────────────
+   이 제품의 수익 모델이지만, 화면에서는 마지막 단계여야 한다.
+   먼저 들이밀면 그 순간 앱 전체가 광고판이 된다. 그래서:
+     - 같은 정리를 세 번 넘게 건너뛴 신호가 있을 때만 카드가 뜬다
+     - 우리가 대신 할 수 있는 것(바탕화면·사진)은 절대 연결하지 않는다
+     - 수수료를 받는다는 것과 아직 제휴 업체가 없다는 것을 그대로 쓴다 */
+function renderReferral(plan: any, askedByUser = false) {
+  const host = document.getElementById('referral')
+  if (!host) return
+
+  const state = inTauri ? null : readLocalTidy()
+  // 데스크톱은 엔진이 준 목록에서, 브라우저는 로컬 기록에서 신호를 만든다
+  const stuck = state
+    ? stuckRoutines(state, plan.today)
+    : (plan.due ?? [])
+        .filter((r: any) => r.daysLate !== null && r.daysLate >= r.everyDays * 2)
+        .map((r: any) => ({ id: r.id, title: r.title, category: r.category, timesOverdue: 3 }))
+
+  const suggestions = suggestServices({ stuck, askedByUser })
+
+  if (!suggestions.length) {
+    // 조용한 입구 하나만 남긴다. 권하지 않되 길은 열어둔다.
+    host.innerHTML = `<div style="margin-top:16px;font-size:12.5px;color:var(--muted)">
+      혼자 하기 어려운 정리가 있으신가요?
+      <button class="opt" id="ref-ask" style="margin-left:6px">사람 도움 알아보기</button></div>`
+    document.getElementById('ref-ask')?.addEventListener('click', () => renderReferral(plan, true))
+    return
+  }
+
+  host.innerHTML = `
+    <div style="margin-top:18px;border:1px solid var(--line-2);border-radius:12px;padding:16px;background:var(--surface)">
+      <div style="font-size:12px;font-weight:700;color:var(--accent)">사람이 하면 빠른 것</div>
+      <h2 style="font-size:16px;font-weight:750;margin:6px 0 4px">여기부터는 혼자 하기 어려울 수 있어요</h2>
+      <p style="font-size:13px;color:var(--ink-2);line-height:1.6">
+        아래는 기록을 보고 고른 것이고, <b style="color:var(--ink)">안 누르셔도 됩니다.</b></p>
+
+      ${suggestions.map((s, i) => `
+        <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px">
+          <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+            <b style="font-size:14.5px">${esc(s.service.label)}</b>
+            <button class="opt" data-ref="${i}" style="margin-left:auto">문의 내용 만들기</button>
+          </div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:4px">왜 보여드리나: ${esc(s.reason)}</div>
+          <div style="font-size:13px;color:var(--ink-2);margin-top:6px">${esc(s.service.whatTheyDo)}</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:4px">언제 부르나: ${esc(s.service.when)}</div>
+          <div style="font-size:12.5px;color:var(--amb);margin-top:4px">비용: ${esc(s.service.priceNote)}</div>
+          <div data-refform="${i}"></div>
+        </div>`).join('')}
+
+      <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px;font-size:12px;color:var(--muted);line-height:1.7">
+        · ${esc(DISCLOSURE.fee)}<br>
+        · ${esc(DISCLOSURE.status)}<br>
+        · ${esc(DISCLOSURE.privacy)}<br>
+        · ${esc(DISCLOSURE.optOut)}
+      </div>
+    </div>`
+
+  host.querySelectorAll<HTMLButtonElement>('[data-ref]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const i = +btn.dataset.ref!
+      const s = suggestions[i]
+      const form = host.querySelector<HTMLElement>(`[data-refform="${i}"]`)!
+      form.innerHTML = `
+        <div style="margin-top:10px;background:var(--surface-2);border-radius:8px;padding:12px">
+          <div style="font-size:12.5px;color:var(--muted)">보낼 내용을 먼저 보여드릴게요. 확인하신 뒤에만 나갑니다.</div>
+          <input id="ref-region-${i}" placeholder="지역 (예: 서울 강남구)" style="width:100%;margin-top:8px;padding:9px;
+            border:1px solid var(--line-2);border-radius:7px;background:var(--surface);color:var(--ink);font-size:13.5px">
+          <textarea id="ref-note-${i}" rows="2" placeholder="어떤 게 제일 급한지 (선택)" style="width:100%;margin-top:6px;padding:9px;
+            border:1px solid var(--line-2);border-radius:7px;background:var(--surface);color:var(--ink);font-size:13.5px"></textarea>
+          <input id="ref-contact-${i}" placeholder="연락 받으실 방법 (선택)" style="width:100%;margin-top:6px;padding:9px;
+            border:1px solid var(--line-2);border-radius:7px;background:var(--surface);color:var(--ink);font-size:13.5px">
+          <button class="btn" data-refmake="${i}" style="margin-top:8px">내용 확인하기</button>
+          <div data-refout="${i}"></div>
+        </div>`
+
+      form.querySelector<HTMLButtonElement>(`[data-refmake="${i}"]`)!.addEventListener('click', () => {
+        const outEl = form.querySelector<HTMLElement>(`[data-refout="${i}"]`)!
+        const r = buildRequestSummary({
+          serviceId: s.service.id,
+          region: (document.getElementById(`ref-region-${i}`) as HTMLInputElement).value,
+          note: (document.getElementById(`ref-note-${i}`) as HTMLTextAreaElement).value,
+          contact: (document.getElementById(`ref-contact-${i}`) as HTMLInputElement).value,
+        })
+        if (!r.ok) {
+          outEl.innerHTML = `<div class="note" style="margin-top:8px">${esc(r.problem!)}</div>`
+          return
+        }
+        outEl.innerHTML = `
+          <pre style="margin-top:8px;padding:10px;background:var(--surface);border:1px solid var(--line);
+            border-radius:7px;font-size:12.5px;white-space:pre-wrap;color:var(--ink-2)">${esc(r.text)}</pre>
+          <button class="opt" data-refcopy="${i}">복사하기</button>
+          <a class="opt" style="display:inline-block;text-decoration:none;margin-left:6px"
+             href="https://github.com/lhs0609a-cpu/teraclean-releases/issues/new?title=%EC%A0%95%EB%A6%AC%20%EB%8F%84%EC%9B%80%20%EC%9A%94%EC%B2%AD"
+             target="_blank" rel="noopener">요청 보내는 곳 열기</a>`
+        outEl.querySelector<HTMLButtonElement>(`[data-refcopy="${i}"]`)!.addEventListener('click', (ev) => {
+          navigator.clipboard?.writeText(r.text)
+          ;(ev.currentTarget as HTMLButtonElement).textContent = '복사했어요'
+        })
+      })
     })
   })
 }

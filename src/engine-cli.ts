@@ -35,7 +35,7 @@
  */
 
 import { stat, readFile, writeFile, mkdir } from 'node:fs/promises'
-import { join, dirname } from 'node:path'
+import { join, dirname, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -65,6 +65,14 @@ import {
   type FolderEntry,
 } from './tidyfolder.ts'
 import { quarantine } from './quarantine.ts'
+import {
+  isPhoto,
+  groupBySize,
+  contentHash,
+  buildDupGroups,
+  planPhotos,
+  type PhotoFile,
+} from './photos.ts'
 import {
   ROUTINES,
   emptyState,
@@ -235,6 +243,48 @@ async function markBrokenLinks(entries: FolderEntry[]): Promise<FolderEntry[]> {
   } catch {
     return entries // 못 읽으면 아무것도 깨진 것으로 치지 않는다
   }
+}
+
+/**
+ * 사진 폴더를 훑어 스크린샷·중복 후보를 만든다.
+ *
+ * 중복 확정은 '크기가 같은 것'만 해시한다. 사진 수만 장을 전부 해시하면
+ * 몇 분이 걸리는데, 크기가 겹치지 않는 파일은 애초에 중복일 수 없다.
+ */
+async function scanPhotos(roots: string[]) {
+  const files: PhotoFile[] = []
+  for (const root of roots) {
+    if (!(await isDir(root))) continue
+    const scanned = await scan(root)
+    for (const f of scanned.files) {
+      if (!isPhoto(f.path)) continue
+      files.push({
+        path: f.path,
+        name: basename(f.path),
+        size: f.size,
+        mtimeMs: stampMtime(f.mtime.getTime()),
+      })
+    }
+  }
+
+  const hashed: { file: PhotoFile; hash: string }[] = []
+  for (const group of groupBySize(files)) {
+    for (const f of group) {
+      try {
+        hashed.push({ file: f, hash: await contentHash(f.path, f.size) })
+      } catch {
+        /* 못 읽는 파일은 중복 후보에서 뺀다 — 확신 없으면 건드리지 않는다 */
+      }
+    }
+  }
+
+  return { files, dupGroups: buildDupGroups(hashed) }
+}
+
+/** 사진이 있을 만한 곳. 임의 경로는 받지 않는다. */
+function photoRoots(): string[] {
+  const home = homedir()
+  return [join(home, 'Pictures'), join(home, 'OneDrive', 'Pictures'), join(home, 'Desktop')]
 }
 
 async function isDir(p: string): Promise<boolean> {
@@ -535,6 +585,82 @@ async function main() {
           brokenQuarantined: q.quarantined.length,
           failed: [...moved.failed, ...q.failed],
         })
+        break
+      }
+      /**
+       * 사진 정리 — 스크린샷과 '내용이 완전히 같은 사본'만 다룬다.
+       * "비슷한 사진 골라주기"는 하지 않는다. 뭘 남길지 우리가 알 수 없고,
+       * 잘못 고르면 되돌릴 수 없는 종류의 손해다.
+       */
+      case 'photos-plan': {
+        const { files, dupGroups } = await scanPhotos(photoRoots())
+        const plan = planPhotos(files, dupGroups)
+        out({
+          roots: photoRoots(),
+          scanned: plan.scanned,
+          oldScreenshots: plan.oldScreenshots.slice(0, 100),
+          screenshotCount: plan.oldScreenshots.length,
+          screenshotBytes: plan.screenshotBytes,
+          recentScreenshots: plan.recentScreenshots,
+          dupGroups: plan.dupGroups.slice(0, 50),
+          dupGroupCount: plan.dupGroups.length,
+          dupBytes: plan.dupBytes,
+        })
+        break
+      }
+      /**
+       * 실행. 둘 다 지우지 않는다 —
+       *   스크린샷은 사진 폴더 안의 '정리-YYYY-MM'으로 옮기고(장부로 되돌리기),
+       *   중복 사본은 격리로 보낸다(30일 되돌리기). 원본은 절대 건드리지 않는다.
+       */
+      case 'photos-apply': {
+        const what = args[0] ?? 'all' // screenshots | duplicates | all
+        const { files, dupGroups } = await scanPhotos(photoRoots())
+        const plan = planPhotos(files, dupGroups)
+
+        let movedCount = 0, movedBytes = 0, destFolder = ''
+        const failed: { path: string; reason: string }[] = []
+
+        if ((what === 'all' || what === 'screenshots') && plan.oldScreenshots.length) {
+          // 스크린샷은 원래 있던 폴더 기준으로 정리 폴더를 만든다
+          const byFolder = new Map<string, typeof plan.oldScreenshots>()
+          for (const s of plan.oldScreenshots) {
+            const dir = dirname(s.path)
+            const arr = byFolder.get(dir)
+            if (arr) arr.push(s)
+            else byFolder.set(dir, [s])
+          }
+          for (const [dir, shots] of byFolder) {
+            const sub = planFolderTidy(
+              shots.map((s) => ({ name: s.name, path: s.path, size: s.size, mtimeMs: s.mtimeMs, isDir: false })),
+              { folder: dir, keepDays: 0 }
+            )
+            const r = await applyFolderTidy(sub)
+            movedCount += r.movedCount
+            movedBytes += r.movedBytes
+            failed.push(...r.failed)
+            destFolder = r.destFolder
+          }
+        }
+
+        let quarantinedCount = 0, quarantinedBytes = 0
+        if ((what === 'all' || what === 'duplicates') && plan.dupGroups.length) {
+          const q = await quarantine(
+            plan.dupGroups.flatMap((g) =>
+              g.copies.map((c) => ({
+                path: c.path,
+                reason: `같은 사진이 여러 벌 — 원본(${basename(g.keeper.path)})은 그대로 뒀어요`,
+                zone: 'SAFE' as const,
+                expect: { size: c.size, mtimeMs: c.mtimeMs },
+              }))
+            )
+          )
+          quarantinedCount = q.quarantined.length
+          quarantinedBytes = q.bytes
+          failed.push(...q.failed)
+        }
+
+        out({ movedCount, movedBytes, destFolder, quarantinedCount, quarantinedBytes, failed })
         break
       }
       case 'tidy-folder-undo': {
