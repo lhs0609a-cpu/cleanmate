@@ -35,6 +35,7 @@
  */
 
 import { stat, readFile, writeFile, mkdir } from 'node:fs/promises'
+import { parseArgv } from "./argv.ts"
 import { join, dirname, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { spawn, execFile } from 'node:child_process'
@@ -372,19 +373,21 @@ async function scanPlan(paths: string[]) {
 
 /**
  * 명령·인자를 argv에서 뽑는다.
- * 일반 node 실행:  [node, engine-cli.ts, command, ...args] → slice(2)
- * SEA 단일 exe:    [exe, command, ...args] (스크립트 경로 없음) → slice(1)
+ * ★ 실물에서 터진 버그(2026-08-03): 설치된 앱의 모든 기능이 죽어 있었다.
+ *   엔진을 어떤 명령으로 부르든 "알 수 없는 명령: D:\...\teraclean-engine.exe"만 돌아왔다.
+ *
+ *   원인: SEA일 때 slice(1)로 잡았는데, 실제 SEA 런타임의 argv는
+ *     [exe, exe, command, ...args]   ← 스크립트 자리에 exe 경로가 한 번 더 들어간다
+ *   라서 명령 자리에 exe 경로가 들어왔다. 문서만 보고 짐작한 형태와 달랐다.
+ *
+ *   그래서 '개수'가 아니라 '내용'으로 판단한다 — argv[1]이 자기 자신이거나
+ *   스크립트 파일이면 건너뛴다. 두 실행 방식 모두에서 성립한다.
+ *
+ * 일반 node 실행:  [node, engine-cli.ts, command, ...args]
+ * SEA 단일 exe:    [exe, exe, command, ...args]
  */
 function readArgs(): string[] {
-  let start = 2
-  try {
-    // SEA 런타임에서만 node:sea가 있고 isSea()가 참이다.
-    const sea = require('node:sea')
-    if (sea?.isSea?.()) start = 1
-  } catch {
-    /* 일반 node(ESM) 실행 — require 자체가 없다. slice(2)가 맞다. */
-  }
-  return process.argv.slice(start)
+  return parseArgv(process.argv, process.execPath)
 }
 
 async function main() {

@@ -59,6 +59,15 @@ Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 Name: "autostart"; Description: "윈도우 시작 시 자동 실행 (백그라운드에서 조용히 관리)"; GroupDescription: "시작 옵션:"
 Name: "desktopicon"; Description: "바탕화면에 바로가기 만들기"; GroupDescription: "바로가기:"
 
+[InstallDelete]
+; ★ 클린메이트 시절 파일·자동시작을 걷어낸다.
+;   이름을 바꾸면서 exe 이름도 바뀌었는데(cleanmate.exe → teraclean.exe),
+;   이노셋업은 모르는 파일을 지우지 않는다. 그래서 업그레이드해도 옛 exe가
+;   그대로 남고, 옛 자동시작 항목이 그 파일을 계속 실행한다 —
+;   부팅할 때마다 '구버전 앱'이 뜨는 셈이다. 실측에서 실제로 그랬다.
+Type: files; Name: "{app}\cleanmate.exe"
+Type: files; Name: "{app}\cleanmate-engine.exe"
+
 [Files]
 ; Tauri 빌드 산출물 전체(exe + 사이드카 엔진 + 리소스)를 통째로 담는다.
 ; CI가 이 폴더를 채운다(release.yml).
@@ -69,6 +78,12 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Registry]
+; ★ 옛 이름으로 등록된 자동시작을 먼저 지운다. 안 지우면 부팅 때 구버전 exe가
+;   같이 실행된다(설치 폴더에서 옛 exe는 [InstallDelete]가 지우므로, 남은
+;   항목은 없는 파일을 가리키는 유령이 된다).
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
+  ValueType: none; ValueName: "CleanMate"; Flags: deletevalue
+
 ; ★ 자동 시작(상주). V3/알약처럼 부팅 시 트레이에 조용히 뜬다.
 ; --minimized: 창을 띄우지 않고 트레이로 시작(앱이 이 인자를 해석).
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
