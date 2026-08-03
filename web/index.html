@@ -484,7 +484,7 @@
               <span class="s-one">원클릭 최적화<span class="s">확실한 건 알아서 · 애매한 건 모아서 보여드려요</span></span>
               <span class="s-sub">다른 폴더 고르기</span>
               <p class="s-priv"><span class="d">●</span> 파일은 <b>기기를 한 바이트도 떠나지 않습니다.</b> 서버도 업로드도 없어요.</p>
-              <div class="s-status">390,825개 · 89.2GB · 33,180ms</div>
+              <div class="s-status">115,165개 · 56.4GB · 40,120ms</div>
             </div>
 
             <div class="s-card">
@@ -493,19 +493,19 @@
               <div class="s-zbars">
                 <div>
                   <div class="s-zrow sfe"><span class="s-zlab">존 A 안전</span>
-                    <span class="s-ztrack"><span class="s-zfill" style="--w:39.1%"></span></span>
-                    <span class="s-zval">34.9GB · 12,480개</span></div>
+                    <span class="s-ztrack"><span class="s-zfill" style="--w:3.7%"></span></span>
+                    <span class="s-zval">2.1GB · 12,480개</span></div>
                   <div class="s-zdesc">캐시·로그처럼 다시 생기는 것. 규칙이 확증한 것만 자동 정리해요.</div>
                 </div>
                 <div>
                   <div class="s-zrow sam"><span class="s-zlab">존 B 애매</span>
-                    <span class="s-ztrack"><span class="s-zfill" style="--w:14.0%"></span></span>
+                    <span class="s-ztrack"><span class="s-zfill" style="--w:22.2%"></span></span>
                     <span class="s-zval">12.5GB · 1,240개</span></div>
                   <div class="s-zdesc">사용자만 아는 것. 무인 삭제 안 하고 물어봅니다.</div>
                 </div>
                 <div>
                   <div class="s-zrow slk"><span class="s-zlab">존 C 잠금</span>
-                    <span class="s-ztrack"><span class="s-zfill" style="--w:46.9%"></span></span>
+                    <span class="s-ztrack"><span class="s-zfill" style="--w:74.1%"></span></span>
                     <span class="s-zval">41.8GB · 101,445개</span></div>
                   <div class="s-zdesc">시스템·설정·클라우드. 지우면 뭔가 깨져서 아예 안 건드려요.</div>
                 </div>
@@ -514,7 +514,7 @@
           </div>
         </div>
       </div>
-      <p class="shotcap">실제 앱 화면 그대로입니다 — 숫자는 개발용 PC 한 대(AppData/Local 390,825개·89.2GB)를 실측한 값입니다.</p>
+      <p class="shotcap">실제 앱 화면 그대로입니다 — 숫자는 개발용 PC 한 대를 실측한 값으로 구성했습니다.</p>
     </div>
   </div>
 </section>
@@ -656,7 +656,7 @@
 
     <!-- 앱 화면 — 정리 계획 + 지켜드린 것 -->
     <div class="shotwrap narrow reveal">
-      <div class="shot" role="img" aria-label="테라클린 앱 정리 계획 화면: 지금 정리 가능 2.1GB, 물어보면 정리 가능 12.5GB, 지켜드린 것 41.8GB. 규칙이 확증하지 못한 32.8GB는 존 A로 보여도 자동 정리에서 제외했다는 안내와, 지켜드린 항목 목록.">
+      <div class="shot" role="img" aria-label="테라클린 앱 정리 계획 화면: 지금 정리 가능 2.1GB, 물어보면 정리 가능 12.5GB, 지켜드린 것 41.8GB. 자동 정리 대상은 전부 규칙이 확증한 캐시라는 안내와, 지켜드린 항목 목록.">
         <div class="s-chrome" aria-hidden="true">
           <span class="ic">✓</span><span class="nm">테라클린</span>
           <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
@@ -675,8 +675,7 @@
               <div class="s-stat"><div class="n m">41.8GB</div><div class="l">지켜드린 것<br>101,445개 · 건드리면 위험</div></div>
             </div>
             <div class="s-actions"><span class="s-btn">확실한 캐시 2.1GB 정리하기</span></div>
-            <p class="s-note">규칙이 확증 못 한 32.8GB는 존 A로 보여도 자동 정리에서 뺐어요.
-              추론만으로는 자동으로 안 지웁니다(오삭제 방어선).</p>
+            <p class="s-note">자동 정리 대상은 전부 규칙이 확증한 캐시예요. 지워도 다시 생깁니다.</p>
           </div>
 
           <div class="s-kept">
@@ -693,7 +692,7 @@
           </div>
         </div>
       </div>
-      <p class="shotcap">"규칙이 확증 못 한 32.8GB는 자동 정리에서 뺐다" — 이 문장이 앱에 그대로 뜹니다.</p>
+      <p class="shotcap">자동 정리는 <b style="color:var(--ink-2)">규칙이 확증한 캐시</b>에만 들어갑니다 — 추론으로 얻은 판단은 자동 처리 자격이 없습니다.</p>
     </div>
   </div>
 </section>
@@ -813,7 +812,7 @@
         </div></div>
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
         <h3>기기를 떠나지 않음</h3><p>분석은 전부 당신 컴퓨터 안에서. 서버도 업로드도 없습니다. 웹 데모 화면은 브라우저가 네트워크를 아예 차단하도록 배포했습니다.</p>
-        <div class="shot sm" role="img" aria-label="테라클린 앱 홈 화면 축약: 파일은 기기를 한 바이트도 떠나지 않는다는 안내와, 390,825개 89.2GB를 33,180밀리초에 읽은 상태 표시.">
+        <div class="shot sm" role="img" aria-label="테라클린 앱 홈 화면 축약: 파일은 기기를 한 바이트도 떠나지 않는다는 안내와, 115,165개 56.4GB를 읽은 상태 표시.">
           <div class="s-top" aria-hidden="true">
             <span class="s-brand">테라클린<i>.</i></span>
             <span class="s-nav"><span class="on">홈</span><span>숨은 공간</span><span>격리함</span></span>
@@ -824,7 +823,7 @@
               <div class="s-hcap">이 폴더에서 <b>정리 가능</b></div>
               <p class="s-priv"><span class="d">●</span> 파일은 <b>기기를 한 바이트도 떠나지 않습니다.</b>
                 서버도 업로드도 없어요. 분석은 전부 이 컴퓨터 안에서 끝납니다.</p>
-              <div class="s-status">390,825개 · 89.2GB · 33,180ms</div>
+              <div class="s-status">115,165개 · 56.4GB · 40,120ms</div>
             </div>
             <div class="s-note">웹 체험 화면은 <b>connect-src 'none'</b> — 브라우저가 네트워크를 아예 막은 채로 돕니다.</div>
           </div>

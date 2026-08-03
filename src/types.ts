@@ -152,6 +152,22 @@ export interface SystemAction {
 }
 
 /**
+ * 되돌리는 명령이 없어서 SystemAction으로 만들 수 없는 항목의 정식 경로.
+ *
+ * SystemAction은 undo를 요구한다(위 주석). 그 규칙을 느슨하게 만드는 대신,
+ * "우리가 지우는 게 아니라 윈도우의 정식 도구를 대신 띄워준다"는 별도 개념을 둔다.
+ *   - 되돌릴 수 없는 것(휴지통 비우기)은 irreversible로 표시하고 UI가 반드시 확인받는다.
+ *   - 우리 코드가 그 폴더의 파일을 직접 지우는 경로는 존재하지 않는다.
+ */
+export interface AssistAction {
+  label: string
+  /** 엔진이 아는 정식 도구. 임의 명령을 받지 않는다(문자열 실행 통로를 안 만든다). */
+  command: 'empty-recycle-bin' | 'open-cleanmgr'
+  irreversible: boolean
+  note: string
+}
+
+/**
  * 프로브가 찾은 것 — 파일이 아니라 '항목'이다.
  *
  * 왜 FileEntry가 아닌가: hiberfil.sys는 node의 stat()이 EPERM으로 튕겨서
@@ -171,4 +187,6 @@ export interface Finding {
   explain: Explanation
   /** 회수 방법. 없으면 = 아직 안전한 경로를 모른다 → 건드리지 않는다. */
   action?: SystemAction
+  /** 되돌리기가 없어 SystemAction을 못 만드는 항목의 정식 도구 경로 */
+  assist?: AssistAction
 }

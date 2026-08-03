@@ -163,9 +163,11 @@
     <nav class="nav">
       <button data-go="home" class="on">홈</button>
       <button data-go="hidden">숨은 공간</button>
+      <button data-go="startup">시작프로그램</button>
       <button data-go="programs">안 쓴 프로그램</button>
       <button data-go="move">드라이브 옮기기</button>
       <button data-go="quar">격리함</button>
+      <button data-go="tidy">생활 정리</button>
     </nav>
   </div>
 </div>
@@ -244,6 +246,25 @@
     <div class="card" id="hiber-card"></div>
   </section>
 
+  <!-- ════ 시작프로그램 ════ -->
+  <section class="screen" id="s-startup">
+    <div class="card pad">
+      <div class="sechead"><span class="k">시작프로그램</span><h2>컴퓨터를 켤 때 같이 뜨는 것들</h2></div>
+      <p class="lede" style="margin-top:6px">
+        여기서 하는 일은 <b style="color:var(--ink)">지우는 게 아니라 끄는 것</b>입니다.
+        프로그램은 그대로 있고 부팅 때 자동으로 안 뜰 뿐이라,
+        <b style="color:var(--ink)">언제든 한 번에 되돌릴 수 있어요.</b>
+        그래서 격리함도 30일도 필요 없습니다.
+      </p>
+      <p class="lede" style="margin-top:8px">
+        정체를 모르는 항목은 <b style="color:var(--ink)">끄자고 제안하지 않습니다.</b>
+        "뭔지 모른다"는 "꺼도 된다"가 아니니까요.
+      </p>
+      <div style="margin-top:12px"><span class="pill desk">실제 목록·끄기는 데스크톱 앱</span></div>
+      <div id="startup-body"><div class="empty">'시작프로그램' 탭을 열면 이 PC를 실측합니다.</div></div>
+    </div>
+  </section>
+
   <!-- ════ 격리함 ════ -->
   <!-- 오래 안 쓴 프로그램 -->
   <section class="screen" id="s-programs">
@@ -278,6 +299,22 @@
       </p>
       <div style="margin-top:12px"><span class="pill desk">실제 이동은 데스크톱 앱</span></div>
       <div id="move-body"><div class="empty">'드라이브 옮기기' 탭을 열면 옮길 수 있는 것을 찾습니다.</div></div>
+    </div>
+  </section>
+
+  <!-- ════ 생활 정리 ════ -->
+  <section class="screen" id="s-tidy">
+    <div class="card pad">
+      <div class="sechead"><span class="k">생활 정리</span><h2>PC를 비우고 나면 방이 보입니다</h2></div>
+      <p class="lede" style="margin-top:6px">
+        정리는 컴퓨터에서 끝나지 않습니다. 책상·이불·서랍처럼 <b style="color:var(--ink)">짧게 자주 하는 것들</b>을
+        모아두고, 언제 했는지만 기억해 드릴게요.
+      </p>
+      <p class="lede" style="margin-top:8px">
+        밀렸다고 재촉하지 않습니다. <b style="color:var(--ink)">안 해도 되는 날은 안 해도 됩니다.</b>
+        기록은 이 컴퓨터에만 저장되고 어디로도 보내지 않아요.
+      </p>
+      <div id="tidy-body"><div class="empty">'생활 정리' 탭을 열면 오늘 할 것을 보여드립니다.</div></div>
     </div>
   </section>
 

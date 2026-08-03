@@ -13,11 +13,17 @@
  *   진행 로그·경고는 전부 stderr로 (stdout을 오염시키지 않는다).
  *
  * 사용: cleanmate-engine <command> [json-args]
- *   scan-plan      <path>            스캔 → 3-존 + 정리 계획 + 질문
- *   apply-sweep    <path>            존 A 자동 정리(격리로 이동)
- *   quar-list                        격리함 목록
+ *   default-roots                    이 PC에서 기본으로 훑을 폴더 목록
+ *   scan-plan      <path...>         스캔(여러 곳 가능) → 3-존 + 정리 계획 + 질문
+ *   apply-sweep    <path...>         존 A 자동 정리(격리로 이동)
+ *   quar-list                        격리함 목록 (전 드라이브)
  *   restore        <id|--all>        되돌리기
- *   probe                            숨은 공간(hiberfil 등)
+ *   purge                            유예 30일이 지난 것만 실제 삭제
+ *   probe                            숨은 공간(hiberfil·휴지통·업데이트 캐시)
+ *   startup                          시작프로그램 목록 + 판정
+ *   startup-set    <id> <on|off>     시작프로그램 켜기/끄기 (되돌릴 수 있음)
+ *   empty-recycle-bin                휴지통 비우기(윈도우 공식 명령, 되돌리기 없음)
+ *   open-cleanmgr                    윈도우 디스크 정리 도구 띄우기
  *   relocate-plan  <path> <destRoot> 다른 드라이브로 옮길 계획(미리보기)
  *   relocate-apply <path> <destRoot> 실제 이동
  *   relocate-list  <destRoot>        옮긴 목록
@@ -28,6 +34,11 @@
  *   엔진은 파일도 프로그램도 임의로 지우지 않는다.
  */
 
+import { stat, readFile, writeFile, mkdir } from 'node:fs/promises'
+import { join, dirname } from 'node:path'
+import { homedir } from 'node:os'
+import { spawn, execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { scan } from './scanner.ts'
 import { classifyOne, isAutoEligible } from './classify.ts'
 import { run as runEngine } from './engine.ts'
@@ -35,12 +46,25 @@ import { planSweep, applySweep } from './sweep.ts'
 import {
   readManifest,
   restore,
-  quarantineRoot,
   isExpired,
+  listQuarantineRoots,
+  purgeExpired,
   GRACE_DAYS,
 } from './quarantine.ts'
+import { defaultRoots } from './presets.ts'
 import { gatherFacts } from './probes/facts.ts'
 import { probeHiberfil } from './probes/hiberfil.ts'
+import { gatherReclaimFacts, probeRecycleBin, probeUpdateCache } from './probes/reclaim.ts'
+import { probeStartup, setStartupEnabled } from './probes/startup.ts'
+import {
+  ROUTINES,
+  emptyState,
+  markDone,
+  undoDone,
+  planToday,
+  todayISO,
+  type TidyState,
+} from './content/tidy.ts'
 import { probePrograms } from './probes/programs.ts'
 import {
   isRelocatable,
@@ -101,6 +125,18 @@ async function checkDestination(destRoot: string, needBytes: number) {
   return { ok: true as const, freeBytes: free }
 }
 
+/**
+ * PowerShell 한 줄 실행. 명령은 이 파일 안에 하드코딩된 것만 들어온다 —
+ * 밖에서 받은 문자열을 셸에 넘기는 통로를 만들지 않는다.
+ */
+async function runPowerShell(command: string): Promise<void> {
+  await promisify(execFile)(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-Command', command],
+    { windowsHide: true }
+  )
+}
+
 function out(data: unknown): never {
   process.stdout.write(JSON.stringify({ ok: true, data }))
   process.exit(0)
@@ -110,32 +146,88 @@ function fail(message: string): never {
   process.exit(1)
 }
 
-/** 시스템 드라이브의 격리함 경로 */
-function sysQuarRoot(): string {
-  const drive = process.env.SystemDrive ? process.env.SystemDrive + '\\' : '/'
-  return quarantineRoot(drive)
+/* ── 생활 정리 진행 기록 ───────────────────────────────────────
+   앱 데이터 폴더에 JSON 하나로 둔다. 서버에 안 올린다 — 이 앱에서 사용자의
+   무엇도 밖으로 나가지 않는다는 약속은 파일 분석에만 해당하는 게 아니다.
+   읽기 실패는 빈 상태로 넘어간다. 기록을 못 읽었다고 앱이 멈추면 안 된다. */
+function tidyFile(): string {
+  const base =
+    process.env.APPDATA ??
+    process.env.XDG_DATA_HOME ??
+    join(homedir(), '.local', 'share')
+  return join(base, 'TeraClean', 'tidy.json')
 }
 
-/** 스캔 → 분류 → 정리 계획 + 질문. 데스크톱이라 실제 경로 규칙이 온전히 작동한다. */
-async function scanPlan(path: string) {
-  const scanned = await scan(path)
+async function readTidy(): Promise<TidyState> {
+  try {
+    const raw = await readFile(tidyFile(), 'utf8')
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed.done === 'object' ? (parsed as TidyState) : emptyState()
+  } catch {
+    return emptyState()
+  }
+}
 
+async function writeTidy(state: TidyState): Promise<void> {
+  const file = tidyFile()
+  await mkdir(dirname(file), { recursive: true })
+  await writeFile(file, JSON.stringify(state), 'utf8')
+}
+
+async function isDir(p: string): Promise<boolean> {
+  try {
+    return (await stat(p)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+/** 이 PC에서 기본으로 훑을 곳 중 '실제로 있는 것'만. */
+async function presentDefaultRoots() {
+  const roots = defaultRoots({
+    platform: process.platform,
+    home: homedir(),
+    temp: process.env.TEMP || process.env.TMPDIR,
+  })
+  const present = []
+  for (const r of roots) if (await isDir(r.path)) present.push(r)
+  return present
+}
+
+/**
+ * 스캔 → 분류 → 정리 계획 + 질문. 데스크톱이라 실제 경로 규칙이 온전히 작동한다.
+ *
+ * 경로를 여러 개 받는 이유: 기본 스캔은 '이 PC의 주요 폴더 여러 곳'이다.
+ * 질문(클러스터링)은 전부 모아놓고 계산해야 의미가 있다 — 폴더마다 따로
+ * 물어보면 같은 질문이 5번 나온다.
+ */
+async function scanPlan(paths: string[]) {
   let safeB = 0, safeC = 0, ambB = 0, ambC = 0, lockB = 0, lockC = 0
   let autoB = 0, autoC = 0, inferB = 0
+  let scannedFiles = 0, elapsedMs = 0
   const ambig: Classified[] = []
   const keptMap = new Map<string, number>()
+  /** 어디를 봤는지도 돌려준다 — "어디까지 봤나"를 숨기면 신뢰가 안 생긴다. */
+  const roots: { path: string; files: number; bytes: number }[] = []
 
-  for (const f of scanned.files) {
-    const c = classifyOne(f)
-    const z = c.verdict.zone
-    if (z === 'LOCKED') {
-      lockB += f.size; lockC++
-      keptMap.set(c.verdict.meaning, (keptMap.get(c.verdict.meaning) ?? 0) + f.size)
-    } else if (z === 'AMBIG') {
-      ambB += f.size; ambC++; ambig.push(c)
-    } else {
-      safeB += f.size; safeC++
-      if (isAutoEligible(c)) { autoB += f.size; autoC++ } else inferB += f.size
+  for (const path of paths) {
+    const scanned = await scan(path)
+    scannedFiles += scanned.files.length
+    elapsedMs += scanned.elapsedMs
+    roots.push({ path, files: scanned.files.length, bytes: scanned.totalBytes })
+
+    for (const f of scanned.files) {
+      const c = classifyOne(f)
+      const z = c.verdict.zone
+      if (z === 'LOCKED') {
+        lockB += f.size; lockC++
+        keptMap.set(c.verdict.meaning, (keptMap.get(c.verdict.meaning) ?? 0) + f.size)
+      } else if (z === 'AMBIG') {
+        ambB += f.size; ambC++; ambig.push(c)
+      } else {
+        safeB += f.size; safeC++
+        if (isAutoEligible(c)) { autoB += f.size; autoC++ } else inferB += f.size
+      }
     }
   }
 
@@ -146,8 +238,9 @@ async function scanPlan(path: string) {
     .slice(0, 6)
 
   return {
-    scannedFiles: scanned.files.length,
-    elapsedMs: scanned.elapsedMs,
+    roots,
+    scannedFiles,
+    elapsedMs,
     zones: {
       safe: { bytes: safeB, count: safeC },
       ambig: { bytes: ambB, count: ambC },
@@ -186,57 +279,105 @@ async function main() {
 
   try {
     switch (command) {
+      case 'default-roots': {
+        out({ roots: await presentDefaultRoots() })
+        break
+      }
       case 'scan-plan': {
-        if (!args[0]) fail('스캔할 경로가 필요합니다.')
-        out(await scanPlan(args[0]))
+        // 인자가 없으면 '이 PC 기본 스캔'이다. 폴더를 못 고르는 사람을 위한 기본값.
+        const paths = args.length ? args : (await presentDefaultRoots()).map((r) => r.path)
+        if (!paths.length) fail('훑을 폴더를 찾지 못했습니다.')
+        out(await scanPlan(paths))
         break
       }
       case 'apply-sweep': {
-        if (!args[0]) fail('경로가 필요합니다.')
-        const plan = await planSweep(args[0])
-        const result = await applySweep(plan)
-        out({
-          quarantinedCount: result.quarantinedCount,
-          bytesAfterGrace: result.bytesAfterGrace,
-          failed: result.failed,
-        })
+        const paths = args.length ? args : (await presentDefaultRoots()).map((r) => r.path)
+        if (!paths.length) fail('정리할 폴더를 찾지 못했습니다.')
+        let quarantinedCount = 0, bytesAfterGrace = 0
+        const failed: { path: string; reason: string }[] = []
+        for (const path of paths) {
+          const plan = await planSweep(path)
+          const result = await applySweep(plan)
+          quarantinedCount += result.quarantinedCount
+          bytesAfterGrace += result.bytesAfterGrace
+          failed.push(...result.failed)
+        }
+        out({ quarantinedCount, bytesAfterGrace, failed })
         break
       }
       case 'quar-list': {
-        const root = sysQuarRoot()
-        const manifest = await readManifest(root)
-        out({
-          graceDays: GRACE_DAYS,
-          items: manifest.map((e) => ({
-            id: e.id,
-            originalPath: e.originalPath,
-            size: e.size,
-            reason: e.reason,
-            quarantinedAt: e.quarantinedAt,
-            expired: isExpired(e),
-          })),
-          totalBytes: manifest.reduce((s, e) => s + e.size, 0),
-        })
+        // 드라이브마다 격리함이 따로 있다(원본과 같은 드라이브에 만든다).
+        // 전부 모아서 보여주지 않으면 D에서 정리한 파일이 화면에서 사라진 것처럼 보인다.
+        const roots = await listQuarantineRoots()
+        const items = []
+        let totalBytes = 0
+        for (const root of roots) {
+          for (const e of await readManifest(root)) {
+            items.push({
+              id: e.id,
+              root,
+              originalPath: e.originalPath,
+              size: e.size,
+              reason: e.reason,
+              quarantinedAt: e.quarantinedAt,
+              expired: isExpired(e),
+            })
+            totalBytes += e.size
+          }
+        }
+        items.sort((a, b) => a.quarantinedAt - b.quarantinedAt)
+        out({ graceDays: GRACE_DAYS, roots, items, totalBytes })
         break
       }
       case 'restore': {
         if (!args[0]) fail('되돌릴 id 또는 --all 이 필요합니다.')
-        const root = sysQuarRoot()
-        const manifest = await readManifest(root)
-        const ids = args[0] === '--all'
-          ? manifest.map((e) => e.id)
-          : manifest.filter((e) => e.id.startsWith(args[0])).map((e) => e.id)
-        const r = await restore(ids, root)
-        out({
-          restoredCount: r.restored.length,
-          restoredBytes: r.restored.reduce((s, e) => s + e.size, 0),
-          failed: r.failed.map((f) => ({ path: f.entry.originalPath, reason: f.reason })),
-        })
+        let restoredCount = 0, restoredBytes = 0
+        const failed: { path: string; reason: string }[] = []
+        for (const root of await listQuarantineRoots()) {
+          const manifest = await readManifest(root)
+          const ids = args[0] === '--all'
+            ? manifest.map((e) => e.id)
+            : manifest.filter((e) => e.id.startsWith(args[0])).map((e) => e.id)
+          if (!ids.length) continue
+          const r = await restore(ids, root)
+          restoredCount += r.restored.length
+          restoredBytes += r.restored.reduce((s, e) => s + e.size, 0)
+          failed.push(...r.failed.map((f) => ({ path: f.entry.originalPath, reason: f.reason })))
+        }
+        out({ restoredCount, restoredBytes, failed })
+        break
+      }
+      /**
+       * 유예가 끝난 것만 실제로 지운다 — 이 제품이 파일을 영구히 없애는 유일한 명령.
+       *
+       * ★ 이게 없으면 격리는 '영원한 보관'이 된다. 옮기기만 했으니 용량은 그대로고,
+       *   앱은 "30일 뒤 확보됩니다"라고 말해놓고 그 약속을 아무도 지키지 않는다.
+       *   판단(30일 지났나)은 purgeExpired 안에 갇혀 있어서, 여기서 "지금 지워줘"라고
+       *   요청할 방법은 없다.
+       */
+      case 'purge': {
+        let purgedCount = 0, bytes = 0
+        const failed: { path: string; reason: string }[] = []
+        for (const root of await listQuarantineRoots()) {
+          const r = await purgeExpired(root)
+          purgedCount += r.purged.length
+          bytes += r.bytes
+          failed.push(...r.failed.map((f) => ({ path: f.entry.originalPath, reason: f.reason })))
+        }
+        out({ purgedCount, bytes, graceDays: GRACE_DAYS, failed })
         break
       }
       case 'probe': {
         const facts = await gatherFacts()
-        const hiber = probeHiberfil(facts)
+        const findings = [probeHiberfil(facts)]
+        // 휴지통·업데이트 캐시는 별도 조회다. 실패해도 hiberfil 결과까지
+        // 통째로 날리지 않는다 — 한쪽이 안 된다고 다른 쪽을 못 보여줄 이유가 없다.
+        try {
+          const rec = await gatherReclaimFacts()
+          findings.push(probeRecycleBin(rec), probeUpdateCache(rec))
+        } catch (err) {
+          process.stderr.write(`회수 프로브 실패: ${(err as Error).message}\n`)
+        }
         out({
           facts: {
             ramBytes: facts.ramBytes,
@@ -244,8 +385,68 @@ async function main() {
             laptopSignals: facts.laptopSignals,
             fastStartupEnabled: facts.fastStartupEnabled,
           },
-          findings: [hiber].filter(Boolean),
+          findings: findings.filter(Boolean).sort((a, b) => b!.bytes - a!.bytes),
         })
+        break
+      }
+      /**
+       * 휴지통 비우기 — 윈도우 공식 명령을 부른다. 되돌릴 수 없다.
+       * 우리가 $Recycle.Bin의 파일을 직접 지우는 경로는 만들지 않는다.
+       * 비운 양은 전후 실측 차이로 보고한다(추정치를 지어내지 않는다).
+       */
+      case 'empty-recycle-bin': {
+        const before = await gatherReclaimFacts()
+        await runPowerShell('Clear-RecycleBin -Force -Confirm:$false -ErrorAction Stop')
+        const after = await gatherReclaimFacts()
+        out({
+          freedBytes: Math.max(0, before.recycleBytes - after.recycleBytes),
+          freedCount: Math.max(0, before.recycleCount - after.recycleCount),
+          remainingBytes: after.recycleBytes,
+        })
+        break
+      }
+      /**
+       * 시작프로그램 — 이 제품에서 유일하게 '삭제가 아닌 정리'다.
+       * 원본(Run 값·바로가기)은 그대로 두고 사용/해제 상태만 바꾸므로
+       * 되돌리기가 즉시다. 그래서 격리를 거치지 않는다.
+       */
+      case 'startup': {
+        out(await probeStartup())
+        break
+      }
+      /* ── 생활 정리 ─────────────────────────────────────────────
+         PC 정리만으로는 로드맵의 다음 단계(집 청소·정리정돈)로 이어지지 않는다.
+         콘텐츠는 데이터이고, 판단(오늘 뭘 할 때가 됐나)은 전부 순수 함수다. */
+      case 'tidy-list': {
+        const state = await readTidy()
+        const today = args[0] ?? todayISO()
+        out({ today, ...planToday(state, today), total: ROUTINES.length })
+        break
+      }
+      case 'tidy-done':
+      case 'tidy-undo': {
+        if (!args[0]) fail('항목 id가 필요합니다.')
+        if (!ROUTINES.some((r) => r.id === args[0])) fail(`모르는 항목입니다: ${args[0]}`)
+        const today = args[1] ?? todayISO()
+        const state = await readTidy()
+        const next = command === 'tidy-done'
+          ? markDone(state, args[0], today)
+          : undoDone(state, args[0], today)
+        await writeTidy(next)
+        out({ today, ...planToday(next, today), total: ROUTINES.length })
+        break
+      }
+      case 'startup-set': {
+        if (!args[0] || !args[1]) fail('항목 id와 on|off가 필요합니다.')
+        if (args[1] !== 'on' && args[1] !== 'off') fail("두 번째 인자는 on 또는 off여야 합니다.")
+        out(await setStartupEnabled(args[0], args[1] === 'on'))
+        break
+      }
+      /** 윈도우 디스크 정리를 띄우기만 한다. 우리가 고르지 않는다. */
+      case 'open-cleanmgr': {
+        const drive = process.env.SystemDrive ?? 'C:'
+        spawn('cleanmgr.exe', ['/d', drive], { detached: true, stdio: 'ignore', windowsHide: false }).unref()
+        out({ opened: true, drive })
         break
       }
       case 'relocate-plan': {

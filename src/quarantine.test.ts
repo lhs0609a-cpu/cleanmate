@@ -22,6 +22,10 @@ import {
   isExpired,
   isUnchanged,
   stampMtime,
+  candidateRoots,
+  listQuarantineRoots,
+  quarantineRoot,
+  manifestFile,
   GRACE_DAYS,
   type QuarantineEntry,
 } from './quarantine.ts'
@@ -335,4 +339,76 @@ test('isExpired는 경계에서 정확하다', () => {
   }
   assert.equal(isExpired(base, GRACE_DAYS * DAY_MS - 1), false, '1ms 모자라면 아직 아니다')
   assert.equal(isExpired(base, GRACE_DAYS * DAY_MS), true)
+})
+
+/* ────────────────────────────────────────────────────────────
+   드라이브 전체 격리함
+
+   ★ 이 테스트가 잠그는 사고: D 드라이브를 정리하면 격리함은 D:\.cleanmate에
+   생기는데, 목록·복구·만료삭제가 C만 보고 있었다. 사용자 입장에서는 파일이
+   그냥 사라진 것이다 — 목록에도 없고 되돌리기도 안 되고 30일 뒤에도 안 지워진다.
+   ──────────────────────────────────────────────────────────── */
+
+test('격리함 후보는 드라이브 전체다 (A·B는 제외)', () => {
+  const win = candidateRoots('win32')
+  const BS = String.fromCharCode(92) // 백슬래시
+  assert.ok(win.includes('C:' + BS))
+  assert.ok(win.includes('D:' + BS))
+  assert.ok(win.includes('Z:' + BS))
+  assert.ok(!win.some((r) => r.startsWith('A') || r.startsWith('B')))
+  assert.deepEqual(candidateRoots('darwin'), ['/'])
+})
+
+test('장부가 있는 드라이브만 격리함으로 친다', async () => {
+  const seen: string[] = []
+  const roots = await listQuarantineRoots({
+    platform: 'win32',
+    exists: async (p) => {
+      seen.push(p)
+      return p.startsWith('D:') || p.startsWith('C:')
+    },
+  })
+  const BS = String.fromCharCode(92)
+  assert.deepEqual(roots, [quarantineRoot('C:' + BS), quarantineRoot('D:' + BS)])
+  // 장부 파일로 판단해야 한다 — 빈 폴더가 남아 있다고 격리함인 건 아니다
+  assert.ok(seen.every((p) => p === manifestFile(quarantineRoot(p.slice(0, 3)))))
+})
+
+test('격리함이 하나도 없으면 빈 목록 — 없는 드라이브를 만들지 않는다', async () => {
+  const roots = await listQuarantineRoots({ platform: 'win32', exists: async () => false })
+  assert.deepEqual(roots, [])
+})
+
+test('★ 유예가 끝난 것만 지운다 — 만료 삭제가 실제로 용량을 비운다', async () => {
+  const s = await sandbox()
+  try {
+    const old = await s.file('old.bin', 'x'.repeat(4096))
+    const fresh = await s.file('fresh.bin', 'y'.repeat(2048))
+    await quarantine(
+      [
+        { path: old, reason: '오래된 캐시', zone: 'SAFE' },
+        { path: fresh, reason: '방금 캐시', zone: 'SAFE' },
+      ],
+      s.opts
+    )
+
+    // 하나만 30일 넘긴 것으로 만든다
+    const manifest = await readManifest(s.root)
+    manifest[0].quarantinedAt = Date.now() - (GRACE_DAYS + 1) * DAY_MS
+    await writeFile(
+      join(s.root, 'manifest.jsonl'),
+      manifest.map((e) => JSON.stringify(e)).join('\n') + '\n',
+      'utf8'
+    )
+
+    const r = await purgeExpired(s.root)
+    assert.equal(r.purged.length, 1, '유예 지난 것만')
+    assert.equal(r.bytes, 4096, '지운 만큼만 보고한다')
+
+    const left = await readManifest(s.root)
+    assert.equal(left.length, 1, '남은 것은 장부에 그대로')
+    assert.equal(left[0].reason, '방금 캐시')
+  } finally {
+    await s.cleanup()
+  }
 })

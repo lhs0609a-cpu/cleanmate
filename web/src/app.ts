@@ -13,6 +13,16 @@ import { isSupported, pickDirectory, scanHandle } from './browser-scanner.ts'
 import { classifyOne, isAutoEligible } from '../../src/classify.ts'
 import { run as runEngine, fmtBytes } from '../../src/engine.ts'
 import { compareVersions, verifyIntegrity, normalizeSha256 } from '../../src/updater.ts'
+import {
+  ROUTINES,
+  CATEGORY_LABEL,
+  emptyState,
+  markDone,
+  undoDone,
+  planToday,
+  todayISO,
+  type TidyState,
+} from '../../src/content/tidy.ts'
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
@@ -40,6 +50,8 @@ async function engine(command: string, args: string[] = []): Promise<any> {
 
 /* ── 공통 리포트 형태 ─────────────────────────────────────── */
 interface Report {
+  /** 어디를 봤는지. 기본 스캔은 여러 곳을 훑으므로 목록으로 보여준다. */
+  roots?: { path: string; files: number; bytes: number }[]
   scannedFiles: number
   elapsedMs: number
   zones: { safe: ZC; ambig: ZC; locked: ZC }
@@ -76,11 +88,15 @@ function buildBrowserReport(files: FileEntry[], elapsedMs: number): Report {
 }
 
 /* ── 화면 전환 ─────────────────────────────────────────────── */
-const screens = ['home', 'hidden', 'programs', 'move', 'quar']
+const screens = ['home', 'hidden', 'startup', 'programs', 'move', 'quar', 'tidy']
 let hiddenLoaded = false, quarLoaded = false, programsLoaded = false, moveLoaded = false
+let startupLoaded = false
 function go(name: string) {
   for (const s of screens) $(`s-${s}`).classList.toggle('on', s === name)
   document.querySelectorAll<HTMLButtonElement>('.nav button').forEach((b) => b.classList.toggle('on', b.dataset.go === name))
+  // 생활 정리는 파일을 안 건드리므로 브라우저에서도 그대로 돈다(기록만 localStorage).
+  if (name === 'tidy') loadTidy()
+  if (inTauri && name === 'startup' && !startupLoaded) { startupLoaded = true; loadStartup() }
   if (inTauri && name === 'hidden' && !hiddenLoaded) { hiddenLoaded = true; loadHidden() }
   if (inTauri && name === 'quar' && !quarLoaded) { quarLoaded = true; loadQuar() }
   if (inTauri && name === 'programs' && !programsLoaded) { programsLoaded = true; loadPrograms() }
@@ -113,7 +129,12 @@ function renderReport(r: Report) {
     zbar('존 B 애매', 'zamb', r.zones.ambig.bytes, total, r.zones.ambig.count, '사용자만 아는 것. 무인 삭제 안 하고 물어봅니다.') +
     zbar('존 C 잠금', 'zlock', r.zones.locked.bytes, total, r.zones.locked.count, '시스템·설정·클라우드. 지우면 뭔가 깨져서 아예 안 건드려요.')
 
-  $('plan-lede').textContent = '원클릭은 이렇게 해요: 확실한 캐시는 격리로 정리하고(되돌리기 가능), 애매한 건 아래 질문으로 모아서 보여드려요.'
+  // 어디를 봤는지 먼저 밝힌다. "PC 전체를 다 봤다"고 오해하게 두지 않는다.
+  const where = r.roots?.length
+    ? `<b style="color:var(--ink)">본 곳 ${r.roots.length}곳</b>: ${r.roots.map((x) => esc(x.path)).join(' · ')}<br>`
+    : ''
+  $('plan-lede').innerHTML =
+    where + '원클릭은 이렇게 해요: 확실한 캐시는 격리로 정리하고(되돌리기 가능), 애매한 건 아래 질문으로 모아서 보여드려요.'
   $('plan3').innerHTML = `
     <div class="stat"><div class="n g">${fmtBytes(r.plan.autoBytes)}</div><div class="l">지금 정리 가능<br>확실한 캐시 ${r.plan.autoCount.toLocaleString()}개 · 규칙 확증분만</div></div>
     <div class="stat"><div class="n a">${fmtBytes(r.plan.askBytes)}</div><div class="l">물어보면 정리 가능<br>애매한 ${r.plan.askCount.toLocaleString()}개 · 아래 질문으로</div></div>
@@ -175,19 +196,64 @@ function renderKept(kept: { meaning: string; bytes: number }[], lockBytes: numbe
 }
 
 /* ── 스캔 실행 ─────────────────────────────────────────────── */
-async function runScan() {
+
+/**
+ * 오래 걸리는 작업 중에 '얼마나 지났는지'를 보여준다.
+ *
+ * 엔진은 결과를 한 번에 돌려주기 때문에 진행률(%)을 만들 수 없다. 없는 진행률을
+ * 지어내느니 경과 시간을 정직하게 보여준다 — 멈춘 게 아니라는 것만 알면 된다.
+ */
+function startTicker(prefix: string): () => void {
+  const started = Date.now()
+  const paint = () => {
+    const s = Math.round((Date.now() - started) / 1000)
+    const t = s < 60 ? `${s}초` : `${Math.floor(s / 60)}분 ${s % 60}초`
+    $('status').textContent = `${prefix} · ${t}`
+  }
+  paint()
+  const timer = setInterval(paint, 1000)
+  return () => clearInterval(timer)
+}
+
+/** 기본 스캔 대상(이 PC의 주요 폴더)을 미리 안내한다. 뭘 볼 건지 먼저 말한다. */
+async function describeDefaultRoots(): Promise<string> {
+  try {
+    const d = await engine('default-roots')
+    const labels = d.roots.map((r: any) => r.label)
+    return labels.length ? `${labels.join(' · ')} 훑는 중` : '훑는 중'
+  } catch {
+    return '훑는 중'
+  }
+}
+
+/**
+ * @param pickFolder 폴더를 직접 고를 것인가. 기본(false)은 '이 PC의 주요 폴더'.
+ *   폴더를 고를 줄 아는 사람이면 이 앱이 필요 없다 — 기본이 알아서여야 한다.
+ */
+async function runScan(pickFolder = false) {
   ;($('oneclick') as HTMLButtonElement).disabled = true
-  $('status').textContent = inTauri ? '폴더 고르는 중...' : '읽는 중...'
+  let stopTicker: (() => void) | null = null
   try {
     let report: Report
     if (inTauri) {
-      const path = await TAURI.dialog.open({ directory: true, title: '정리할 폴더 고르기' })
-      if (!path) { $('status').textContent = ''; return }
-      scannedPath = path as string
-      $('status').textContent = '분석 중...'
-      report = (await engine('scan-plan', [scannedPath])) as Report
-      $('status').textContent = `${report.scannedFiles.toLocaleString()}개 · ${report.elapsedMs}ms`
+      let paths: string[] = []
+      if (pickFolder) {
+        const path = await TAURI.dialog.open({ directory: true, title: '정리할 폴더 고르기' })
+        if (!path) { $('status').textContent = ''; return }
+        scannedPath = path as string
+        paths = [scannedPath]
+        stopTicker = startTicker('분석 중')
+      } else {
+        scannedPath = null // 기본 스캔은 여러 곳이라 경로 하나로 특정되지 않는다
+        stopTicker = startTicker(await describeDefaultRoots())
+      }
+      report = (await engine('scan-plan', paths)) as Report
+      stopTicker(); stopTicker = null
+      $('status').textContent =
+        `${report.scannedFiles.toLocaleString()}개 · ${Math.round(report.elapsedMs / 1000)}초` +
+        (report.roots?.length ? ` · ${report.roots.length}곳` : '')
     } else {
+      $('status').textContent = '읽는 중...'
       const dir = await pickDirectory()
       if (!dir) { $('status').textContent = ''; return }
       const scanned = await scanHandle(dir, (n) => { $('status').textContent = `읽는 중... ${n.toLocaleString()}개` })
@@ -200,12 +266,15 @@ async function runScan() {
   } catch (err) {
     $('status').textContent = `문제가 있었어요: ${(err as Error).message}`
   } finally {
+    stopTicker?.()
     ;($('oneclick') as HTMLButtonElement).disabled = false
   }
 }
 
-$('oneclick').addEventListener('click', runScan)
-$('pick2').addEventListener('click', runScan)
+// ★ 화살표로 감싼다. addEventListener는 이벤트 객체를 첫 인자로 넘기는데,
+//   그게 pickFolder 자리에 들어가면 항상 truthy가 돼서 기본 스캔이 사라진다.
+$('oneclick').addEventListener('click', () => runScan(false))
+$('pick2').addEventListener('click', () => runScan(true))
 
 /* ── 정리 실행 (데스크톱: 진짜 격리 / 브라우저: 안내) ── */
 $('apply-btn').addEventListener('click', async () => {
@@ -213,11 +282,11 @@ $('apply-btn').addEventListener('click', async () => {
     alert('실제 정리(격리로 이동)는 데스크톱 앱에서 실행됩니다.\n\n브라우저는 보안상 파일을 옮기거나 지울 수 없어요.')
     return
   }
-  if (!scannedPath) return
   const btn = $('apply-btn') as HTMLButtonElement
   btn.disabled = true; btn.textContent = '정리 중...'
   try {
-    const res = await engine('apply-sweep', [scannedPath])
+    // 경로가 없으면(기본 스캔) 엔진이 같은 기본 목록을 다시 씁니다 — 방금 본 그 범위.
+    const res = await engine('apply-sweep', scannedPath ? [scannedPath] : [])
     $('apply-note').innerHTML =
       `<b style="color:var(--safe)">${res.quarantinedCount.toLocaleString()}개를 격리했어요.</b> ` +
       `지금 즉시 확보는 0 — 격리는 옮기기만 한 거예요. <b>30일 뒤 ${fmtBytes(res.bytesAfterGrace)}</b>가 최종 확보되고, ` +
@@ -238,17 +307,29 @@ async function loadHidden() {
   try {
     const data = await engine('probe')
     if (!data.findings.length) { card.innerHTML = `<div class="empty">회수할 숨은 공간이 없어요. 이미 깔끔하네요.</div>`; return }
-    card.innerHTML = data.findings.map((f: any) => explainCard(f)).join('')
+    card.innerHTML = data.findings
+      .map((f: any, i: number) => explainCard(f, i))
+      .join('<hr style="border:0;border-top:1px solid var(--line);margin:22px 0">')
+    wireAssists(card, data.findings)
   } catch (err) {
     card.innerHTML = `<div class="note">숨은 공간을 확인하지 못했어요: ${esc((err as Error).message)}</div>`
   }
 }
 
-function explainCard(f: any): string {
+function explainCard(f: any, index: number): string {
   const e = f.explain
   const gb = (n: number) => (n / 1073741824).toFixed(1) + 'GB'
   const blk = (h: string, body: string, warn = false) => `<div class="blk${warn ? ' warn' : ''}"><div class="h">${h}</div>${body}</div>`
   const ul = (arr: string[]) => `<ul>${arr.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`
+
+  /* 실행 줄. 항목마다 우리가 할 수 있는 게 다르다 —
+     되돌리는 명령이 있으면 SystemAction, 없으면 정식 도구(assist),
+     둘 다 없으면 아직 안전한 경로를 모르는 것이므로 솔직히 그렇게 쓴다. */
+  const foot = f.assist
+    ? `<button class="btn${f.assist.irreversible ? '' : ' ghost'}" data-assist="${index}">${esc(f.assist.label)}</button>
+       <span style="font-size:12px;color:var(--muted);margin-left:10px">${esc(f.assist.note)}</span>`
+    : `<span class="pill desk">실행(관리자 권한)은 다음 업데이트에서 연결됩니다</span>`
+
   return `
     <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
       <h2 style="font-size:17px;font-weight:750">${esc(f.title)}</h2>
@@ -262,7 +343,206 @@ function explainCard(f: any): string {
       ${blk('되돌릴 수 있나요', `<p>${esc(e.recoveryNote)}</p>`)}
       ${blk('안 지우면요', `<p>${esc(e.ifKept)}</p>`)}
     </div>
-    <div style="margin-top:16px"><span class="pill desk">실행(관리자 권한)은 다음 업데이트에서 연결됩니다</span></div>`
+    <div style="margin-top:16px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${foot}</div>`
+}
+
+/**
+ * assist 실행 — 되돌릴 수 없는 것은 반드시 개별 확인을 받는다.
+ * (프로그램 제거와 같은 원칙: 되돌릴 수 없는 동작에 일괄 버튼을 만들지 않는다)
+ */
+function wireAssists(host: HTMLElement, findings: any[]) {
+  host.querySelectorAll<HTMLButtonElement>('[data-assist]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const f = findings[+btn.dataset.assist!]
+      const a = f.assist
+      if (a.irreversible && !confirm(`${a.label}\n\n${a.note}\n\n계속할까요?`)) return
+      btn.disabled = true
+      const before = btn.textContent
+      btn.textContent = '실행 중…'
+      try {
+        const r = await engine(a.command)
+        btn.textContent = a.command === 'empty-recycle-bin'
+          ? `비웠어요 — ${fmtBytes(r.freedBytes)} 확보`
+          : '열었어요'
+        if (a.command === 'empty-recycle-bin') { hiddenLoaded = false; loadHidden() }
+      } catch (err) {
+        alert('실행하지 못했어요: ' + (err as Error).message)
+        btn.disabled = false
+        btn.textContent = before
+      }
+    })
+  })
+}
+
+/* ── 생활 정리 ─────────────────────────────────────────────────
+   PC 밖의 정리. 파일을 안 건드리므로 브라우저에서도 그대로 돈다 —
+   데스크톱은 앱 데이터 폴더에, 브라우저는 localStorage에 기록한다.
+   판단(오늘 뭘 할 때가 됐나)은 양쪽 다 같은 순수 함수를 쓴다. */
+const TIDY_KEY = 'teraclean.tidy'
+
+function readLocalTidy(): TidyState {
+  try {
+    const raw = localStorage.getItem(TIDY_KEY)
+    const parsed = raw ? JSON.parse(raw) : null
+    return parsed && typeof parsed.done === 'object' ? parsed : emptyState()
+  } catch {
+    return emptyState()
+  }
+}
+
+async function tidyPlan(mark?: { id: string; done: boolean }) {
+  if (inTauri) {
+    if (!mark) return engine('tidy-list')
+    return engine(mark.done ? 'tidy-done' : 'tidy-undo', [mark.id])
+  }
+  const today = todayISO()
+  let state = readLocalTidy()
+  if (mark) {
+    state = mark.done ? markDone(state, mark.id, today) : undoDone(state, mark.id, today)
+    try { localStorage.setItem(TIDY_KEY, JSON.stringify(state)) } catch { /* 사생활 모드 등 — 기록만 안 남는다 */ }
+  }
+  return { today, ...planToday(state, today), total: ROUTINES.length }
+}
+
+async function loadTidy(mark?: { id: string; done: boolean }) {
+  const host = $('tidy-body')
+  const d = await tidyPlan(mark)
+
+  const card = (r: any, state: 'due' | 'later' | 'done') => {
+    const meta = state === 'later'
+      ? `${r.daysUntil}일 뒤`
+      : state === 'done'
+        ? '오늘 완료'
+        : r.daysLate === null ? '아직 안 해봄' : r.daysLate > 0 ? `${r.daysLate}일 지남` : '오늘'
+    const border = state === 'done' ? 'var(--safe)' : state === 'due' ? 'var(--accent)' : 'var(--line-2)'
+    return `<div style="border:1px solid var(--line);border-left:3px solid ${border};border-radius:10px;
+                        background:var(--surface);padding:14px;margin-top:10px">
+      <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+        <b style="font-size:15px">${esc(r.title)}</b>
+        <span style="font-size:11.5px;color:var(--accent);font-weight:700">${esc(CATEGORY_LABEL[r.category as keyof typeof CATEGORY_LABEL])}</span>
+        <span style="font-size:12px;color:var(--muted)">${r.minutes}분 · ${meta}</span>
+        ${r.streak > 1 ? `<span style="font-size:12px;color:var(--safe);font-weight:700">${r.streak}회 연속</span>` : ''}
+        <button class="opt" data-tidy="${esc(r.id)}" data-done="${state === 'done' ? '0' : '1'}"
+                style="margin-left:auto">${state === 'done' ? '되돌리기' : '했어요'}</button>
+      </div>
+      <div style="font-size:13px;color:var(--ink-2);margin-top:8px;line-height:1.6">${esc(r.why)}</div>
+      <details style="margin-top:8px">
+        <summary style="cursor:pointer;font-size:12.5px;color:var(--muted)">이렇게 하면 됩니다</summary>
+        <ol style="margin:8px 0 0;padding-left:20px;font-size:13px;color:var(--ink-2);line-height:1.7">
+          ${r.steps.map((s: string) => `<li>${esc(s)}</li>`).join('')}
+        </ol>
+        ${r.tip ? `<div style="font-size:12.5px;color:var(--muted);margin-top:8px">막히는 지점: ${esc(r.tip)}</div>` : ''}
+        ${r.appTab ? `<button class="opt" data-goto="${esc(r.appTab)}" style="margin-top:10px">이건 앱이 대신 해드릴게요 →</button>` : ''}
+      </details>
+    </div>`
+  }
+
+  const byId = new Map(ROUTINES.map((r) => [r.id, r]))
+  const doneCards = d.doneToday.map((id: string) => card({ ...byId.get(id), streak: 0 }, 'done')).join('')
+
+  host.innerHTML = `
+    <div style="display:flex;align-items:baseline;gap:10px;margin:16px 0 4px;flex-wrap:wrap">
+      <h2 style="font-size:16px;font-weight:750">오늘 할 것 ${d.due.length}개</h2>
+      <span style="margin-left:auto;font-size:12.5px;color:var(--muted)">
+        오늘 완료 ${d.doneToday.length}개 · 전체 ${d.total}개</span>
+    </div>
+    ${d.due.length
+      ? d.due.map((r: any) => card(r, 'due')).join('')
+      : '<div class="empty">오늘 할 건 다 하셨어요. 더 안 하셔도 됩니다.</div>'}
+    ${d.doneToday.length ? `<details open style="margin-top:16px">
+      <summary style="cursor:pointer;font-size:13px;color:var(--safe);font-weight:600">오늘 끝낸 ${d.doneToday.length}개</summary>
+      ${doneCards}</details>` : ''}
+    ${d.later.length ? `<details style="margin-top:12px">
+      <summary style="cursor:pointer;font-size:13px;color:var(--muted)">아직 때가 아닌 ${d.later.length}개</summary>
+      ${d.later.map((r: any) => card(r, 'later')).join('')}</details>` : ''}
+    <p class="note" style="margin-top:14px">기록은 이 컴퓨터에만 있습니다.
+      <b>못 한 날을 세지 않습니다</b> — 며칠 걸러도 연속 기록은 이어집니다.</p>`
+
+  host.querySelectorAll<HTMLButtonElement>('[data-tidy]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      btn.disabled = true
+      loadTidy({ id: btn.dataset.tidy!, done: btn.dataset.done === '1' })
+    })
+  })
+  host.querySelectorAll<HTMLButtonElement>('[data-goto]').forEach((btn) => {
+    btn.addEventListener('click', () => go(btn.dataset.goto!))
+  })
+}
+
+/* ── 시작프로그램 ─────────────────────────────────────────────
+   여기만 '삭제'가 아니라 '끄기'다. 되돌리기가 즉시라 격리를 안 거친다.
+   대신 자동으로 꺼주는 항목은 하나도 없다 — 아침에 켰는데 카톡이 없으면
+   그건 편의가 아니라 사고다. */
+async function loadStartup() {
+  const host = $('startup-body')
+  host.innerHTML = `<div class="empty">시작프로그램을 읽는 중…</div>`
+  try {
+    const d = await engine('startup')
+    const entries: any[] = d.entries
+
+    const row = (e: any, i: number) => {
+      const v = e.verdict
+      const tone = v.zone === 'LOCKED' ? 'var(--lock)' : v.suggestible ? 'var(--amb)' : 'var(--muted)'
+      const btn = !e.canToggle
+        ? `<span class="pill desk" style="margin-top:8px">모든 사용자용이라 관리자 권한이 필요해요</span>`
+        : `<button class="opt" data-toggle="${i}" style="margin-top:8px">${e.enabled ? '끄기' : '다시 켜기'}</button>`
+      return `<div style="padding:12px 0;border-top:1px solid var(--line)">
+        <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+          <b style="font-size:14.5px">${esc(e.name)}</b>
+          <span style="font-size:12px;color:${tone};font-weight:700">${esc(v.meaning)}</span>
+          <span style="margin-left:auto;font-size:12.5px;color:${e.enabled ? 'var(--ink-2)' : 'var(--muted)'}">
+            ${e.enabled ? '켜짐' : '꺼둠'}</span>
+        </div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:3px">${esc(v.reason)}</div>
+        <div style="font-size:12.5px;color:var(--ink-2);margin-top:3px">끄면: ${esc(v.ifDisabled)}</div>
+        ${e.command ? `<div style="font-size:11.5px;color:var(--muted);margin-top:3px">${esc(e.command)}</div>` : ''}
+        ${btn}
+      </div>`
+    }
+
+    // 제안 → 나머지 켜짐 → 꺼둔 것 순. 판단이 선 것부터 보여준다.
+    const suggest = entries.filter((e) => e.verdict.suggestible)
+    const others = entries.filter((e) => !e.verdict.suggestible && e.enabled)
+    const off = entries.filter((e) => !e.enabled)
+
+    host.innerHTML = `
+      <div style="display:flex;align-items:baseline;gap:10px;margin:14px 0 4px;flex-wrap:wrap">
+        <h2 style="font-size:16px;font-weight:750">켜져 있는 ${d.enabledCount}개 중 ${suggest.length}개를 제안</h2>
+        <span style="margin-left:auto;font-size:12.5px;color:var(--muted)">전체 ${entries.length}개</span>
+      </div>
+      ${suggest.length ? suggest.map(row).join('') : '<div class="empty">지금은 끄자고 권할 만한 항목이 없어요.</div>'}
+
+      <details style="margin-top:18px">
+        <summary style="cursor:pointer;font-size:13px;color:var(--muted)">
+          제안하지 않은 ${others.length}개와 그 이유</summary>
+        <div>${others.map(row).join('')}</div>
+      </details>
+      ${off.length ? `<details style="margin-top:10px">
+        <summary style="cursor:pointer;font-size:13px;color:var(--muted)">꺼둔 ${off.length}개 (되돌릴 수 있어요)</summary>
+        <div>${off.map(row).join('')}</div></details>` : ''}
+      ${d.logonTaskCount ? `<p class="note" style="margin-top:14px">
+        이 외에 <b>로그온 예약작업 ${d.logonTaskCount}개</b>가 더 있습니다. 대부분 시스템이 만든 것이라
+        관리자 권한이 있어야 손댈 수 있어서, 여기서는 개수만 알려드려요.</p>` : ''}
+      <p class="note" style="margin-top:10px">부팅이 몇 초 빨라지는지는 윈도우가 알려주지 않습니다.
+        그래서 <b>"○초 단축" 같은 숫자를 지어내지 않습니다.</b> 작업관리자에도 같은 상태로 보이고, 거기서도 되돌릴 수 있어요.</p>`
+
+    host.querySelectorAll<HTMLButtonElement>('[data-toggle]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const e = entries[+btn.dataset.toggle!]
+        btn.disabled = true
+        try {
+          await engine('startup-set', [e.id, e.enabled ? 'off' : 'on'])
+          startupLoaded = false
+          loadStartup() // 실제 상태를 다시 읽는다 — 화면만 바꾸지 않는다
+        } catch (err) {
+          alert('바꾸지 못했어요: ' + (err as Error).message)
+          btn.disabled = false
+        }
+      })
+    })
+  } catch (err) {
+    host.innerHTML = `<div class="note">시작프로그램을 읽지 못했어요: ${esc((err as Error).message)}</div>`
+  }
 }
 
 /* ── 오래 안 쓴 프로그램 ──────────────────────────────────────
@@ -409,19 +689,34 @@ async function loadQuar() {
   host.innerHTML = `<div class="empty">격리함을 읽는 중...</div>`
   try {
     const data = await engine('quar-list')
-    if (!data.items.length) { host.innerHTML = `<div class="card"><div class="empty">아직 격리된 항목이 없어요.</div></div>`; return }
+    // 유예가 끝난 것이 있으면 이 화면에 오기 전에 이미 지워졌다(시작할 때 purge).
+    // 무엇이 사라졌는지 말하지 않으면 사용자는 파일이 증발했다고 느낀다.
+    const purgeNote = lastPurge && lastPurge.purgedCount
+      ? `<div class="note" style="margin-bottom:12px">유예 ${data.graceDays}일이 끝난
+           <b>${lastPurge.purgedCount.toLocaleString()}개(${fmtBytes(lastPurge.bytes)})</b>를 최종 삭제했어요.
+           여기서 사라진 만큼 실제 용량이 비었습니다.</div>`
+      : ''
+
+    if (!data.items.length) {
+      host.innerHTML = `<div class="card">${purgeNote}<div class="empty">아직 격리된 항목이 없어요.</div></div>`
+      return
+    }
     const day = 86400000
+    const drives = [...new Set(data.items.map((it: any) => (it.root ?? '').slice(0, 2)))].filter(Boolean)
     host.innerHTML = `<div class="card">
-      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px">
+      ${purgeNote}
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap">
         <h2 style="font-size:16px;font-weight:750">격리된 ${data.items.length.toLocaleString()}개 · ${fmtBytes(data.totalBytes)}</h2>
+        ${drives.length > 1 ? `<span style="font-size:12px;color:var(--muted)">드라이브 ${drives.join(' · ')}</span>` : ''}
         <button class="btn" id="restore-all" style="margin-left:auto">전부 되돌리기</button>
       </div>
       ${data.items.slice(0, 50).map((it: any) => {
         const left = Math.ceil((data.graceDays * day - (Date.now() - it.quarantinedAt)) / day)
         return `<div style="padding:8px 0;border-top:1px solid var(--line);font-size:12.5px">
           <div style="color:var(--ink-2)">${esc(it.originalPath)}</div>
-          <div style="color:var(--muted)">${fmtBytes(it.size)} · ${it.expired ? '만료됨' : left + '일 남음'} · ${esc(it.reason)}</div></div>`
+          <div style="color:var(--muted)">${fmtBytes(it.size)} · ${it.expired ? '만료됨 — 곧 삭제' : left + '일 남음'} · ${esc(it.reason)}</div></div>`
       }).join('')}
+      ${data.items.length > 50 ? `<div style="font-size:12px;color:var(--muted);margin-top:10px">…외 ${(data.items.length - 50).toLocaleString()}개</div>` : ''}
     </div>`
     document.getElementById('restore-all')?.addEventListener('click', async () => {
       const r = await engine('restore', ['--all'])
@@ -514,9 +809,36 @@ async function checkUpdate() {
   }
 }
 
+/* ── 유예 만료분 최종 삭제 ─────────────────────────────────────
+   격리는 '옮기기'라 그것만으로는 용량이 안 빈다. 30일이 지난 것을 실제로
+   지우는 이 호출이 있어야 "정리했는데 용량이 그대로"가 끝난다.
+
+   ★ 왜 앱을 켤 때인가: 사용자가 격리함을 열어봐야만 지워진다면, 안 열어보는
+     사람의 디스크는 영원히 안 빈다. 판단(30일)은 엔진 안에 갇혀 있어서
+     여기서 앞당길 방법이 없다 — 그래서 매번 불러도 안전하다. */
+let lastPurge: { purgedCount: number; bytes: number } | null = null
+
+async function purgeExpiredQuarantine() {
+  try {
+    const r = await engine('purge')
+    if (r.purgedCount) {
+      lastPurge = { purgedCount: r.purgedCount, bytes: r.bytes }
+      quarLoaded = false // 격리함을 다시 읽어야 한다
+    }
+  } catch {
+    /* 못 지워도 앱은 정상 작동한다. 다음 실행 때 다시 시도된다. */
+  }
+}
+
 /* ── 데스크톱 초기화 ───────────────────────────────────────── */
 if (inTauri) {
   // 데스크톱에서는 정적 데모 카드를 감추고 실측으로 대체한다.
   $('hiber-card').innerHTML = `<div class="empty">'숨은 공간' 탭을 열면 이 PC를 실측합니다.</div>`
+  // 폴더를 고를 필요가 없다는 걸 버튼에 먼저 적는다.
+  const one = $('oneclick').querySelector('.s')
+  if (one) one.textContent = '이 PC의 주요 폴더를 알아서 훑어요 · 확실한 것만 정리'
+  $('pick2').textContent = '특정 폴더만 고르기'
+  $('hero-cap').textContent = '원클릭을 누르면 이 PC의 주요 폴더를 훑어서 정리 가능한 용량을 보여드려요.'
+  purgeExpiredQuarantine() // 유예 끝난 것 실제 삭제
   checkUpdate() // 시작 시 조용히 최신 버전 확인
 }

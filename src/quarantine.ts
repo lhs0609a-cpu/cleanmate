@@ -66,6 +66,40 @@ export interface QuarantineOptions {
 const manifestPath = (root: string) => join(root, 'manifest.jsonl')
 const storePath = (root: string, id: string) => join(root, 'store', id)
 
+/** 장부 파일 경로. 격리함이 '있는지' 판단하는 유일한 기준이다. */
+export const manifestFile = manifestPath
+
+/**
+ * 격리함이 있을 수 있는 드라이브 루트 후보.
+ *
+ * ★ 이게 필요한 이유(실측이 아니라 코드 리뷰에서 잡은 구멍):
+ *   격리함은 원본과 '같은 드라이브'에 만들어진다(위 설계 결정 1).
+ *   그런데 목록·복구·만료삭제는 전부 시스템 드라이브만 보고 있었다.
+ *   D 드라이브를 정리하면 파일은 D:\.cleanmate로 옮겨지는데 격리함 화면엔
+ *   안 뜨고, 되돌리기도 못 하고, 30일이 지나도 아무도 안 지운다 —
+ *   즉 조용히 사라진 것처럼 보인다. 그래서 전 드라이브를 훑는다.
+ */
+export function candidateRoots(platform: NodeJS.Platform = process.platform): string[] {
+  if (platform !== 'win32') return ['/']
+  // A·B는 예전 플로피 자리라 건드리지 않는다(비어 있어도 접근이 느려질 수 있다).
+  // 없는 드라이브는 listQuarantineRoots에서 stat 한 번으로 걸러진다.
+  return 'CDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((c) => `${c}:\\`)
+}
+
+/** 실제로 격리함(장부)이 있는 드라이브만 골라낸다. */
+export async function listQuarantineRoots(opts: {
+  platform?: NodeJS.Platform
+  exists?: (p: string) => Promise<boolean>
+} = {}): Promise<string[]> {
+  const ex = opts.exists ?? exists
+  const found: string[] = []
+  for (const drive of candidateRoots(opts.platform)) {
+    const root = quarantineRoot(drive)
+    if (await ex(manifestPath(root))) found.push(root)
+  }
+  return found
+}
+
 /* ────────────────────────────────────────────────────────────
    격리
    ──────────────────────────────────────────────────────────── */
