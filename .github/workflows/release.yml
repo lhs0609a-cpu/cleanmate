@@ -32,6 +32,17 @@ env:
 jobs:
   build:
     runs-on: windows-latest
+    # ★ 시크릿을 잡(job) 환경변수로 한 번 꺼내 둔다.
+    #
+    #   왜: step의 `if:` 에서는 secrets 컨텍스트를 쓸 수 없다. 쓰면
+    #   "Unrecognized named-value: 'secrets'"로 워크플로 파일 전체가 무효가 되고,
+    #   푸시마다 0초짜리 실패 런이 찍히며 **태그를 밀어도 릴리스가 안 나온다.**
+    #   실제로 그 상태로 여러 주가 지났다(v0.4.0 이후 릴리스가 한 번도 안 나간 이유).
+    #   env 컨텍스트는 `if:` 에서 쓸 수 있으므로 여기로 우회한다.
+    env:
+      CODESIGN_PFX_BASE64: ${{ secrets.CODESIGN_PFX_BASE64 }}
+      CODESIGN_PFX_PASSWORD: ${{ secrets.CODESIGN_PFX_PASSWORD }}
+      RELEASES_REPO_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -108,7 +119,7 @@ jobs:
       #   CODESIGN_PFX_PASSWORD 그 .pfx 의 비밀번호
       - name: 인증서 준비
         id: cert
-        if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}
+        if: env.CODESIGN_PFX_BASE64 != ''
         shell: pwsh
         env:
           PFX: ${{ secrets.CODESIGN_PFX_BASE64 }}
@@ -123,7 +134,7 @@ jobs:
           "signtool=$($st.FullName)" >> $env:GITHUB_OUTPUT
 
       - name: 앱 바이너리 서명 (설치파일에 담기기 전에)
-        if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}
+        if: env.CODESIGN_PFX_BASE64 != ''
         shell: pwsh
         env:
           PFX_PASSWORD: ${{ secrets.CODESIGN_PFX_PASSWORD }}
@@ -141,7 +152,7 @@ jobs:
         run: iscc /DAppVersion=${{ steps.ver.outputs.version }} installer/teraclean.iss
 
       - name: 설치파일 서명
-        if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}
+        if: env.CODESIGN_PFX_BASE64 != ''
         shell: pwsh
         env:
           PFX_PASSWORD: ${{ secrets.CODESIGN_PFX_PASSWORD }}
@@ -192,7 +203,7 @@ jobs:
       # 게시가 안 된 릴리스는 성공으로 보고돼선 안 된다 — 그게 다운로드가 막혀 있는데
       # 초록불이 켜져 있던 원인이다.
       - name: 배포 토큰 확인
-        if: ${{ secrets.RELEASES_REPO_TOKEN == '' }}
+        if: env.RELEASES_REPO_TOKEN == ''
         run: |
           echo "::error::RELEASES_REPO_TOKEN 시크릿이 없어 배포 저장소($RELEASES_REPO)에 게시할 수 없습니다."
           echo "::error::GitHub → Settings → Secrets and variables → Actions 에 등록하세요."
