@@ -199,15 +199,33 @@ jobs:
           cat latest.json
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
 
+      # ★ 게시가 막혀도 빌드 결과는 버리지 않는다.
+      #   실제로 토큰이 없어 게시 단계에서 멈췄는데, 그때 만들어진 설치파일이
+      #   러너와 함께 사라져서 11분짜리 빌드가 통째로 헛일이 됐다.
+      #   여기 올려두면 토큰이 없어도 런 페이지에서 받아 설치할 수 있다.
+      - name: 설치파일 보관 (게시가 막혀도 받을 수 있게)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeraClean-Setup-${{ steps.ver.outputs.version }}
+          path: |
+            dist-installer/TeraClean-Setup-${{ steps.ver.outputs.version }}.exe
+            latest.json
+          if-no-files-found: warn
+
       # 시크릿이 없으면 여기서 '조용히 넘어가지 않고' 멈춘다.
       # 게시가 안 된 릴리스는 성공으로 보고돼선 안 된다 — 그게 다운로드가 막혀 있는데
       # 초록불이 켜져 있던 원인이다.
       - name: 배포 토큰 확인
+        # ★ 윈도우 러너의 기본 셸은 pwsh다. $RELEASES_REPO 를 그대로 쓰면
+        #   빈 문자열로 찍혀서 "배포 저장소()에" 같은 메시지가 나온다(실제로 그랬다).
+        shell: bash
         if: env.RELEASES_REPO_TOKEN == ''
         run: |
-          echo "::error::RELEASES_REPO_TOKEN 시크릿이 없어 배포 저장소($RELEASES_REPO)에 게시할 수 없습니다."
+          echo "::error::RELEASES_REPO_TOKEN 시크릿이 없어 배포 저장소(${RELEASES_REPO})에 게시할 수 없습니다."
           echo "::error::GitHub → Settings → Secrets and variables → Actions 에 등록하세요."
-          echo "::error::필요 권한: $RELEASES_REPO 의 Contents=Read and write (fine-grained PAT)"
+          echo "::error::필요 권한: ${RELEASES_REPO} 의 Contents=Read and write (fine-grained PAT)"
+          echo "::notice::설치파일은 이 실행의 Artifacts에 올려뒀습니다 — 지금 받아서 수동 설치할 수 있어요."
           exit 1
 
       # ★ 이 저장소가 아니라 배포 저장소로 게시한다.
