@@ -12,8 +12,13 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2" }
+# tray-icon: 트레이 상주(V3·알약처럼 조용히 떠 있기)
+# image-png: 트레이 아이콘을 PNG에서 만든다
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-dialog = "2" # 폴더 선택 다이얼로그
+# 두 번 실행되지 않게. 자동시작으로 이미 떠 있는데 사용자가 아이콘을 또 누르면
+# 프로세스가 둘이 된다 — 두 번째는 조용히 죽고 원래 창을 띄운다.
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # 자동 업데이트 다운로드용

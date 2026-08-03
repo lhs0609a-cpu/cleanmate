@@ -1093,6 +1093,8 @@ if (inTauri) {
   if (one) one.textContent = '이 PC의 주요 폴더를 알아서 훑어요 · 확실한 것만 정리'
   $('pick2').textContent = '특정 폴더만 고르기'
   $('hero-cap').textContent = '원클릭을 누르면 이 PC의 주요 폴더를 훑어서 정리 가능한 용량을 보여드려요.'
+  // 창을 닫으면 트레이로 내려간다. 어디로 갔는지 모르면 그건 사라진 것이다.
+  ;($('tray-note') as HTMLElement).hidden = false
   purgeExpiredQuarantine() // 유예 끝난 것 실제 삭제
   checkUpdate() // 시작 시 조용히 최신 버전 확인
 }

@@ -8,6 +8,21 @@
 
 use sha2::{Digest, Sha256};
 use std::process::Command as StdCommand;
+use tauri::{
+    image::Image,
+    menu::{Menu, MenuItem},
+    tray::TrayIconBuilder,
+    Manager, WindowEvent,
+};
+
+/// 창을 다시 꺼내 온다. 트레이 메뉴·두 번째 실행 둘 다 여기로 온다.
+fn show_main(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
 
 /// 파일을 읽어 SHA-256을 16진수 소문자로 돌려준다.
 /// 통째로 메모리에 올리지 않고 조금씩 읽는다 — 설치파일은 수십 MB다.
@@ -148,7 +163,51 @@ async fn run_engine(command: String, args: Vec<String>) -> Result<serde_json::Va
 
 fn main() {
     tauri::Builder::default()
+        // ★ 두 번 실행 방지는 맨 앞이어야 한다. 자동시작으로 이미 떠 있는데
+        //   사용자가 바탕화면 아이콘을 또 누르면, 두 번째 프로세스는 조용히 죽고
+        //   원래 창을 꺼내 온다. 이게 없으면 프로세스가 둘이 되고 트레이 아이콘도 둘이다.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            show_main(app);
+        }))
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            /* ── 트레이 상주 (V3·알약 방식) ────────────────────────
+               설치 스크립트는 자동시작을 `--minimized`로 등록해두고
+               "앱이 이 인자를 해석한다"고 적어놨는데, 정작 앱에는 트레이도
+               인자 처리도 없었다. 그래서 부팅할 때마다 창이 그냥 떴다.
+               약속과 동작을 맞춘다. */
+            let open_i = MenuItem::with_id(app, "open", "테라클린 열기", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "완전히 종료", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&open_i, &quit_i])?;
+
+            TrayIconBuilder::with_id("main")
+                .icon(Image::from_bytes(include_bytes!("../icons/tray.png"))?)
+                .tooltip("테라클린")
+                .menu(&menu)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "open" => show_main(app),
+                    // 트레이에서 '완전히 종료'를 고를 때만 진짜 끝난다.
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .build(app)?;
+
+            // 자동시작(부팅)일 때는 창을 띄우지 않는다. 아침마다 창이 뜨는 건
+            // 상주가 아니라 방해다.
+            if std::env::args().any(|a| a == "--minimized") {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.hide();
+                }
+            }
+            Ok(())
+        })
+        // 창을 닫아도 종료가 아니라 트레이로 내려간다 — 상주 프로그램의 기본 동작.
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             apply_update,
             download_update,
