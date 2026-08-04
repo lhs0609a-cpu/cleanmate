@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.5.1'
+const APP_VERSION = '0.5.2'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -966,12 +966,44 @@ async function loadQuar() {
       </div>
       ${data.items.slice(0, 50).map((it: any) => {
         const left = Math.ceil((data.graceDays * day - (Date.now() - it.quarantinedAt)) / day)
-        return `<div style="padding:8px 0;border-top:1px solid var(--line);font-size:12.5px">
-          <div style="color:var(--ink-2)">${esc(it.originalPath)}</div>
-          <div style="color:var(--muted)">${fmtBytes(it.size)} · ${it.expired ? '만료됨 — 곧 삭제' : left + '일 남음'} · ${esc(it.reason)}</div></div>`
+        return `<div style="padding:10px 0;border-top:1px solid var(--line);font-size:12.5px;
+                            display:flex;gap:12px;align-items:flex-start">
+          <div style="min-width:0;flex:1">
+            <div style="color:var(--ink-2)">${esc(it.originalPath)}</div>
+            <div style="color:var(--muted)">${fmtBytes(it.size)} · ${it.expired ? '만료됨 — 곧 삭제' : left + '일 남음'} · ${esc(it.reason)}</div>
+          </div>
+          <button class="opt" data-restore="${esc(it.id)}" style="flex:none">되돌리기</button>
+        </div>`
       }).join('')}
       ${data.items.length > 50 ? `<div style="font-size:12px;color:var(--muted);margin-top:10px">…외 ${(data.items.length - 50).toLocaleString()}개</div>` : ''}
     </div>`
+
+    /* ★ 항목마다 되돌리기 — "전부"만 있으면 하나 되살리려고 전부를 되살려야 한다.
+       실제로 흔한 요구는 "이거 하나만"이다. 엔진은 처음부터 개별 복구를
+       지원했는데 화면에 버튼이 없었다. */
+    host.querySelectorAll<HTMLButtonElement>('[data-restore]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true
+        btn.textContent = '되돌리는 중…'
+        try {
+          const r = await engine('restore', [btn.dataset.restore!])
+          if (!r.restoredCount) {
+            // 자리를 누가 차지했을 때가 대부분이다 — 이유를 그대로 보여준다.
+            btn.textContent = '실패'
+            alert(r.failed?.[0]?.reason ?? '되돌리지 못했어요.')
+            btn.disabled = false
+            btn.textContent = '되돌리기'
+            return
+          }
+          loadQuar() // 목록을 다시 읽는다 — 화면만 지우지 않는다
+        } catch (err) {
+          alert('되돌리지 못했어요: ' + (err as Error).message)
+          btn.disabled = false
+          btn.textContent = '되돌리기'
+        }
+      })
+    })
+
     document.getElementById('restore-all')?.addEventListener('click', async () => {
       const r = await engine('restore', ['--all'])
       alert(`${r.restoredCount.toLocaleString()}개를 되돌렸어요.`)
