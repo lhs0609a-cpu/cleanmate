@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.6.0'
+const APP_VERSION = '0.7.0'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -222,8 +222,10 @@ function renderQuestions(questions: Question[]) {
       <div class="q-text">${esc(q.text)}</div>
       <div class="q-why">왜 묻나: ${esc(q.rationale)}</div>
       <div class="opts">${q.options.map((o) => `<button class="opt${o.outcome === 'KEEP' ? ' keep' : ''}"
-        data-outcome="${o.outcome}" data-preview="${esc(o.preview)}">${esc(o.label)}</button>`).join('')}</div>
+        data-outcome="${o.outcome}" data-unknown="${esc(q.unknown)}"
+        data-preview="${esc(o.preview)}">${esc(o.label)}</button>`).join('')}</div>
       <div class="q-answered" hidden></div>
+      <div class="q-act" data-act="${i}"></div>
       <div class="q-stake">걸린 용량: ${fmtBytes(q.stakeBytes)} · ${q.stakeCount.toLocaleString()}개</div>
     </div>`).join('')
   qEl.querySelectorAll<HTMLButtonElement>('.opt').forEach((btn) => btn.addEventListener('click', () => {
@@ -232,9 +234,76 @@ function renderQuestions(questions: Question[]) {
     btn.classList.add('chosen')
     const ans = q.querySelector('.q-answered') as HTMLElement
     ans.hidden = false
-    const tag = !inTauri && btn.dataset.outcome !== 'KEEP' ? ' <span class="pill desk">데스크톱 앱에서 실행</span>' : ''
-    ans.innerHTML = '→ ' + esc(btn.dataset.preview!) + tag
+    ans.innerHTML = '→ ' + esc(btn.dataset.preview!)
+    const act = q.querySelector('.q-act') as HTMLElement
+    answerAction(act, btn.dataset.unknown!, btn.dataset.outcome as any)
   }))
+}
+
+/**
+ * 답을 고른 뒤 실제로 실행할 수 있게 한다 — 여태 문구만 뜨고 끝났던 자리.
+ *
+ * 순서를 지킨다: 답 → 무엇이 걸리는지 미리보기 → 누르면 실행 → 되돌릴 수 있음.
+ * 답을 골랐다고 바로 옮기지 않는다. 답은 '분류'고, 실행은 별도 승낙이다.
+ */
+async function answerAction(host: HTMLElement, unknown: string, outcome: string) {
+  host.innerHTML = ''
+  if (!inTauri) {
+    if (outcome !== 'KEEP') {
+      host.innerHTML = `<div style="margin-top:10px"><span class="pill desk">실제 정리는 데스크톱 앱에서</span></div>`
+    }
+    return
+  }
+  // 보존을 뜻하는 답은 실행할 게 없다. 버튼을 만들지 않는다.
+  if (outcome === 'KEEP') return
+  if (outcome === 'MOVE') {
+    host.innerHTML = `<div style="margin-top:10px;font-size:13px;color:var(--ink-2)">
+      옮기기는 대상 드라이브가 필요해요.
+      <button class="opt" data-goto-move="1" style="margin-left:6px">드라이브 옮기기 열기 →</button></div>`
+    host.querySelector<HTMLButtonElement>('[data-goto-move]')!.addEventListener('click', () => go('move'))
+    return
+  }
+
+  host.innerHTML = `<div style="margin-top:10px;font-size:13px;color:var(--muted)">무엇이 걸리는지 확인하는 중…</div>`
+  try {
+    const p = await engine('answer-plan', [unknown, ...(scannedPath ? [scannedPath] : [])])
+    if (!p.count) {
+      host.innerHTML = `<div style="margin-top:10px;font-size:13px;color:var(--muted)">해당하는 파일이 지금은 없어요.</div>`
+      return
+    }
+    const names = p.items.slice(0, 3).map((i: any) => `· ${esc(i.path.split(/[\\/]/).pop())}`).join('<br>')
+    host.innerHTML = `
+      <div style="margin-top:10px;border:1px solid var(--line);border-radius:12px;
+                  background:var(--surface-2);padding:14px">
+        <div style="font-size:14px;font-weight:650">${p.count.toLocaleString()}개 · ${fmtBytes(p.bytes)}를 정리할까요?</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6">${names}${
+          p.count > 3 ? `<br>…외 ${(p.count - 3).toLocaleString()}개` : ''}</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
+          <button class="btn" data-answer-go="1">격리로 정리하기</button>
+          <span style="font-size:12px;color:var(--muted)">지우지 않고 30일 보관 — 언제든 되돌립니다</span>
+        </div>
+      </div>`
+    host.querySelector<HTMLButtonElement>('[data-answer-go]')!.addEventListener('click', async (ev) => {
+      const b = ev.currentTarget as HTMLButtonElement
+      b.disabled = true
+      b.textContent = '정리 중…'
+      try {
+        const r = await engine('answer-apply', [unknown, outcome, ...(scannedPath ? [scannedPath] : [])])
+        host.innerHTML = `<div style="margin-top:10px;font-size:13px;color:var(--safe);font-weight:650">
+          ${r.quarantinedCount.toLocaleString()}개를 격리했어요 — 30일 안에 되돌릴 수 있습니다.
+          ${r.failed.length ? `<span style="color:var(--muted);font-weight:400">${r.failed.length}개는 사용 중이라 건너뜀</span>` : ''}</div>`
+        toast(`${r.quarantinedCount.toLocaleString()}개를 격리했어요. 격리함에서 되돌릴 수 있습니다.`, 'good')
+        quarLoaded = false
+        loadDisk()
+      } catch (err) {
+        toast('정리하지 못했어요: ' + (err as Error).message, 'bad')
+        b.disabled = false
+        b.textContent = '격리로 정리하기'
+      }
+    })
+  } catch (err) {
+    host.innerHTML = `<div class="note" style="margin-top:10px">확인하지 못했어요: ${esc((err as Error).message)}</div>`
+  }
 }
 
 function renderKept(kept: { meaning: string; bytes: number }[], lockBytes: number) {
@@ -363,7 +432,7 @@ async function loadHidden() {
   card.innerHTML = `<div class="empty">이 PC를 확인하는 중...</div>`
   try {
     const data = await engine('probe')
-    if (!data.findings.length) { card.innerHTML = `<div class="empty">회수할 숨은 공간이 없어요. 이미 깔끔하네요.</div>`; return }
+    if (!data.findings.length) { card.innerHTML = `<div class="empty"><svg class="ic"><use href="#i-check"/></svg><b>회수할 숨은 공간이 없어요</b><span>최대절전 파일·휴지통·업데이트 캐시 모두 깔끔합니다.</span></div>`; return }
     card.innerHTML = data.findings
       .map((f: any, i: number) => explainCard(f, i))
       .join('<hr style="border:0;border-top:1px solid var(--line);margin:22px 0">')
@@ -791,17 +860,18 @@ async function loadStartup() {
       const btn = !e.canToggle
         ? `<span class="pill desk" style="margin-top:8px">모든 사용자용이라 관리자 권한이 필요해요</span>`
         : `<button class="opt" data-toggle="${i}" style="margin-top:8px">${e.enabled ? '끄기' : '다시 켜기'}</button>`
-      return `<div style="padding:12px 0;border-top:1px solid var(--line)">
-        <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
-          <b style="font-size:14.5px">${esc(e.name)}</b>
-          <span style="font-size:12px;color:${tone};font-weight:700">${esc(v.meaning)}</span>
-          <span style="margin-left:auto;font-size:12.5px;color:${e.enabled ? 'var(--ink-2)' : 'var(--muted)'}">
-            ${e.enabled ? '켜짐' : '꺼둠'}</span>
+      return `<div class="row">
+        <div class="row-main">
+          <div class="row-t">
+            <b>${esc(e.name)}</b>
+            <span style="font-size:var(--t-xs);color:${tone};font-weight:700">${esc(v.meaning)}</span>
+            <span class="ver">${e.enabled ? '켜짐' : '꺼둠'}</span>
+          </div>
+          <div class="row-sub">${esc(v.reason)}</div>
+          <div class="row-sub" style="color:var(--ink-2)">끄면: ${esc(v.ifDisabled)}</div>
+          ${e.command ? `<div class="row-path">${esc(e.command)}</div>` : ''}
+          ${btn}
         </div>
-        <div style="font-size:12.5px;color:var(--muted);margin-top:3px">${esc(v.reason)}</div>
-        <div style="font-size:12.5px;color:var(--ink-2);margin-top:3px">끄면: ${esc(v.ifDisabled)}</div>
-        ${e.command ? `<div style="font-size:11.5px;color:var(--muted);margin-top:3px">${esc(e.command)}</div>` : ''}
-        ${btn}
       </div>`
     }
 
@@ -864,21 +934,23 @@ async function loadPrograms() {
       </div>`
 
     if (!d.suggestions.length) {
-      host.innerHTML = head + `<div class="empty">오래 안 쓴 프로그램을 찾지 못했어요. 실행 기록으로 확인할 수 있는 것만 제안합니다.</div>`
+      host.innerHTML = head + `<div class="empty"><svg class="ic"><use href="#i-box"/></svg><b>제안할 프로그램이 없어요</b><span>실행 기록으로 확인되는 것만 제안합니다. 기록이 없으면 넘겨짚지 않아요.</span></div>`
         + excludedBlock(d)
       return
     }
 
     host.innerHTML = head + d.suggestions.map((p: any, i: number) => `
-      <div style="padding:12px 0;border-top:1px solid var(--line)">
-        <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
-          <b style="font-size:14.5px">${esc(p.name)}</b>
-          ${p.version ? `<span style="font-size:12px;color:var(--muted)">${esc(p.version)}</span>` : ''}
-          <span style="margin-left:auto;font-size:13px;font-weight:700">${fmtBytes(p.bytes)}</span>
+      <div class="row">
+        <div class="row-main">
+          <div class="row-t">
+            <b>${esc(p.name)}</b>
+            ${p.version ? `<span class="ver">${esc(p.version)}</span>` : ''}
+          </div>
+          <div class="row-sub">${esc(p.reason)}</div>
+          ${p.installLocation ? `<div class="row-path">${esc(p.installLocation)}</div>` : ''}
+          <button class="opt" data-uninstall="${i}" style="margin-top:8px">제거 프로그램 열기</button>
         </div>
-        <div style="font-size:12.5px;color:var(--muted);margin-top:4px">${esc(p.reason)}</div>
-        ${p.installLocation ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(p.installLocation)}</div>` : ''}
-        <button class="opt" data-uninstall="${i}" style="margin-top:8px">제거 프로그램 열기</button>
+        <div class="row-val">${fmtBytes(p.bytes)}</div>
       </div>`).join('') + excludedBlock(d)
 
     host.querySelectorAll<HTMLButtonElement>('[data-uninstall]').forEach((btn) => {
@@ -960,9 +1032,12 @@ async function planMove(src: string, dest: string) {
         <span style="margin-left:auto;font-size:12.5px;color:var(--muted)">→ ${esc(d.destFolder)}</span>
       </div>
       <div style="font-size:12.5px;color:var(--muted);margin-top:4px">지우지 않습니다. 옮긴 기록이 남아 언제든 되돌릴 수 있어요.</div>
-      ${d.items.slice(0, 30).map((it: any) => `<div style="padding:7px 0;border-top:1px solid var(--line);font-size:12.5px">
-        <div style="color:var(--ink-2)">${esc(it.path)}</div>
-        <div style="color:var(--muted)">${fmtBytes(it.size)} · ${esc(it.meaning)}</div></div>`).join('')}
+      ${d.items.slice(0, 30).map((it: any) => `<div class="row">
+        <div class="row-main">
+          <div class="row-path" style="margin-top:0">${esc(it.path)}</div>
+          <div class="row-sub">${esc(it.meaning)}</div>
+        </div>
+        <div class="row-val">${fmtBytes(it.size)}</div></div>`).join('')}
       ${d.refusedCount ? `<div style="font-size:12px;color:var(--muted);margin-top:10px">옮기면 위험해서 제외한 항목 ${d.refusedCount}개 (프로그램 폴더·앱 설정·동기화 폴더 등)</div>` : ''}
       <button class="oneclick" id="mv-apply" style="margin-top:14px">${fmtBytes(d.bytes)} 옮기기</button>
     </div>`
@@ -1003,7 +1078,7 @@ async function loadQuar() {
       : ''
 
     if (!data.items.length) {
-      host.innerHTML = `<div class="card">${purgeNote}<div class="empty">아직 격리된 항목이 없어요.</div></div>`
+      host.innerHTML = `<div class="card">${purgeNote}<div class="empty"><svg class="ic"><use href="#i-undo"/></svg><b>아직 격리된 항목이 없어요</b><span>정리를 실행하면 여기에 30일간 보관됩니다.</span></div></div>`
       return
     }
     const day = 86400000
@@ -1017,13 +1092,12 @@ async function loadQuar() {
       </div>
       ${data.items.slice(0, 50).map((it: any) => {
         const left = Math.ceil((data.graceDays * day - (Date.now() - it.quarantinedAt)) / day)
-        return `<div style="padding:10px 0;border-top:1px solid var(--line);font-size:12.5px;
-                            display:flex;gap:12px;align-items:flex-start">
-          <div style="min-width:0;flex:1">
-            <div style="color:var(--ink-2)">${esc(it.originalPath)}</div>
-            <div style="color:var(--muted)">${fmtBytes(it.size)} · ${it.expired ? '만료됨 — 곧 삭제' : left + '일 남음'} · ${esc(it.reason)}</div>
+        return `<div class="row">
+          <div class="row-main">
+            <div class="row-path" style="margin-top:0">${esc(it.originalPath)}</div>
+            <div class="row-sub">${fmtBytes(it.size)} · ${it.expired ? '만료됨 — 곧 삭제' : left + '일 남음'} · ${esc(it.reason)}</div>
           </div>
-          <button class="opt" data-restore="${esc(it.id)}" style="flex:none">되돌리기</button>
+          <div class="row-act"><button class="opt" data-restore="${esc(it.id)}">되돌리기</button></div>
         </div>`
       }).join('')}
       ${data.items.length > 50 ? `<div style="font-size:12px;color:var(--muted);margin-top:10px">…외 ${(data.items.length - 50).toLocaleString()}개</div>` : ''}

@@ -12,7 +12,8 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildQuestions, cluster } from './engine.ts'
+import type { Outcome } from './types.ts'
+import { buildQuestions, cluster, actionFor, touchesFiles } from './engine.ts'
 import type { Classified, Unknown } from './types.ts'
 
 /** 특정 미지수를 가진 애매 항목 n개를 만든다. 크기는 질문 문턱을 넘게 크게. */
@@ -135,4 +136,39 @@ test('미리보기가 실제 결과와 어긋나지 않는다', () => {
       }
     }
   }
+})
+
+/* ── 답변 → 행동 ────────────────────────────────────────────
+   ★ 여기가 틀리면 "그대로 두세요"라고 답한 파일이 격리된다.
+   되돌릴 수는 있지만, 의도와 반대로 움직인 도구를 다시 믿기는 어렵다. */
+
+test('★ 보존을 뜻하는 답은 절대 파일을 건드리지 않는다', () => {
+  assert.equal(actionFor('KEEP'), 'keep')
+  assert.equal(touchesFiles('KEEP'), false)
+  assert.equal(touchesFiles('REVIEW_ONE_BY_ONE'), false, '하나씩 보겠다는 건 아직 결정이 아니다')
+})
+
+test('정리 동의는 격리로 간다 — 즉시 삭제가 아니다', () => {
+  assert.equal(actionFor('CANDIDATE'), 'quarantine')
+  assert.equal(touchesFiles('CANDIDATE'), true)
+})
+
+test('옮기기는 격리와 다른 경로다 — 대상 드라이브를 물어야 한다', () => {
+  assert.equal(actionFor('MOVE'), 'move')
+  assert.equal(touchesFiles('MOVE'), true)
+})
+
+test('모든 선택지가 행동으로 정확히 하나씩 매핑된다', () => {
+  const outcomes: Outcome[] = ['CANDIDATE', 'MOVE', 'KEEP', 'REVIEW_ONE_BY_ONE']
+  const actions = outcomes.map(actionFor)
+  assert.equal(new Set(actions).size, 4, '두 선택지가 같은 행동으로 뭉치면 의도가 사라진다')
+})
+
+test('★ 실제 질문의 선택지가 의도대로 매핑된다 (U7 사고 회귀)', () => {
+  // "옮길래요"(= 지우지 말 것)가 삭제 후보로 매핑돼 있던 적이 있다.
+  const q = questionFor('U7_MOVE_OR_DELETE')
+  const byLabel = Object.fromEntries(q.options.map((o) => [o.label, actionFor(o.outcome)]))
+  assert.equal(byLabel['네, 지워도 돼요'], 'quarantine')
+  assert.equal(byLabel['다른 드라이브로 옮길래요'], 'move')
+  assert.equal(byLabel['아니요, 그대로 둘래요'], 'keep')
 })

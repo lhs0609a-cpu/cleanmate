@@ -20,6 +20,8 @@
  *   restore        <id|--all>        되돌리기
  *   purge                            유예 30일이 지난 것만 실제 삭제
  *   probe                            숨은 공간(hiberfil·휴지통·업데이트 캐시)
+ *   answer-plan    <unknown> [path...]        그 질문에 걸린 항목 미리보기
+ *   answer-apply   <unknown> <outcome> [path...] 답변 실행(정리는 격리로)
  *   startup                          시작프로그램 목록 + 판정
  *   startup-set    <id> <on|off>     시작프로그램 켜기/끄기 (되돌릴 수 있음)
  *   empty-recycle-bin                휴지통 비우기(윈도우 공식 명령, 되돌리기 없음)
@@ -42,7 +44,7 @@ import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { scan } from './scanner.ts'
 import { classifyOne, isAutoEligible } from './classify.ts'
-import { run as runEngine } from './engine.ts'
+import { run as runEngine, actionFor } from './engine.ts'
 import { planSweep, applySweep } from './sweep.ts'
 import {
   readManifest,
@@ -96,7 +98,7 @@ import {
   type RelocateItem,
 } from './relocate.ts'
 import { stampMtime } from './quarantine.ts'
-import type { Classified } from './types.ts'
+import type { Classified, Outcome } from './types.ts'
 
 /** 이보다 작은 파일은 옮겨봐야 체감이 없다 — 목록만 길어진다. */
 const RELOCATE_MIN_BYTES = 100 * 1024 * 1024 // 100MB
@@ -540,6 +542,80 @@ async function main() {
        * 원본(Run 값·바로가기)은 그대로 두고 사용/해제 상태만 바꾸므로
        * 되돌리기가 즉시다. 그래서 격리를 거치지 않는다.
        */
+      /**
+       * 질문에 답한 결과를 실제로 실행한다 — 여태 비어 있던 마지막 조각.
+       *
+       *   answer-plan  <unknown> [paths...]            무엇이 걸리는지 보여주기만
+       *   answer-apply <unknown> <outcome> [paths...]  실행
+       *
+       * ★ 보존을 뜻하는 답(KEEP·REVIEW)은 파일을 건드리지 않는다. 그 판단은
+       *   engine.ts의 actionFor에 있고 테스트로 잠겨 있다 — 여기서 다시
+       *   해석하지 않는다(두 곳에서 해석하면 언젠가 어긋난다).
+       */
+      case 'answer-plan':
+      case 'answer-apply': {
+        const unknown = args[0]
+        if (!unknown) fail('어떤 질문인지(unknown)가 필요합니다.')
+        const isApply = command === 'answer-apply'
+        const outcome = isApply ? (args[1] as Outcome) : 'CANDIDATE'
+        if (isApply && !['CANDIDATE', 'MOVE', 'KEEP', 'REVIEW_ONE_BY_ONE'].includes(outcome)) {
+          fail(`모르는 답변입니다: ${args[1]}`)
+        }
+        const paths = (isApply ? args.slice(2) : args.slice(1)).filter(Boolean)
+        const roots = paths.length ? paths : (await presentDefaultRoots()).map((r) => r.path)
+
+        // 그 질문에 걸린 항목만 다시 모은다. 스캔 결과를 들고 다니지 않는 이유:
+        // 사용자가 답하는 사이 파일이 바뀔 수 있어서, 실행 직전 상태를 다시 본다.
+        const items: { path: string; size: number; mtimeMs: number; meaning: string; reason: string }[] = []
+        for (const root of roots) {
+          const scanned = await scan(root)
+          for (const f of scanned.files) {
+            const c = classifyOne(f)
+            if (c.verdict.zone !== 'AMBIG' || c.verdict.unknown !== unknown) continue
+            items.push({
+              path: f.path,
+              size: f.size,
+              mtimeMs: stampMtime(f.mtime.getTime()),
+              meaning: c.verdict.meaning,
+              reason: c.verdict.reason,
+            })
+          }
+        }
+        items.sort((a, b) => b.size - a.size)
+        const bytes = items.reduce((s, i) => s + i.size, 0)
+
+        if (!isApply) {
+          out({ unknown, count: items.length, bytes, items: items.slice(0, 200) })
+          break
+        }
+
+        const action = actionFor(outcome)
+        if (action === 'keep' || action === 'review') {
+          // 아무것도 안 한다. 무엇을 안 했는지는 말해준다.
+          out({ unknown, action, count: items.length, bytes, touched: 0, items: action === 'review' ? items.slice(0, 200) : [] })
+        }
+        if (action === 'move') {
+          // 옮기기는 대상 드라이브가 필요하다 — 여기서 임의로 정하지 않는다.
+          out({ unknown, action, count: items.length, bytes, needsDestination: true, items: items.slice(0, 200) })
+        }
+
+        const q = await quarantine(
+          items.map((i) => ({
+            path: i.path,
+            reason: `질문에 "정리해도 된다"고 답하신 것 — ${i.meaning}`,
+            zone: 'AMBIG' as const,
+            expect: { size: i.size, mtimeMs: i.mtimeMs },
+          }))
+        )
+        out({
+          unknown,
+          action,
+          quarantinedCount: q.quarantined.length,
+          bytesAfterGrace: q.bytes,
+          failed: q.failed,
+        })
+        break
+      }
       case 'startup': {
         out(await probeStartup())
         break

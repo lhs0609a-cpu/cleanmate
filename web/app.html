@@ -342,6 +342,41 @@
   .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
   .toast.bad{background:var(--lock);color:#fff}
   .toast.good{background:var(--safe);color:#fff}
+
+  /* ══ 목록 행 ═══════════════════════════════════════════════════
+     시작프로그램·프로그램·격리함·옮기기가 각자 다른 인라인 스타일로
+     그려지고 있었다. 같은 성격의 목록이 탭마다 다르게 생기면
+     "여러 사람이 따로 만든 프로그램"처럼 보인다. 한 벌로 통일한다. */
+  .row{display:flex;gap:var(--s-4);align-items:flex-start;
+       padding:var(--s-3) 0;border-top:1px solid var(--line)}
+  .row:first-of-type{border-top:0}
+  .row-main{min-width:0;flex:1}
+  .row-t{display:flex;gap:var(--s-2);align-items:baseline;flex-wrap:wrap}
+  .row-t b{font-size:var(--t-md);font-weight:650;letter-spacing:-.015em}
+  .row-t .ver{font-size:var(--t-xs);color:var(--faint)}
+  .row-sub{font-size:var(--t-xs);color:var(--muted);margin-top:3px;line-height:1.55}
+  .row-path{font-size:var(--t-xs);color:var(--ink-2);margin-top:2px;
+            font-family:var(--font-mono);word-break:break-all;line-height:1.5}
+  .row-val{font-size:var(--t-sm);font-weight:700;white-space:nowrap;flex:none;
+           color:var(--ink-2);padding-top:2px}
+  .row-act{flex:none;display:flex;gap:var(--s-2);align-items:center}
+  .list-head{display:flex;align-items:baseline;gap:var(--s-3);flex-wrap:wrap;
+             margin:var(--s-4) 0 var(--s-2)}
+  .list-head h3{font-size:var(--t-md);font-weight:750}
+  .list-head .sp{margin-left:auto;font-size:var(--t-xs);color:var(--muted)}
+
+  /* ══ 빈 화면 ══════════════════════════════════════════════════
+     "아직 없어요" 한 줄만 있으면 고장 난 화면처럼 보인다.
+     아이콘 + 무슨 뜻인지 + 다음에 뭘 하면 되는지까지 준다. */
+  .empty{display:flex;flex-direction:column;align-items:center;gap:var(--s-2);
+         text-align:center;color:var(--muted);font-size:var(--t-md);
+         padding:var(--s-7) var(--s-4);line-height:1.7}
+  .empty .ic{width:30px;height:30px;color:var(--faint);opacity:.7}
+  .empty b{display:block;color:var(--ink-2);font-weight:650;font-size:var(--t-md)}
+  .empty span{font-size:var(--t-sm);color:var(--muted)}
+
+  /* 답변 실행 자리 — 답을 고른 뒤에만 생긴다 */
+  .q-act:empty{display:none}
 </style>
 </head>
 <body>

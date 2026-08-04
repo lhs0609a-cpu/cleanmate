@@ -233,6 +233,40 @@ export function buildQuestions(clusters: Cluster[]): Question[] {
     })
 }
 
+/* ────────────────────────────────────────────────────────────
+   답변 → 행동
+
+   질문 엔진의 마지막 조각이다. 여태 답을 받아도 화면에 문구만 뜨고
+   아무 일도 안 일어났다 — 존 B가 통째로 정리 경로 없이 남아 있었다.
+
+   ★ 매핑을 순수 함수로 뺀 이유: 여기가 틀리면 "그대로 두세요"라고 답한
+     파일이 격리된다. 되돌릴 수는 있지만, 사용자 의도와 반대로 움직인
+     도구를 다시 믿기는 어렵다. (실제로 U7에서 선택지 순서 때문에
+     의도가 뒤집힌 적이 있다 — SPECS의 yesOutcome 주석 참고)
+   ──────────────────────────────────────────────────────────── */
+
+/** 답 하나가 실제로 무엇을 하는가 */
+export type AnswerAction =
+  | 'quarantine' // 격리로 옮긴다(30일 되돌리기)
+  | 'move'       // 다른 드라이브로 옮긴다 — 대상 드라이브를 물어야 한다
+  | 'keep'       // 아무것도 안 한다
+  | 'review'     // 목록으로 보여주고 하나씩 고르게 한다
+
+export function actionFor(outcome: Outcome): AnswerAction {
+  switch (outcome) {
+    case 'CANDIDATE': return 'quarantine'
+    case 'MOVE': return 'move'
+    case 'REVIEW_ONE_BY_ONE': return 'review'
+    case 'KEEP': return 'keep'
+  }
+}
+
+/** 파일을 실제로 건드리는 답인가. UI가 확인을 받아야 할지 판단하는 데 쓴다. */
+export function touchesFiles(outcome: Outcome): boolean {
+  const a = actionFor(outcome)
+  return a === 'quarantine' || a === 'move'
+}
+
 export interface EngineReport {
   questions: Question[]
   /** 질문으로 못 다룬 나머지 — 강제하지 않고 수동 검토로 남긴다 */
