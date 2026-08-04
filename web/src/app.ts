@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.5.3'
+const APP_VERSION = '0.6.0'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -90,6 +90,52 @@ function buildBrowserReport(files: FileEntry[], elapsedMs: number): Report {
     plan: { autoBytes: autoB, autoCount: autoC, askBytes: aB, askCount: aC, lockBytes: lB, lockCount: lC, inferredBytes: inferB },
     questions: runEngine(ambig).questions,
     kept: [...keptMap.entries()].map(([meaning, bytes]) => ({ meaning, bytes })).sort((a, b) => b.bytes - a.bytes).slice(0, 6),
+  }
+}
+
+/* ── 알림 (토스트) ────────────────────────────────────────────
+   브라우저 기본 경고창은 화면을 막고 OS 대화상자를 띄운다 — 앱이 아니라
+   스크립트처럼 보인다. 알림은 화면 안에서, 흐름을 끊지 않고 준다.
+   되돌릴 수 없는 동작의 '확인'은 여전히 confirm()을 쓴다. 그건 막아야 맞다. */
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+function toast(message: string, kind: 'info' | 'good' | 'bad' = 'info') {
+  const el = $('toast')
+  el.textContent = message
+  el.className = 'toast' + (kind === 'info' ? '' : ' ' + kind)
+  el.hidden = false
+  requestAnimationFrame(() => el.classList.add('on'))
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    el.classList.remove('on')
+    setTimeout(() => { el.hidden = true }, 260)
+  }, 4200)
+}
+
+/* ── 디스크 상태 ──────────────────────────────────────────────
+   화면 맨 위. "정리 가능 용량"보다 이게 먼저다 — 사람들이 이 앱을 여는
+   이유가 "용량이 부족해서"라서, 얼마나 부족한지가 첫 화면이어야 한다. */
+async function loadDisk() {
+  if (!inTauri) {
+    $('disk-title').textContent = '브라우저 체험판'
+    $('disk-sub').textContent = '디스크 상태는 데스크톱 앱에서 보여드려요.'
+    return
+  }
+  try {
+    const d = await engine('disk')
+    const pct = d.usedPercent
+    const ring = $('disk-ring')
+    ring.style.setProperty('--pct', String(pct))
+    // 색이 곧 상태다. 문구도 색과 같은 말을 해야 한다 — 초록인데 "위험"이면 아무도 안 믿는다.
+    ring.className = 'ring ' + (pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : 'good')
+    $('disk-pct').textContent = pct + '%'
+    $('disk-title').textContent =
+      pct >= 90 ? `${d.drive.replace(/\\$/, '')} 드라이브가 거의 찼어요`
+      : pct >= 70 ? `${d.drive.replace(/\\$/, '')} 드라이브에 여유가 줄고 있어요`
+      : `${d.drive.replace(/\\$/, '')} 드라이브는 아직 여유가 있어요`
+    $('disk-sub').textContent = `${fmtBytes(d.free)} 남음 · 전체 ${fmtBytes(d.total)}`
+  } catch {
+    $('disk-title').textContent = '디스크 상태를 읽지 못했어요'
+    $('disk-sub').textContent = '정리 기능은 그대로 쓸 수 있어요.'
   }
 }
 
@@ -211,6 +257,7 @@ function renderKept(kept: { meaning: string; bytes: number }[], lockBytes: numbe
  */
 function startTicker(prefix: string): () => void {
   const started = Date.now()
+  ;($('prog') as HTMLElement).hidden = false
   const paint = () => {
     const s = Math.round((Date.now() - started) / 1000)
     const t = s < 60 ? `${s}초` : `${Math.floor(s / 60)}분 ${s % 60}초`
@@ -218,7 +265,10 @@ function startTicker(prefix: string): () => void {
   }
   paint()
   const timer = setInterval(paint, 1000)
-  return () => clearInterval(timer)
+  return () => {
+    clearInterval(timer)
+    ;($('prog') as HTMLElement).hidden = true
+  }
 }
 
 /** 기본 스캔 대상(이 PC의 주요 폴더)을 미리 안내한다. 뭘 볼 건지 먼저 말한다. */
@@ -285,7 +335,7 @@ $('pick2').addEventListener('click', () => runScan(true))
 /* ── 정리 실행 (데스크톱: 진짜 격리 / 브라우저: 안내) ── */
 $('apply-btn').addEventListener('click', async () => {
   if (!inTauri) {
-    alert('실제 정리(격리로 이동)는 데스크톱 앱에서 실행됩니다.\n\n브라우저는 보안상 파일을 옮기거나 지울 수 없어요.')
+    toast('실제 정리(격리로 이동)는 데스크톱 앱에서 실행됩니다. 브라우저는 보안상 파일을 옮기거나 지울 수 없어요.', 'bad')
     return
   }
   const btn = $('apply-btn') as HTMLButtonElement
@@ -300,6 +350,7 @@ $('apply-btn').addEventListener('click', async () => {
       (res.failed.length ? ` (${res.failed.length}개는 사용 중이라 건너뜀)` : '')
     btn.textContent = '정리 완료'
     quarLoaded = false // 격리함 새로고침 필요
+    loadDisk()
   } catch (err) {
     $('apply-note').textContent = `정리 실패: ${(err as Error).message}`
     btn.disabled = false; btn.textContent = '다시 시도'
@@ -372,7 +423,7 @@ function wireAssists(host: HTMLElement, findings: any[]) {
           : '열었어요'
         if (a.command === 'empty-recycle-bin') { hiddenLoaded = false; loadHidden() }
       } catch (err) {
-        alert('실행하지 못했어요: ' + (err as Error).message)
+        toast('실행하지 못했어요: ' + (err as Error).message, 'bad')
         btn.disabled = false
         btn.textContent = before
       }
@@ -789,7 +840,7 @@ async function loadStartup() {
           startupLoaded = false
           loadStartup() // 실제 상태를 다시 읽는다 — 화면만 바꾸지 않는다
         } catch (err) {
-          alert('바꾸지 못했어요: ' + (err as Error).message)
+          toast('바꾸지 못했어요: ' + (err as Error).message, 'bad')
           btn.disabled = false
         }
       })
@@ -840,7 +891,7 @@ async function loadPrograms() {
           btn.textContent = '제거 프로그램을 열었어요'
           btn.disabled = true
         } catch (err) {
-          alert('제거 프로그램을 실행하지 못했어요: ' + (err as Error).message)
+          toast('제거 프로그램을 실행하지 못했어요: ' + (err as Error).message, 'bad')
         }
       })
     })
@@ -921,11 +972,11 @@ async function planMove(src: string, dest: string) {
       btn.disabled = true; btn.textContent = '옮기는 중…'
       try {
         const r = await engine('relocate-apply', [src, dest])
-        alert(`${r.movedCount.toLocaleString()}개(${fmtBytes(r.movedBytes)})를 옮겼어요.` +
-          (r.failed.length ? `\n${r.failed.length}개는 건너뛰었습니다.` : ''))
+        toast(`${r.movedCount.toLocaleString()}개(${fmtBytes(r.movedBytes)})를 옮겼어요.` +
+          (r.failed.length ? ` ${r.failed.length}개는 건너뛰었습니다.` : ''))
         loadMove()
       } catch (err) {
-        alert('옮기지 못했어요: ' + (err as Error).message)
+        toast('옮기지 못했어요: ' + (err as Error).message, 'bad')
         btn.disabled = false
       }
     })
@@ -990,14 +1041,14 @@ async function loadQuar() {
           if (!r.restoredCount) {
             // 자리를 누가 차지했을 때가 대부분이다 — 이유를 그대로 보여준다.
             btn.textContent = '실패'
-            alert(r.failed?.[0]?.reason ?? '되돌리지 못했어요.')
+            toast(r.failed?.[0]?.reason ?? '되돌리지 못했어요.', 'bad')
             btn.disabled = false
             btn.textContent = '되돌리기'
             return
           }
           loadQuar() // 목록을 다시 읽는다 — 화면만 지우지 않는다
         } catch (err) {
-          alert('되돌리지 못했어요: ' + (err as Error).message)
+          toast('되돌리지 못했어요: ' + (err as Error).message, 'bad')
           btn.disabled = false
           btn.textContent = '되돌리기'
         }
@@ -1006,7 +1057,7 @@ async function loadQuar() {
 
     document.getElementById('restore-all')?.addEventListener('click', async () => {
       const r = await engine('restore', ['--all'])
-      alert(`${r.restoredCount.toLocaleString()}개를 되돌렸어요.`)
+      toast(`${r.restoredCount.toLocaleString()}개를 되돌렸어요.`)
       loadQuar()
     })
   } catch (err) {
@@ -1127,6 +1178,7 @@ if (inTauri) {
   $('hero-cap').textContent = '원클릭을 누르면 이 PC의 주요 폴더를 훑어서 정리 가능한 용량을 보여드려요.'
   // 창을 닫으면 트레이로 내려간다. 어디로 갔는지 모르면 그건 사라진 것이다.
   ;($('tray-note') as HTMLElement).hidden = false
+  loadDisk()
   purgeExpiredQuarantine() // 유예 끝난 것 실제 삭제
   checkUpdate() // 시작 시 조용히 최신 버전 확인
 }

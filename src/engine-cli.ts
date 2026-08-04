@@ -399,6 +399,20 @@ async function main() {
         out({ roots: await presentDefaultRoots() })
         break
       }
+      /**
+       * 디스크 상태 — 화면 맨 위에서 "지금 얼마나 위험한가"를 보여주는 데 쓴다.
+       * 정리 도구를 여는 사람이 제일 먼저 알고 싶은 건 정리 가능 용량이 아니라
+       * "내 디스크가 지금 어떤 상태인가"다.
+       */
+      case 'disk': {
+        const { statfs } = await import('node:fs/promises')
+        const drive = process.env.SystemDrive ? process.env.SystemDrive + '\\' : '/'
+        const fs = await statfs(drive)
+        const total = Number(fs.blocks) * Number(fs.bsize)
+        const free = Number(fs.bavail) * Number(fs.bsize)
+        out({ drive, total, free, used: total - free, usedPercent: total ? Math.round(((total - free) / total) * 100) : 0 })
+        break
+      }
       case 'scan-plan': {
         // 인자가 없으면 '이 PC 기본 스캔'이다. 폴더를 못 고르는 사람을 위한 기본값.
         const paths = args.length ? args : (await presentDefaultRoots()).map((r) => r.path)

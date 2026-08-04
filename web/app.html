@@ -287,21 +287,99 @@
 
   footer{border-top:1px solid var(--line);padding:var(--s-5) 0 var(--s-8);
          font-size:var(--t-2xs);color:var(--faint);line-height:1.9;text-align:center}
+
+  /* ══ 아이콘 ═══════════════════════════════════════════════════
+     선 아이콘 하나의 두께(1.8)로 통일한다. 굵기가 섞이면 화면이 시끄럽다. */
+  .ic{width:16px;height:16px;flex:none;vertical-align:-3px}
+  .nav button .ic{width:15px;height:15px;margin-right:6px;opacity:.85}
+  .nav button.on .ic{opacity:1}
+  .oneclick .ic{width:18px;height:18px;margin-right:8px;vertical-align:-4px}
+
+  /* ══ 디스크 상태 대시보드 ═════════════════════════════════════
+     정리 도구를 여는 사람이 제일 먼저 알고 싶은 건 "내 디스크가 지금
+     어떤 상태인가"다. 그래서 링을 맨 왼쪽, 가장 먼저 읽히는 자리에 둔다.
+     색은 상태다 — 70% 미만 초록, 90% 미만 주황, 그 위 빨강. */
+  .dash{display:flex;gap:var(--s-5);align-items:center;text-align:left;
+        padding:var(--s-2) 0 var(--s-4)}
+  @media(max-width:640px){.dash{flex-direction:column;text-align:center;gap:var(--s-4)}}
+  .ring{--pct:0;--ring:var(--accent);
+        width:128px;height:128px;flex:none;border-radius:50%;display:grid;place-items:center;
+        background:conic-gradient(var(--ring) calc(var(--pct)*1%),var(--surface-3) 0);
+        transition:background .9s var(--ease);position:relative}
+  .ring::after{content:"";position:absolute;inset:0;border-radius:50%;
+               box-shadow:inset 0 0 0 1px rgba(0,0,0,.04)}
+  .ring-in{width:104px;height:104px;border-radius:50%;background:var(--surface);
+           display:grid;place-items:center;text-align:center;box-shadow:var(--sh-1)}
+  .ring-n{font-family:var(--font-display);font-size:var(--t-2xl);font-weight:800;
+          letter-spacing:-.04em;line-height:1;color:var(--ring)}
+  .ring-l{font-size:var(--t-2xs);color:var(--muted);margin-top:3px}
+  .ring.warn{--ring:var(--amb)} .ring.danger{--ring:var(--lock)} .ring.good{--ring:var(--safe)}
+  .dash-txt{min-width:0;flex:1}
+  .dash-top{font-family:var(--font-display);font-size:var(--t-lg);font-weight:750;
+            letter-spacing:-.025em;line-height:1.35}
+  .dash-sub{font-size:var(--t-sm);color:var(--muted);margin-top:2px}
+  .dash-txt .big{margin-top:var(--s-4);text-align:left;font-size:clamp(34px,7vw,var(--t-4xl))}
+  .dash-txt .cap{margin:6px 0 0;text-align:left;max-width:none}
+  @media(max-width:640px){.dash-txt .big,.dash-txt .cap{text-align:center}}
+
+  /* ══ 진행 표시 ════════════════════════════════════════════════
+     진행률(%)을 지어내지 않는다. 스캔이 얼마나 남았는지 우리는 모른다 —
+     '돌고 있다'는 사실만 정직하게 보여주는 무한 막대를 쓴다. */
+  .prog{margin-top:var(--s-4)}
+  .prog-bar{height:4px;border-radius:var(--r-full);background:var(--surface-3);overflow:hidden}
+  .prog-bar span{display:block;height:100%;width:38%;border-radius:var(--r-full);
+                 background:linear-gradient(90deg,var(--accent),var(--accent-2));
+                 animation:slide 1.4s var(--ease) infinite}
+  @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
+
+  /* ══ 토스트 ═══════════════════════════════════════════════════
+     alert()는 창을 막고 OS 대화상자를 띄운다 — 앱이 아니라 스크립트처럼 보인다. */
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(8px);
+         z-index:100;max-width:min(520px,calc(100vw - 32px));
+         background:var(--ink);color:var(--bg);border-radius:var(--r-md);
+         padding:13px 18px;font-size:var(--t-sm);line-height:1.55;font-weight:600;
+         box-shadow:var(--sh-3);opacity:0;transition:opacity var(--base),transform var(--base) var(--ease)}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.bad{background:var(--lock);color:#fff}
+  .toast.good{background:var(--safe);color:#fff}
 </style>
 </head>
 <body>
+
+<!-- 아이콘 — 외부 파일을 받지 않는다(오프라인·CSP). 선 아이콘 하나의 두께로 통일. -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.8V21h14V9.8"/></symbol>
+  <symbol id="i-hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 3l18 18"/><path d="M10.6 5.2A9.9 9.9 0 0 1 12 5c5 0 9 4.5 9 7 0 1-.7 2.3-1.9 3.5"/>
+    <path d="M6.3 6.7C4 8.2 3 10.2 3 12c0 2.5 4 7 9 7 1.6 0 3-.4 4.2-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3v9"/><path d="M6.5 6.6a8 8 0 1 0 11 0"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5"/><path d="M12 13v7"/></symbol>
+  <symbol id="i-move" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 8h13"/><path d="m14 5 3 3-3 3"/><path d="M20 16H7"/><path d="m10 13-3 3 3 3"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 7v6h6"/><path d="M4 13a8 8 0 1 0 2.5-5.8L4 9.4"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="8.5"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13 3 5.5 13.5H11L10 21l7.5-10.5H12z"/></symbol>
+</svg>
+
+<div class="toast" id="toast" hidden></div>
 
 <div class="topbar">
   <div class="wrap">
     <a class="brand" href="/" style="text-decoration:none;color:inherit">테라클린<span class="dot">.</span></a>
     <nav class="nav">
-      <button data-go="home" class="on">홈</button>
-      <button data-go="hidden">숨은 공간</button>
-      <button data-go="startup">시작프로그램</button>
-      <button data-go="programs">안 쓴 프로그램</button>
-      <button data-go="move">드라이브 옮기기</button>
-      <button data-go="quar">격리함</button>
-      <button data-go="tidy">생활 정리</button>
+      <button data-go="home" class="on"><svg class="ic"><use href="#i-home"/></svg>홈</button>
+      <button data-go="hidden"><svg class="ic"><use href="#i-hidden"/></svg>숨은 공간</button>
+      <button data-go="startup"><svg class="ic"><use href="#i-power"/></svg>시작프로그램</button>
+      <button data-go="programs"><svg class="ic"><use href="#i-box"/></svg>안 쓴 프로그램</button>
+      <button data-go="move"><svg class="ic"><use href="#i-move"/></svg>드라이브 옮기기</button>
+      <button data-go="quar"><svg class="ic"><use href="#i-undo"/></svg>격리함</button>
+      <button data-go="tidy"><svg class="ic"><use href="#i-check"/></svg>생활 정리</button>
     </nav>
   </div>
 </div>
@@ -309,24 +387,44 @@
 <div class="wrap">
 <main>
 
-  <!-- ════ 홈 ════ -->
+  <!-- ════ 홈 ════
+       V3·알약처럼 "상태부터" 보여준다. 정리 도구를 여는 사람이 제일 먼저
+       알고 싶은 건 정리 가능 용량이 아니라 "내 디스크가 지금 어떤 상태인가"다.
+       그래서 링(디스크) → 정리 가능 숫자 → 실행 버튼 순으로 놓는다. -->
   <section class="screen on" id="s-home">
-    <div class="card pad hero">
-      <div class="big muted" id="hero-num">—</div>
-      <div class="cap" id="hero-cap">폴더를 골라 분석하면, 정리 가능한 용량을 여기 보여드려요.</div>
+    <div class="card hero">
+      <div class="dash">
+        <div class="ring" id="disk-ring" style="--pct:0">
+          <div class="ring-in">
+            <div class="ring-n" id="disk-pct">—</div>
+            <div class="ring-l">사용 중</div>
+          </div>
+        </div>
+        <div class="dash-txt">
+          <div class="dash-top" id="disk-title">디스크 상태를 확인하는 중…</div>
+          <div class="dash-sub" id="disk-sub">잠시만요</div>
+          <div class="big muted" id="hero-num">—</div>
+          <div class="cap" id="hero-cap">원클릭을 누르면 이 PC의 주요 폴더를 훑어서 정리 가능한 용량을 보여드려요.</div>
+        </div>
+      </div>
 
       <button class="oneclick" id="oneclick">
+        <svg class="ic"><use href="#i-bolt"/></svg>
         원클릭 최적화
         <span class="s">확실한 건 알아서 · 애매한 건 모아서 보여드려요</span>
       </button>
       <button class="subpick" id="pick2">다른 폴더 고르기</button>
 
+      <!-- 스캔 중에만 보이는 진행 표시. 진행률(%)을 지어내지 않고
+           '무엇을 하는 중인지 + 얼마나 지났는지'만 정직하게 보여준다. -->
+      <div class="prog" id="prog" hidden><div class="prog-bar"><span></span></div></div>
+      <div id="status"></div>
+
       <div class="privacy">
         <span class="d">●</span>
         <span>파일은 <b style="color:var(--ink)">기기를 한 바이트도 떠나지 않습니다.</b>
-          서버도 업로드도 없어요. 이 웹 데모는 분석까지 하고, 실제 정리·삭제는 데스크톱 앱이 합니다.</span>
+          서버도 업로드도 없어요.</span>
       </div>
-      <div id="status"></div>
     </div>
 
     <!-- 분석 결과 (스캔 후 표시) -->
