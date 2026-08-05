@@ -377,6 +377,15 @@
 
   /* 답변 실행 자리 — 답을 고른 뒤에만 생긴다 */
   .q-act:empty{display:none}
+
+  /* ══ 버전 줄 ══════════════════════════════════════════════════
+     상시 노출. 업데이트 확인이 조용히 실패해도 여기서 상태가 보인다. */
+  .verline{display:flex;align-items:center;justify-content:center;gap:var(--s-3);
+           flex-wrap:wrap;margin-bottom:var(--s-3);font-size:var(--t-xs)}
+  .verline #app-ver{font-weight:700;color:var(--ink-2);
+                    font-family:var(--font-mono);letter-spacing:0}
+  .verline .opt{padding:5px 12px;font-size:var(--t-xs)}
+  .verline #upd-state{color:var(--muted)}
 </style>
 </head>
 <body>
@@ -601,6 +610,13 @@
 </main>
 
 <footer>
+  <!-- ★ 버전을 항상 보이게 둔다. 업데이트가 됐는지 사용자가 확인할 방법이
+       팝업뿐이면, 팝업이 안 뜰 때 "고장인지 최신인지" 알 수가 없다. -->
+  <div class="verline">
+    <span id="app-ver">v—</span>
+    <button class="opt" id="check-upd">업데이트 확인</button>
+    <span id="upd-state"></span>
+  </div>
   테라클린 (TeraClean) — 지워도 되는 것만 지웁니다<br>
   이 화면은 실제 데스크톱 앱의 프론트엔드입니다 · 파일은 기기를 떠나지 않습니다
   <span id="tray-note" hidden><br>창을 닫아도 트레이에 남아 있어요.

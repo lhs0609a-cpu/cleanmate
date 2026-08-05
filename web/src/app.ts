@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.7.0'
+const APP_VERSION = '0.7.1'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -1161,15 +1161,36 @@ async function fetchExpectedHash(assets: any[]): Promise<string | null> {
   }
 }
 
-async function checkUpdate() {
+/**
+ * @param manual 사용자가 '업데이트 확인'을 눌렀나.
+ *
+ * ★ 조용한 실패를 없앤다. 배경 확인은 실패해도 조용히 넘어가는 게 맞지만
+ *   (네트워크 없다고 앱이 시끄러우면 안 된다), 사용자가 직접 눌렀을 때도
+ *   아무 반응이 없으면 "고장 났다"로 읽힌다. 실제로 그렇게 보였다.
+ */
+async function checkUpdate(manual = false) {
+  const say = (msg: string, kind: 'info' | 'good' | 'bad' = 'info') => {
+    const el = document.getElementById('upd-state')
+    if (el) el.textContent = msg
+    if (manual) toast(msg, kind)
+  }
+  if (manual) say('확인하는 중…')
   try {
     const res = await fetch(LATEST_API, { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store' })
-    if (!res.ok) return
+    if (!res.ok) {
+      // 가장 흔한 원인은 GitHub API 시간당 한도(비인증 60회)다. 남 탓처럼 안 들리게 쓴다.
+      say(res.status === 403 ? '지금은 확인이 막혔어요. 잠시 뒤 다시 눌러주세요.' : `확인 실패 (HTTP ${res.status})`, 'bad')
+      return
+    }
     const r = await res.json()
     const version = (r.tag_name ?? '').replace(/^v/, '')
     const assets = r.assets ?? []
     const exe = assets.find((a: any) => /\.exe$/i.test(a.name))
-    if (!version || !exe || compareVersions(version, APP_VERSION) <= 0) return // 최신이거나 더 낮음 → 조용히 넘어감
+    if (!version || !exe) { say('릴리스를 읽지 못했어요.', 'bad'); return }
+    if (compareVersions(version, APP_VERSION) <= 0) {
+      say(`최신 버전이에요 (v${APP_VERSION})`, 'good')
+      return
+    }
     const expectedHash = await fetchExpectedHash(assets)
     const m = { version, url: exe.browser_download_url, notes: (r.body ?? '').split('\n')[0] }
 
@@ -1215,8 +1236,10 @@ async function checkUpdate() {
         ;($('um-later') as HTMLButtonElement).disabled = false
       }
     }
-  } catch {
-    /* 네트워크가 없어도 앱은 정상 작동 — 업데이트는 조용히 건너뛴다. */
+    say(`v${version} 준비됨 — 팝업에서 진행해주세요`, 'good')
+  } catch (err) {
+    // 네트워크가 없어도 앱은 정상 작동한다. 다만 직접 누른 경우엔 이유를 말해준다.
+    say('인터넷 연결을 확인해주세요.', 'bad')
   }
 }
 
@@ -1254,5 +1277,11 @@ if (inTauri) {
   ;($('tray-note') as HTMLElement).hidden = false
   loadDisk()
   purgeExpiredQuarantine() // 유예 끝난 것 실제 삭제
-  checkUpdate() // 시작 시 조용히 최신 버전 확인
+  // 시작할 때 한 번, 그 뒤 6시간마다. 트레이에 상주하는 앱이라
+  // '시작할 때만' 보면 며칠 켜둔 사이 나온 버전을 영영 모른다.
+  const ver = document.getElementById('app-ver')
+  if (ver) ver.textContent = 'v' + APP_VERSION
+  document.getElementById('check-upd')?.addEventListener('click', () => checkUpdate(true))
+  checkUpdate()
+  setInterval(() => checkUpdate(), 6 * 60 * 60 * 1000)
 }
