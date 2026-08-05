@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.8.1'
+const APP_VERSION = '0.8.2'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -212,6 +212,66 @@ function renderReport(r: Report) {
   applyBtn.textContent = inTauri ? `확실한 캐시 ${fmtBytes(r.plan.autoBytes)} 정리하기` : '확실한 캐시 정리하기'
 }
 
+/**
+ * 근거 패널 — ★ 답을 고르기 '전에' 보여준다.
+ *
+ * 전에는 답을 누른 뒤에야 나왔다. 판단하려고 정보가 필요한데 정보를 보려면
+ * 먼저 결정해야 하는 구조였다 — 순서가 거꾸로였다.
+ * 이제 스캔이 근거를 함께 실어 오므로(engine-cli의 scanPlan) 즉시 그린다.
+ */
+function evidenceHtml(ev: any): string {
+  if (!ev) return ''
+  const e = ev.explain
+  const total = ev.kinds?.reduce((s: number, k: any) => s + k.bytes, 0) || 1
+  const bar = (g: any) => `
+    <div class="bd-row">
+      <span class="bd-k">${esc(g.key ?? g.label)}</span>
+      <span class="bd-track"><span class="bd-fill" style="width:${Math.max(2, Math.round((g.bytes / total) * 100))}%"></span></span>
+      <span class="bd-v">${fmtBytes(g.bytes)} · ${g.count.toLocaleString()}개</span>
+    </div>`
+
+  return `
+    <div class="bd">
+      ${ev.mix ? `<div class="bd-mix">${esc(ev.mix)}</div>` : ''}
+      ${ev.age ? `<div class="bd-age">가장 오래된 것 ${Math.floor(ev.age.oldestDays / 30)}개월 전${
+        ev.age.overYearPercent >= 20 ? ` · 1년 넘은 것 ${ev.age.overYearPercent}%` : ''}</div>` : ''}
+
+      ${ev.kinds?.length ? `<div class="bd-kinds">${ev.kinds.map((k: any) => `
+        <div class="bd-kind">
+          <span class="bd-kind-l">${esc(k.label)}</span>
+          <span class="bd-kind-v">${fmtBytes(k.bytes)} · ${k.count.toLocaleString()}개</span>
+          <span class="bd-kind-w">${esc(k.why)}</span>
+        </div>`).join('')}</div>` : ''}
+
+      ${e ? `
+      <details class="bd-det">
+        <summary>지우면 어떻게 되나요 · 되돌릴 수 있나요</summary>
+        <div class="bd-ex">
+          <div class="bd-b"><span class="bd-h">이게 뭔가요</span>${esc(e.what)}</div>
+          <div class="bd-b"><span class="bd-h">어디서 왔나요</span>${esc(e.origin)}</div>
+          <div class="bd-b"><span class="bd-h">지워도 되나요</span>${esc(e.safety)}</div>
+          <div class="bd-b warn"><span class="bd-h">지우면 뭐가 달라지나요</span>
+            <ul>${e.ifRemoved.map((x: string) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+          <div class="bd-b"><span class="bd-h">되돌릴 수 있나요</span>${esc(e.recovery)}</div>
+          <div class="bd-b"><span class="bd-h">안 지우면요</span>${esc(e.ifKept)}</div>
+        </div>
+      </details>` : ''}
+
+      <details class="bd-det">
+        <summary>실제 파일 보기 (어디에 있는지 · 큰 것부터)</summary>
+        <div class="bd-sec">폴더별</div>
+        ${(ev.folders ?? []).map(bar).join('')}
+        <div class="bd-sec">큰 파일부터</div>
+        ${(ev.samples ?? []).map((s: any) => `<div class="bd-file">
+            <span class="bd-name">${esc(s.path.split(/[\\/]/).pop())}</span>
+            ${s.kind ? `<span class="bd-kindtag">${esc(s.kind)}</span>` : ''}
+            <span class="bd-size">${fmtBytes(s.size)}</span>
+            <span class="bd-path">${esc(s.path)}</span>
+          </div>`).join('')}
+      </details>
+    </div>`
+}
+
 function renderQuestions(questions: Question[]) {
   const qEl = $('questions')
   if (!questions.length) {
@@ -223,11 +283,12 @@ function renderQuestions(questions: Question[]) {
       <div class="q-n">질문 ${i + 1}</div>
       <div class="q-text">${esc(q.text)}</div>
       <div class="q-why">왜 묻나: ${esc(q.rationale)}</div>
+      ${evidenceHtml((q as any).evidence)}
       <div class="opts">${q.options.map((o) => `<button class="opt${o.outcome === 'KEEP' ? ' keep' : ''}"
         data-outcome="${o.outcome}" data-unknown="${esc(q.unknown)}"
         data-preview="${esc(o.preview)}">${esc(o.label)}</button>`).join('')}</div>
       <div class="q-answered" hidden></div>
-      <div class="q-act" data-act="${i}"></div>
+      <div class="q-act" data-act="${i}" data-count="${q.stakeCount}" data-bytes="${q.stakeBytes}"></div>
       <div class="q-stake">걸린 용량: ${fmtBytes(q.stakeBytes)} · ${q.stakeCount.toLocaleString()}개</div>
     </div>`).join('')
   qEl.querySelectorAll<HTMLButtonElement>('.opt').forEach((btn) => btn.addEventListener('click', () => {
@@ -266,70 +327,16 @@ async function answerAction(host: HTMLElement, unknown: string, outcome: string)
     return
   }
 
-  host.innerHTML = `<div style="margin-top:10px;font-size:13px;color:var(--muted)">무엇이 걸리는지 확인하는 중…</div>`
+  // ★ 여기서 다시 스캔하지 않는다. 질문이 근거를 이미 들고 왔다.
+  //   예전엔 답을 누를 때마다 전체를 다시 훑었다 — 이 PC 기준 330초.
+  //   버튼을 눌렀는데 5분 넘게 아무 일도 안 일어나는 화면이었다.
+  const count = Number(host.dataset.count || 0)
+  const bytes = Number(host.dataset.bytes || 0)
   try {
-    const p = await engine('answer-plan', [unknown, ...(scannedPath ? [scannedPath] : [])])
-    if (!p.count) {
-      host.innerHTML = `<div style="margin-top:10px;font-size:13px;color:var(--muted)">해당하는 파일이 지금은 없어요.</div>`
-      return
-    }
-    /* ★ 근거 패널 — "지울까요?"만 묻지 않는다.
-       무슨 파일이고, 어디서 왔고, 지우면 어떻게 되는지를 함께 보여준다.
-       이 제품의 약속이 "뭘 지우는지 알고 지웁니다"인데, 정작 질문 화면이
-       그 약속을 가장 크게 어기고 있었다. */
-    const e = p.explain
-    const bar = (g: any, total: number) => `
-      <div class="bd-row">
-        <span class="bd-k">${esc(g.key)}</span>
-        <span class="bd-track"><span class="bd-fill" style="width:${Math.max(2, Math.round((g.bytes / total) * 100))}%"></span></span>
-        <span class="bd-v">${fmtBytes(g.bytes)} · ${g.count.toLocaleString()}개</span>
-      </div>`
-
     host.innerHTML = `
-      <div class="bd">
-        <div class="bd-top">
-          <b>${p.count.toLocaleString()}개 · ${fmtBytes(p.bytes)}</b>
-          ${p.age ? `<span class="bd-age">가장 오래된 것 ${Math.floor(p.age.oldestDays / 30)}개월 전${
-            p.age.overYearPercent >= 20 ? ` · 1년 넘은 것 ${p.age.overYearPercent}%` : ''}</span>` : ''}
-        </div>
-
-        ${p.mix ? `<div class="bd-mix">${esc(p.mix)}</div>` : ''}
-        ${p.kinds?.length ? `<div class="bd-kinds">${p.kinds.map((k: any) => `
-          <div class="bd-kind">
-            <span class="bd-kind-l">${esc(k.label)}</span>
-            <span class="bd-kind-v">${fmtBytes(k.bytes)} · ${k.count.toLocaleString()}개</span>
-            <span class="bd-kind-w">${esc(k.why)}</span>
-          </div>`).join('')}</div>` : ''}
-
-        ${e ? `
-        <div class="bd-ex">
-          <div class="bd-b"><span class="bd-h">이게 뭔가요</span>${esc(e.what)}</div>
-          <div class="bd-b"><span class="bd-h">어디서 왔나요</span>${esc(e.origin)}</div>
-          <div class="bd-b"><span class="bd-h">지워도 되나요</span>${esc(e.safety)}</div>
-          <div class="bd-b warn"><span class="bd-h">지우면 뭐가 달라지나요</span>
-            <ul>${e.ifRemoved.map((x: string) => `<li>${esc(x)}</li>`).join('')}</ul></div>
-          <div class="bd-b"><span class="bd-h">되돌릴 수 있나요</span>${esc(e.recovery)}</div>
-          <div class="bd-b"><span class="bd-h">안 지우면요</span>${esc(e.ifKept)}</div>
-        </div>` : ''}
-
-        <details class="bd-det">
-          <summary>어디에 있는지 · 어떤 파일인지 보기</summary>
-          <div class="bd-sec">폴더별</div>
-          ${p.folders.map((g: any) => bar(g, p.bytes)).join('')}
-          <div class="bd-sec">파일 종류</div>
-          ${p.exts.map((g: any) => bar(g, p.bytes)).join('')}
-          <div class="bd-sec">큰 파일부터</div>
-          ${p.samples.map((s: any) => `<div class="bd-file">
-              <span class="bd-name">${esc(s.path.split(/[\\/]/).pop())}</span>
-              <span class="bd-size">${fmtBytes(s.size)}</span>
-              <span class="bd-path">${esc(s.path)}</span>
-            </div>`).join('')}
-        </details>
-
-        <div class="bd-act">
-          <button class="btn" data-answer-go="1">격리로 정리하기</button>
-          <span>지우지 않고 30일 보관 — 언제든 되돌립니다</span>
-        </div>
+      <div class="bd-act">
+        <button class="btn" data-answer-go="1">${count.toLocaleString()}개 · ${fmtBytes(bytes)} 격리로 정리하기</button>
+        <span>지우지 않고 30일 보관 — 언제든 되돌립니다</span>
       </div>`
     host.querySelector<HTMLButtonElement>('[data-answer-go]')!.addEventListener('click', async (ev) => {
       const b = ev.currentTarget as HTMLButtonElement

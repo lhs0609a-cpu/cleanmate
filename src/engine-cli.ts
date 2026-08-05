@@ -351,6 +351,32 @@ async function scanPlan(paths: string[]) {
   }
 
   const report = runEngine(ambig)
+
+  /* ★ 근거를 질문에 붙여서 함께 보낸다.
+     전에는 답을 고른 뒤에야 근거를 보여줬다 — 판단하려고 정보가 필요한데
+     정보를 보려면 먼저 결정해야 하는 구조였다. 순서가 거꾸로였다.
+     게다가 그때마다 전체를 다시 스캔했다(이 PC 기준 330초).
+     이미 분류하면서 다 본 파일들이니, 그 자리에서 집계해 함께 보낸다. */
+  const questions = report.questions.map((q) => {
+    const mine = ambig
+      .filter((c) => c.verdict.unknown === q.unknown)
+      .map((c) => ({ path: c.path, size: c.size, ageDays: c.ageDays }))
+    const b = buildBreakdown(mine)
+    const kinds = groupByKind(mine)
+    return {
+      ...q,
+      evidence: {
+        kinds,
+        mix: describeMix(kinds, b.bytes),
+        folders: b.folders,
+        exts: b.exts,
+        age: b.age,
+        samples: b.samples.map((x) => ({ ...x, kind: kindOf(x.path).label })),
+        explain: (UNKNOWN_EXPLAIN as any)[q.unknown] ?? null,
+      },
+    }
+  })
+
   const kept = [...keptMap.entries()]
     .map(([meaning, bytes]) => ({ meaning, bytes }))
     .sort((a, b) => b.bytes - a.bytes)
@@ -371,7 +397,7 @@ async function scanPlan(paths: string[]) {
       lockBytes: lockB, lockCount: lockC,
       inferredBytes: inferB,
     },
-    questions: report.questions,
+    questions,
     kept,
   }
 }
