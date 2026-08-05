@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.7.2'
+const APP_VERSION = '0.7.3'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -132,7 +132,9 @@ async function loadDisk() {
       pct >= 90 ? `${d.drive.replace(/\\$/, '')} 드라이브가 거의 찼어요`
       : pct >= 70 ? `${d.drive.replace(/\\$/, '')} 드라이브에 여유가 줄고 있어요`
       : `${d.drive.replace(/\\$/, '')} 드라이브는 아직 여유가 있어요`
-    $('disk-sub').textContent = `${fmtBytes(d.free)} 남음 · 전체 ${fmtBytes(d.total)}`
+    $('disk-sub').textContent = `${d.drive.replace(/\$/, '')} · ${fmtBytes(d.used)} 사용 중`
+    $('disk-free').textContent = fmtBytes(d.free)
+    $('disk-total').textContent = fmtBytes(d.total)
   } catch {
     $('disk-title').textContent = '디스크 상태를 읽지 못했어요'
     $('disk-sub').textContent = '정리 기능은 그대로 쓸 수 있어요.'

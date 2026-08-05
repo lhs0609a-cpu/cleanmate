@@ -378,14 +378,96 @@
   /* 답변 실행 자리 — 답을 고른 뒤에만 생긴다 */
   .q-act:empty{display:none}
 
-  /* ══ 버전 줄 ══════════════════════════════════════════════════
-     상시 노출. 업데이트 확인이 조용히 실패해도 여기서 상태가 보인다. */
-  .verline{display:flex;align-items:center;justify-content:center;gap:var(--s-3);
-           flex-wrap:wrap;margin-bottom:var(--s-3);font-size:var(--t-xs)}
+  /* ══ 앱 골격 — 좌측 고정 내비 + 우측 작업 영역 ═══════════════
+     데스크톱 앱의 기본 골격이다. 상단 탭은 웹페이지 문법이라
+     창 안에 들어가면 "브라우저를 띄운 것"처럼 보인다. */
+  .shell{display:grid;grid-template-columns:224px 1fr;min-height:100vh}
+  .side{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;
+        gap:var(--s-2);padding:var(--s-5) var(--s-3);background:var(--surface);
+        border-right:1px solid var(--line)}
+  .side .brand{padding:0 var(--s-3) var(--s-4);font-size:var(--t-xl);
+               color:var(--ink);text-decoration:none;display:block}
+  .side .nav{display:flex;flex-direction:column;gap:2px;
+             background:none;padding:0;border-radius:0;overflow:visible}
+  .side .nav button{display:flex;align-items:center;width:100%;text-align:left;
+                    padding:10px var(--s-3);border-radius:var(--r-sm);
+                    font-size:var(--t-md);font-weight:600;color:var(--muted)}
+  .side .nav button:hover{background:var(--surface-2);color:var(--ink)}
+  .side .nav button.on{background:var(--accent-soft);color:var(--accent);box-shadow:none}
+  .side .nav button .ic{width:17px;height:17px;margin-right:10px}
+  .side-foot{margin-top:auto;padding:var(--s-3);border-top:1px solid var(--line);
+             font-size:var(--t-2xs);color:var(--muted)}
+  .content{min-width:0;display:flex;flex-direction:column}
+  .content main{padding:var(--s-6) var(--s-6) var(--s-8);max-width:1000px;width:100%}
+  .content footer{margin-top:auto}
+  @media(max-width:820px){
+    .shell{grid-template-columns:1fr}
+    .side{position:static;height:auto;flex-direction:row;align-items:center;
+          gap:var(--s-3);border-right:0;border-bottom:1px solid var(--line);
+          padding:var(--s-3) var(--s-4)}
+    .side .brand{padding:0;font-size:var(--t-lg)}
+    .side .nav{flex-direction:row;overflow-x:auto;flex:1}
+    .side .nav button{width:auto;white-space:nowrap}
+    .side-foot{display:none}
+    .content main{padding:var(--s-5) var(--s-4) var(--s-7)}
+  }
+
+  .verline{display:flex;align-items:center;gap:var(--s-2);flex-wrap:wrap}
   .verline #app-ver{font-weight:700;color:var(--ink-2);
                     font-family:var(--font-mono);letter-spacing:0}
-  .verline .opt{padding:5px 12px;font-size:var(--t-xs)}
-  .verline #upd-state{color:var(--muted)}
+  .verline .opt{padding:4px 10px;font-size:var(--t-2xs)}
+  #upd-state{color:var(--muted);margin-top:4px;line-height:1.5}
+
+  /* ══ 상태 패널 ════════════════════════════════════════════════
+     링 + 수치 + 실행을 한 덩어리로 묶는다. 카드가 잘게 쪼개져 있으면
+     "어디부터 봐야 하는지"가 사라진다. */
+  .panel{background:var(--surface);border:1px solid var(--line);
+         border-radius:var(--r-lg);padding:var(--s-6);box-shadow:var(--sh-2)}
+  .panel-head{display:flex;gap:var(--s-6);align-items:flex-start}
+  @media(max-width:720px){.panel-head{flex-direction:column;align-items:center;text-align:center}}
+  .panel-txt{flex:1;min-width:0}
+  .panel-title{font-size:var(--t-2xl);font-weight:750;letter-spacing:-.03em;line-height:1.25}
+  .panel-sub{font-size:var(--t-sm);color:var(--muted);margin-top:4px}
+
+  /* 링 — 두께를 얇게. 굵은 도넛은 정보량에 비해 시끄럽다. */
+  .ring{--pct:0;--ring:var(--accent);width:132px;height:132px;flex:none;
+        border-radius:50%;display:grid;place-items:center;position:relative;
+        background:conic-gradient(var(--ring) calc(var(--pct)*1%),var(--surface-3) 0);
+        transition:background .9s var(--ease)}
+  .ring-in{width:106px;height:106px;border-radius:50%;background:var(--surface);
+           display:grid;place-items:center;align-content:center;text-align:center}
+  .ring-n{font-family:var(--font-display);font-size:var(--t-2xl);font-weight:800;
+          letter-spacing:-.04em;line-height:1;color:var(--ring)}
+  .ring-l{font-size:var(--t-2xs);color:var(--muted);margin-top:4px}
+  .ring.warn{--ring:var(--amb)} .ring.danger{--ring:var(--lock)} .ring.good{--ring:var(--safe)}
+
+  /* 수치 격자 — 큰 숫자 하나만 두면 나머지 맥락이 사라진다.
+     "정리 가능 / 남은 공간 / 전체"를 나란히 놓아야 크기가 읽힌다. */
+  .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+         gap:var(--s-3);margin-top:var(--s-4)}
+  @media(max-width:520px){.tiles{grid-template-columns:1fr}}
+  .tile{border:1px solid var(--line);border-radius:var(--r-md);
+        padding:var(--s-3) var(--s-4);background:var(--surface)}
+  .tile.accent{border-color:var(--accent-line);background:var(--accent-soft)}
+  .tile-l{display:block;font-size:var(--t-2xs);color:var(--muted);font-weight:600}
+  .tile-v{display:block;font-family:var(--font-display);font-size:var(--t-xl);
+          font-weight:800;letter-spacing:-.035em;line-height:1.2;margin-top:4px;color:var(--ink)}
+  .tile.accent .tile-v{color:var(--accent)}
+  .tile-v.muted{color:var(--faint)}
+  /* 히어로 숫자는 타일 안에서만 산다 — 옛 .big 크기 규칙을 덮는다 */
+  .tile .big{font-size:var(--t-2xl);background:none;-webkit-text-fill-color:currentColor}
+
+  .cta-row{display:flex;align-items:center;gap:var(--s-4);margin-top:var(--s-5);flex-wrap:wrap}
+  .cta-row .oneclick{margin:0;max-width:none;width:auto;display:inline-flex;
+                     align-items:center;gap:var(--s-2);text-align:left;padding:15px 24px}
+  .cta-row .oneclick .s{display:block;font-size:var(--t-2xs);opacity:.85;margin-top:2px}
+  .cta-row .subpick{margin:0;width:auto;padding:8px 12px}
+  .panel .privacy{margin-top:var(--s-5);justify-content:flex-start;text-align:left}
+  @media(max-width:720px){.panel .privacy,.cta-row{justify-content:center;text-align:center}}
+
+  /* 토스트는 화면 가운데 콘텐츠를 가리면 안 된다 — 오른쪽 아래로. */
+  .toast{left:auto;right:24px;transform:translateY(8px)}
+  .toast.on{transform:translateY(0)}
 </style>
 </head>
 <body>
@@ -413,9 +495,13 @@
 
 <div class="toast" id="toast" hidden></div>
 
-<div class="topbar">
-  <div class="wrap">
-    <a class="brand" href="/" style="text-decoration:none;color:inherit">테라클린<span class="dot">.</span></a>
+<!-- ★ 좌측 사이드바 구조.
+     상단 탭 + 가운데 정렬은 '웹페이지' 구조다. 데스크톱 앱은 왼쪽에 고정 내비,
+     오른쪽에 작업 영역이 온다(V3·알약·CleanMyMac 전부). 탭이 7개라 상단에
+     늘어놓으면 좁은 창에서 잘리기도 한다. -->
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="/">테라클린<span class="dot">.</span></a>
     <nav class="nav">
       <button data-go="home" class="on"><svg class="ic"><use href="#i-home"/></svg>홈</button>
       <button data-go="hidden"><svg class="ic"><use href="#i-hidden"/></svg>숨은 공간</button>
@@ -425,10 +511,16 @@
       <button data-go="quar"><svg class="ic"><use href="#i-undo"/></svg>격리함</button>
       <button data-go="tidy"><svg class="ic"><use href="#i-check"/></svg>생활 정리</button>
     </nav>
-  </div>
-</div>
+    <div class="side-foot">
+      <div class="verline">
+        <span id="app-ver">v—</span>
+        <button class="opt" id="check-upd">업데이트 확인</button>
+      </div>
+      <div id="upd-state"></div>
+    </div>
+  </aside>
 
-<div class="wrap">
+<div class="content">
 <main>
 
   <!-- ════ 홈 ════
@@ -436,28 +528,46 @@
        알고 싶은 건 정리 가능 용량이 아니라 "내 디스크가 지금 어떤 상태인가"다.
        그래서 링(디스크) → 정리 가능 숫자 → 실행 버튼 순으로 놓는다. -->
   <section class="screen on" id="s-home">
-    <div class="card hero">
-      <div class="dash">
+    <!-- 상태 패널: 링 + 수치 격자 + 실행. 화면에서 가장 큰 덩어리 하나로 묶는다.
+         카드가 잘게 쪼개져 있으면 "어디부터 봐야 하는지"가 사라진다. -->
+    <div class="panel">
+      <div class="panel-head">
         <div class="ring" id="disk-ring" style="--pct:0">
           <div class="ring-in">
             <div class="ring-n" id="disk-pct">—</div>
             <div class="ring-l">사용 중</div>
           </div>
         </div>
-        <div class="dash-txt">
-          <div class="dash-top" id="disk-title">디스크 상태를 확인하는 중…</div>
-          <div class="dash-sub" id="disk-sub">잠시만요</div>
-          <div class="big muted" id="hero-num">—</div>
-          <div class="cap" id="hero-cap">원클릭을 누르면 이 PC의 주요 폴더를 훑어서 정리 가능한 용량을 보여드려요.</div>
+        <div class="panel-txt">
+          <h2 class="panel-title" id="disk-title">디스크 상태를 확인하는 중…</h2>
+          <p class="panel-sub" id="disk-sub">잠시만요</p>
+
+          <div class="tiles">
+            <div class="tile accent">
+              <span class="tile-l">정리 가능</span>
+              <span class="tile-v big muted" id="hero-num">—</span>
+            </div>
+            <div class="tile">
+              <span class="tile-l">남은 공간</span>
+              <span class="tile-v" id="disk-free">—</span>
+            </div>
+            <div class="tile">
+              <span class="tile-l">전체 용량</span>
+              <span class="tile-v" id="disk-total">—</span>
+            </div>
+          </div>
+
+          <p class="cap" id="hero-cap">원클릭을 누르면 이 PC의 주요 폴더를 훑어서 정리 가능한 용량을 보여드려요.</p>
+
+          <div class="cta-row">
+            <button class="oneclick" id="oneclick">
+              <svg class="ic"><use href="#i-bolt"/></svg>
+              <span>원클릭 최적화<span class="s">확실한 건 알아서 · 애매한 건 모아서</span></span>
+            </button>
+            <button class="subpick" id="pick2">다른 폴더 고르기</button>
+          </div>
         </div>
       </div>
-
-      <button class="oneclick" id="oneclick">
-        <svg class="ic"><use href="#i-bolt"/></svg>
-        원클릭 최적화
-        <span class="s">확실한 건 알아서 · 애매한 건 모아서 보여드려요</span>
-      </button>
-      <button class="subpick" id="pick2">다른 폴더 고르기</button>
 
       <!-- 스캔 중에만 보이는 진행 표시. 진행률(%)을 지어내지 않고
            '무엇을 하는 중인지 + 얼마나 지났는지'만 정직하게 보여준다. -->
@@ -466,8 +576,7 @@
 
       <div class="privacy">
         <span class="d">●</span>
-        <span>파일은 <b style="color:var(--ink)">기기를 한 바이트도 떠나지 않습니다.</b>
-          서버도 업로드도 없어요.</span>
+        <span>파일은 <b>기기를 한 바이트도 떠나지 않습니다.</b> 서버도 업로드도 없어요.</span>
       </div>
     </div>
 
@@ -610,19 +719,12 @@
 </main>
 
 <footer>
-  <!-- ★ 버전을 항상 보이게 둔다. 업데이트가 됐는지 사용자가 확인할 방법이
-       팝업뿐이면, 팝업이 안 뜰 때 "고장인지 최신인지" 알 수가 없다. -->
-  <div class="verline">
-    <span id="app-ver">v—</span>
-    <button class="opt" id="check-upd">업데이트 확인</button>
-    <span id="upd-state"></span>
-  </div>
-  테라클린 (TeraClean) — 지워도 되는 것만 지웁니다<br>
-  이 화면은 실제 데스크톱 앱의 프론트엔드입니다 · 파일은 기기를 떠나지 않습니다
+  테라클린 (TeraClean) — 지워도 되는 것만 지웁니다 · 파일은 기기를 떠나지 않습니다
   <span id="tray-note" hidden><br>창을 닫아도 트레이에 남아 있어요.
     완전히 끄려면 트레이 아이콘을 오른쪽 클릭 → <b>완전히 종료</b></span>
 </footer>
-</div>
+</div><!-- /.content -->
+</div><!-- /.shell -->
 
 <!-- 자동 업데이트 팝업 (데스크톱 앱에서만 뜬다) -->
 <div id="update-modal" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.45);align-items:center;justify-content:center;padding:24px">
