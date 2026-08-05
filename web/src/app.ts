@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.8.2'
+const APP_VERSION = '0.8.3'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -219,16 +219,43 @@ function renderReport(r: Report) {
  * 먼저 결정해야 하는 구조였다 — 순서가 거꾸로였다.
  * 이제 스캔이 근거를 함께 실어 오므로(engine-cli의 scanPlan) 즉시 그린다.
  */
+/**
+ * 근거 패널 — 접지 않는다.
+ *
+ * 사용자가 결정을 못 내리는 이유는 셋이다:
+ *   "이게 정확히 뭐냐 / 지워도 되냐 / 지우면 뭐가 영향받냐"
+ * 그래서 종류마다 [무엇인지 · 왜 그렇게 봤나 · 지우면 어떻게 되나 · 다시 생기나]를
+ * 한 줄도 접지 않고 편다. 접어두면 아무도 안 펴고, 안 펴면 없는 것과 같다.
+ */
 function evidenceHtml(ev: any): string {
   if (!ev) return ''
   const e = ev.explain
-  const total = ev.kinds?.reduce((s: number, k: any) => s + k.bytes, 0) || 1
-  const bar = (g: any) => `
+
+  const kinds = (ev.kinds ?? []).map((k: any) => `
+    <div class="kd kd-${k.impact?.level ?? 'medium'}">
+      <div class="kd-h">
+        <span class="kd-name">${esc(k.label)}</span>
+        <span class="kd-imp">${esc(k.impact?.levelLabel ?? '')}</span>
+        <span class="kd-amt">${fmtBytes(k.bytes)} · ${k.count.toLocaleString()}개</span>
+      </div>
+      <div class="kd-line"><b>왜 이렇게 봤나</b> ${esc(k.why)}</div>
+      <div class="kd-line"><b>지우면</b> ${esc(k.impact?.affects ?? '')}</div>
+      <div class="kd-line"><b>다시 생기나</b> ${esc(k.impact?.regen ?? '')}</div>
+    </div>`).join('')
+
+  const folders = (ev.folders ?? []).slice(0, 4).map((g: any) => `
     <div class="bd-row">
-      <span class="bd-k">${esc(g.key ?? g.label)}</span>
-      <span class="bd-track"><span class="bd-fill" style="width:${Math.max(2, Math.round((g.bytes / total) * 100))}%"></span></span>
+      <span class="bd-k">${esc(g.key)}</span>
       <span class="bd-v">${fmtBytes(g.bytes)} · ${g.count.toLocaleString()}개</span>
-    </div>`
+    </div>`).join('')
+
+  const files = (ev.samples ?? []).slice(0, 5).map((s: any) => `
+    <div class="bd-file">
+      <span class="bd-name">${esc(s.path.split(/[\\/]/).pop())}</span>
+      ${s.kind ? `<span class="bd-kindtag">${esc(s.kind)}</span>` : ''}
+      <span class="bd-size">${fmtBytes(s.size)}</span>
+      <span class="bd-path">${esc(s.path)}</span>
+    </div>`).join('')
 
   return `
     <div class="bd">
@@ -236,41 +263,21 @@ function evidenceHtml(ev: any): string {
       ${ev.age ? `<div class="bd-age">가장 오래된 것 ${Math.floor(ev.age.oldestDays / 30)}개월 전${
         ev.age.overYearPercent >= 20 ? ` · 1년 넘은 것 ${ev.age.overYearPercent}%` : ''}</div>` : ''}
 
-      ${ev.kinds?.length ? `<div class="bd-kinds">${ev.kinds.map((k: any) => `
-        <div class="bd-kind">
-          <span class="bd-kind-l">${esc(k.label)}</span>
-          <span class="bd-kind-v">${fmtBytes(k.bytes)} · ${k.count.toLocaleString()}개</span>
-          <span class="bd-kind-w">${esc(k.why)}</span>
-        </div>`).join('')}</div>` : ''}
+      <div class="bd-sec">무엇이고, 지우면 어떻게 되나</div>
+      <div class="kds">${kinds}</div>
 
-      ${e ? `
-      <details class="bd-det">
-        <summary>지우면 어떻게 되나요 · 되돌릴 수 있나요</summary>
-        <div class="bd-ex">
-          <div class="bd-b"><span class="bd-h">이게 뭔가요</span>${esc(e.what)}</div>
-          <div class="bd-b"><span class="bd-h">어디서 왔나요</span>${esc(e.origin)}</div>
-          <div class="bd-b"><span class="bd-h">지워도 되나요</span>${esc(e.safety)}</div>
-          <div class="bd-b warn"><span class="bd-h">지우면 뭐가 달라지나요</span>
-            <ul>${e.ifRemoved.map((x: string) => `<li>${esc(x)}</li>`).join('')}</ul></div>
-          <div class="bd-b"><span class="bd-h">되돌릴 수 있나요</span>${esc(e.recovery)}</div>
-          <div class="bd-b"><span class="bd-h">안 지우면요</span>${esc(e.ifKept)}</div>
-        </div>
-      </details>` : ''}
+      ${e ? `<div class="bd-ex">
+        <div class="bd-b"><span class="bd-h">지워도 되나요</span>${esc(e.safety)}</div>
+        <div class="bd-b"><span class="bd-h">되돌릴 수 있나요</span>${esc(e.recovery)}</div>
+      </div>` : ''}
 
-      <details class="bd-det">
-        <summary>실제 파일 보기 (어디에 있는지 · 큰 것부터)</summary>
-        <div class="bd-sec">폴더별</div>
-        ${(ev.folders ?? []).map(bar).join('')}
-        <div class="bd-sec">큰 파일부터</div>
-        ${(ev.samples ?? []).map((s: any) => `<div class="bd-file">
-            <span class="bd-name">${esc(s.path.split(/[\\/]/).pop())}</span>
-            ${s.kind ? `<span class="bd-kindtag">${esc(s.kind)}</span>` : ''}
-            <span class="bd-size">${fmtBytes(s.size)}</span>
-            <span class="bd-path">${esc(s.path)}</span>
-          </div>`).join('')}
-      </details>
+      <div class="bd-sec">어디에 있나</div>
+      ${folders}
+      <div class="bd-sec">큰 파일부터</div>
+      ${files}
     </div>`
 }
+
 
 function renderQuestions(questions: Question[]) {
   const qEl = $('questions')

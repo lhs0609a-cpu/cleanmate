@@ -1,6 +1,6 @@
 [package]
 name = "teraclean"
-version = "0.8.2"
+version = "0.8.3"
 description = "확실한 건 알아서, 애매한 것만 딱 물어보는 정리 도구"
 authors = ["TeraClean"]
 edition = "2021"

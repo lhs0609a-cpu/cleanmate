@@ -415,7 +415,24 @@
   .bd-det summary{font-size:var(--t-sm);color:var(--accent);font-weight:650}
   .bd-sec{font-size:var(--t-2xs);font-weight:800;color:var(--muted);
           margin:var(--s-3) 0 var(--s-2);letter-spacing:.02em}
-  .bd-row{display:grid;grid-template-columns:minmax(0,1fr) 84px auto;
+  /* ══ 종류별 판정 카드 ═════════════════════════════════════════
+     왼쪽 색 띠가 곧 파급 등급이다. 색과 문구가 같은 말을 해야 한다 —
+     초록인데 "되돌릴 수 없음"이면 아무도 안 믿는다. */
+  .kds{display:flex;flex-direction:column;gap:var(--s-2)}
+  .kd{border:1px solid var(--line);border-left:3px solid var(--k);
+      border-radius:var(--r-sm);background:var(--surface);padding:var(--s-3)}
+  .kd-none{--k:var(--safe)} .kd-low{--k:var(--accent)}
+  .kd-medium{--k:var(--amb)} .kd-high{--k:var(--lock)}
+  .kd-h{display:flex;align-items:baseline;gap:var(--s-2);flex-wrap:wrap;margin-bottom:5px}
+  .kd-name{font-size:var(--t-md);font-weight:750;letter-spacing:-.015em}
+  .kd-imp{font-size:var(--t-2xs);font-weight:800;color:var(--k);
+          background:color-mix(in srgb,var(--k) 12%,transparent);
+          padding:2px 8px;border-radius:var(--r-full)}
+  .kd-amt{margin-left:auto;font-size:var(--t-xs);color:var(--muted);white-space:nowrap}
+  .kd-line{font-size:var(--t-xs);color:var(--ink-2);line-height:1.6;margin-top:2px}
+  .kd-line b{color:var(--muted);font-weight:700;margin-right:5px}
+
+  .bd-row{display:grid;grid-template-columns:minmax(0,1fr) auto;
           gap:var(--s-3);align-items:center;padding:3px 0;font-size:var(--t-xs)}
   .bd-k{color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
         font-family:var(--font-mono);font-size:var(--t-2xs)}
