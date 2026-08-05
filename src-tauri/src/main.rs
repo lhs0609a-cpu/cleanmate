@@ -85,6 +85,34 @@ fn apply_update(installer_path: String, expected_sha256: String) -> Result<(), S
     std::process::exit(0);
 }
 
+/// 업데이트 장부(latest.json)를 받아 본문을 그대로 돌려준다.
+///
+/// ★ 왜 Rust가 받나 (실물에서 터진 버그):
+///   웹뷰에서 릴리스 자산을 fetch하면 **CORS에 막힌다.** GitHub API(api.github.com)는
+///   허용 헤더를 주지만, 릴리스 자산 다운로드(release-assets.githubusercontent.com)는
+///   주지 않는다. 그래서 서명을 못 읽고 → 검증 불가 → fail closed로 거절됐다.
+///   사용자에겐 "릴리스에 서명이 없어요"로 보였지만 서명은 멀쩡히 있었다.
+///   (Node로 검증할 땐 CORS를 안 따지므로 통과해서, 실물에서만 드러났다.)
+///
+///   Rust에는 CORS가 없다. 대신 아무 주소나 받지 않도록 호스트를 제한한다.
+#[tauri::command]
+async fn fetch_update_manifest(url: String) -> Result<String, String> {
+    if !url.starts_with("https://") {
+        return Err("업데이트 장부 주소가 https가 아니라 받지 않았어요".into());
+    }
+    // 우리 릴리스가 사는 곳만 허용한다 — 임의 주소를 받아오는 통로를 만들지 않는다.
+    let allowed = ["github.com/", "githubusercontent.com/"];
+    if !allowed.iter().any(|h| url.contains(h)) {
+        return Err("허용되지 않은 주소예요".into());
+    }
+    reqwest::get(&url)
+        .await
+        .map_err(|e| format!("장부를 받지 못했어요: {e}"))?
+        .text()
+        .await
+        .map_err(|e| format!("장부를 읽지 못했어요: {e}"))
+}
+
 /// 업데이트 설치파일을 받아 임시 폴더에 저장하고, 경로와 SHA-256을 돌려준다.
 /// 해시 대조는 부르는 쪽(updater.ts의 verifyIntegrity)이 한다.
 #[tauri::command]
@@ -211,6 +239,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             apply_update,
             download_update,
+            fetch_update_manifest,
             run_engine,
             run_uninstaller
         ])

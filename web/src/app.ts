@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.7.1'
+const APP_VERSION = '0.7.2'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -1152,9 +1152,16 @@ async function fetchExpectedHash(assets: any[]): Promise<string | null> {
   const manifest = assets.find((a: any) => a.name === 'latest.json')
   if (!manifest) return null
   try {
-    const res = await fetch(manifest.browser_download_url, { cache: 'no-store' })
-    if (!res.ok) return null
-    const json = await res.json()
+    /* ★ 실물에서 터진 버그: 웹뷰에서 이 주소를 fetch하면 **CORS에 막힌다.**
+       GitHub API(api.github.com)는 허용 헤더를 주지만, 릴리스 자산 다운로드
+       (release-assets.githubusercontent.com)는 주지 않는다. 그래서 서명을 못 읽고
+       "릴리스에 SHA-256 서명이 없어요"라며 거절됐다 — 서명은 멀쩡히 있었는데.
+       (Node로 검증할 땐 CORS를 안 따져서 통과하는 바람에, 실물에서만 드러났다.)
+       Rust에는 CORS가 없다. 데스크톱에서는 그쪽으로 받는다. */
+    const raw = inTauri
+      ? await TAURI.core.invoke('fetch_update_manifest', { url: manifest.browser_download_url })
+      : await (await fetch(manifest.browser_download_url, { cache: 'no-store' })).text()
+    const json = JSON.parse(raw)
     return typeof json?.signature === 'string' ? json.signature : null
   } catch {
     return null

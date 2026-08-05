@@ -60,3 +60,22 @@ test('트레이에서 창을 다시 꺼낼 수 있다', () => {
   assert.match(mainRs, /"open"/, '트레이 메뉴에 열기가 없다')
   assert.match(mainRs, /fn show_main[\s\S]{0,300}set_focus\(\)/, '창을 앞으로 못 가져온다')
 })
+
+/* ── 자동 업데이트 배선 ───────────────────────────────────────
+   ★ 실물에서 터진 버그를 잠근다: 웹뷰에서 릴리스 자산을 fetch하면 CORS에
+   막혀 서명을 못 읽고 "서명이 없어요"로 거절된다. 서명은 멀쩡히 있는데도.
+   Node 테스트는 CORS를 안 따지므로 이 문제를 못 잡는다 — 그래서 '어느 층이
+   받는가'를 코드 배선으로 검사한다. */
+
+test('★ 업데이트 장부는 Rust가 받는다 (웹뷰 fetch는 CORS에 막힌다)', () => {
+  const appTs = read('web/src/app.ts')
+  assert.match(mainRs, /fn fetch_update_manifest/, 'Rust에 장부 받는 명령이 없다')
+  assert.match(mainRs, /fetch_update_manifest,/, 'invoke_handler에 등록되지 않았다')
+  assert.match(appTs, /invoke\('fetch_update_manifest'/, '앱이 여전히 웹뷰에서 직접 받는다')
+})
+
+test('장부 주소는 https + 우리 릴리스 호스트만 받는다', () => {
+  const fn = mainRs.slice(mainRs.indexOf('fn fetch_update_manifest'))
+  assert.match(fn.slice(0, 900), /https:\/\//, 'https 검사가 없다')
+  assert.match(fn.slice(0, 900), /githubusercontent\.com/, '호스트 제한이 없다')
+})
