@@ -55,6 +55,8 @@ import {
   GRACE_DAYS,
 } from './quarantine.ts'
 import { defaultRoots } from './presets.ts'
+import { buildBreakdown } from './breakdown.ts'
+import { UNKNOWN_EXPLAIN } from './content/unknowns.ts'
 import { gatherFacts } from './probes/facts.ts'
 import { probeHiberfil } from './probes/hiberfil.ts'
 import { gatherReclaimFacts, probeRecycleBin, probeUpdateCache } from './probes/reclaim.ts'
@@ -566,7 +568,7 @@ async function main() {
 
         // 그 질문에 걸린 항목만 다시 모은다. 스캔 결과를 들고 다니지 않는 이유:
         // 사용자가 답하는 사이 파일이 바뀔 수 있어서, 실행 직전 상태를 다시 본다.
-        const items: { path: string; size: number; mtimeMs: number; meaning: string; reason: string }[] = []
+        const items: { path: string; size: number; mtimeMs: number; meaning: string; reason: string; ageDays: number }[] = []
         for (const root of roots) {
           const scanned = await scan(root)
           for (const f of scanned.files) {
@@ -578,6 +580,7 @@ async function main() {
               mtimeMs: stampMtime(f.mtime.getTime()),
               meaning: c.verdict.meaning,
               reason: c.verdict.reason,
+              ageDays: f.ageDays,
             })
           }
         }
@@ -585,7 +588,20 @@ async function main() {
         const bytes = items.reduce((s, i) => s + i.size, 0)
 
         if (!isApply) {
-          out({ unknown, count: items.length, bytes, items: items.slice(0, 200) })
+          // ★ '지울까요?'만 묻지 않는다. 어디에 있고, 무슨 파일이고, 얼마나 오래됐고,
+          //    지우면 어떻게 되는지를 함께 준다. 근거 없는 질문은 그냥 강요다.
+          const b = buildBreakdown(items.map((i) => ({ path: i.path, size: i.size, ageDays: i.ageDays })))
+          out({
+            unknown,
+            count: b.count,
+            bytes: b.bytes,
+            folders: b.folders,
+            exts: b.exts,
+            age: b.age,
+            samples: b.samples,
+            explain: (UNKNOWN_EXPLAIN as any)[unknown] ?? null,
+            items: items.slice(0, 200),
+          })
           break
         }
 

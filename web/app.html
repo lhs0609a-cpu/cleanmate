@@ -378,6 +378,47 @@
   /* 답변 실행 자리 — 답을 고른 뒤에만 생긴다 */
   .q-act:empty{display:none}
 
+  /* ══ 근거 패널 ════════════════════════════════════════════════
+     "316,511개를 지울까요?"만 묻는 건 우리가 비판하던 도구와 같다.
+     무슨 파일이고 어디서 왔고 지우면 어떻게 되는지를 같이 보여준다. */
+  .bd{margin-top:var(--s-3);border:1px solid var(--line);border-radius:var(--r-md);
+      background:var(--surface-2);padding:var(--s-4)}
+  .bd-top{display:flex;align-items:baseline;gap:var(--s-3);flex-wrap:wrap;
+          padding-bottom:var(--s-3);border-bottom:1px solid var(--line)}
+  .bd-top b{font-family:var(--font-display);font-size:var(--t-xl);
+            font-weight:800;letter-spacing:-.03em}
+  .bd-age{font-size:var(--t-xs);color:var(--muted)}
+
+  .bd-ex{display:flex;flex-direction:column;gap:var(--s-3);padding:var(--s-3) 0}
+  .bd-b{font-size:var(--t-sm);color:var(--ink-2);line-height:1.65}
+  .bd-h{display:block;font-size:var(--t-2xs);font-weight:800;color:var(--accent);
+        margin-bottom:2px;letter-spacing:.01em}
+  .bd-b.warn .bd-h{color:var(--amb)}
+  .bd-b ul{margin:2px 0 0;padding-left:18px}
+  .bd-b li{margin-top:2px}
+
+  .bd-det{border-top:1px solid var(--line);padding-top:var(--s-3)}
+  .bd-det summary{font-size:var(--t-sm);color:var(--accent);font-weight:650}
+  .bd-sec{font-size:var(--t-2xs);font-weight:800;color:var(--muted);
+          margin:var(--s-3) 0 var(--s-2);letter-spacing:.02em}
+  .bd-row{display:grid;grid-template-columns:minmax(0,1fr) 84px auto;
+          gap:var(--s-3);align-items:center;padding:3px 0;font-size:var(--t-xs)}
+  .bd-k{color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+        font-family:var(--font-mono);font-size:var(--t-2xs)}
+  .bd-track{height:6px;background:var(--surface-3);border-radius:var(--r-full);overflow:hidden}
+  .bd-fill{display:block;height:100%;background:var(--accent);border-radius:var(--r-full)}
+  .bd-v{color:var(--muted);white-space:nowrap;text-align:right}
+  .bd-file{padding:5px 0;border-top:1px solid var(--line);font-size:var(--t-xs)}
+  .bd-file:first-of-type{border-top:0}
+  .bd-name{font-weight:650;color:var(--ink-2);margin-right:var(--s-2)}
+  .bd-size{color:var(--muted)}
+  .bd-path{display:block;color:var(--faint);font-family:var(--font-mono);
+           font-size:var(--t-2xs);word-break:break-all;margin-top:1px}
+
+  .bd-act{display:flex;align-items:center;gap:var(--s-3);flex-wrap:wrap;
+          margin-top:var(--s-4);padding-top:var(--s-3);border-top:1px solid var(--line)}
+  .bd-act span{font-size:var(--t-xs);color:var(--muted)}
+
   /* ══ 앱 골격 — 좌측 고정 내비 + 우측 작업 영역 ═══════════════
      데스크톱 앱의 기본 골격이다. 상단 탭은 웹페이지 문법이라
      창 안에 들어가면 "브라우저를 띄운 것"처럼 보인다. */

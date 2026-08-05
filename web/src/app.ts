@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.7.3'
+const APP_VERSION = '0.8.0'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -273,16 +273,54 @@ async function answerAction(host: HTMLElement, unknown: string, outcome: string)
       host.innerHTML = `<div style="margin-top:10px;font-size:13px;color:var(--muted)">해당하는 파일이 지금은 없어요.</div>`
       return
     }
-    const names = p.items.slice(0, 3).map((i: any) => `· ${esc(i.path.split(/[\\/]/).pop())}`).join('<br>')
+    /* ★ 근거 패널 — "지울까요?"만 묻지 않는다.
+       무슨 파일이고, 어디서 왔고, 지우면 어떻게 되는지를 함께 보여준다.
+       이 제품의 약속이 "뭘 지우는지 알고 지웁니다"인데, 정작 질문 화면이
+       그 약속을 가장 크게 어기고 있었다. */
+    const e = p.explain
+    const bar = (g: any, total: number) => `
+      <div class="bd-row">
+        <span class="bd-k">${esc(g.key)}</span>
+        <span class="bd-track"><span class="bd-fill" style="width:${Math.max(2, Math.round((g.bytes / total) * 100))}%"></span></span>
+        <span class="bd-v">${fmtBytes(g.bytes)} · ${g.count.toLocaleString()}개</span>
+      </div>`
+
     host.innerHTML = `
-      <div style="margin-top:10px;border:1px solid var(--line);border-radius:12px;
-                  background:var(--surface-2);padding:14px">
-        <div style="font-size:14px;font-weight:650">${p.count.toLocaleString()}개 · ${fmtBytes(p.bytes)}를 정리할까요?</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6">${names}${
-          p.count > 3 ? `<br>…외 ${(p.count - 3).toLocaleString()}개` : ''}</div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
+      <div class="bd">
+        <div class="bd-top">
+          <b>${p.count.toLocaleString()}개 · ${fmtBytes(p.bytes)}</b>
+          ${p.age ? `<span class="bd-age">가장 오래된 것 ${Math.floor(p.age.oldestDays / 30)}개월 전${
+            p.age.overYearPercent >= 20 ? ` · 1년 넘은 것 ${p.age.overYearPercent}%` : ''}</span>` : ''}
+        </div>
+
+        ${e ? `
+        <div class="bd-ex">
+          <div class="bd-b"><span class="bd-h">이게 뭔가요</span>${esc(e.what)}</div>
+          <div class="bd-b"><span class="bd-h">어디서 왔나요</span>${esc(e.origin)}</div>
+          <div class="bd-b"><span class="bd-h">지워도 되나요</span>${esc(e.safety)}</div>
+          <div class="bd-b warn"><span class="bd-h">지우면 뭐가 달라지나요</span>
+            <ul>${e.ifRemoved.map((x: string) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+          <div class="bd-b"><span class="bd-h">되돌릴 수 있나요</span>${esc(e.recovery)}</div>
+          <div class="bd-b"><span class="bd-h">안 지우면요</span>${esc(e.ifKept)}</div>
+        </div>` : ''}
+
+        <details class="bd-det">
+          <summary>어디에 있는지 · 어떤 파일인지 보기</summary>
+          <div class="bd-sec">폴더별</div>
+          ${p.folders.map((g: any) => bar(g, p.bytes)).join('')}
+          <div class="bd-sec">파일 종류</div>
+          ${p.exts.map((g: any) => bar(g, p.bytes)).join('')}
+          <div class="bd-sec">큰 파일부터</div>
+          ${p.samples.map((s: any) => `<div class="bd-file">
+              <span class="bd-name">${esc(s.path.split(/[\\/]/).pop())}</span>
+              <span class="bd-size">${fmtBytes(s.size)}</span>
+              <span class="bd-path">${esc(s.path)}</span>
+            </div>`).join('')}
+        </details>
+
+        <div class="bd-act">
           <button class="btn" data-answer-go="1">격리로 정리하기</button>
-          <span style="font-size:12px;color:var(--muted)">지우지 않고 30일 보관 — 언제든 되돌립니다</span>
+          <span>지우지 않고 30일 보관 — 언제든 되돌립니다</span>
         </div>
       </div>`
     host.querySelector<HTMLButtonElement>('[data-answer-go]')!.addEventListener('click', async (ev) => {
