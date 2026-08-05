@@ -56,6 +56,7 @@ import {
 } from './quarantine.ts'
 import { defaultRoots } from './presets.ts'
 import { buildBreakdown } from './breakdown.ts'
+import { groupByKind, describeMix, kindOf } from './kinds.ts'
 import { UNKNOWN_EXPLAIN } from './content/unknowns.ts'
 import { gatherFacts } from './probes/facts.ts'
 import { probeHiberfil } from './probes/hiberfil.ts'
@@ -591,14 +592,17 @@ async function main() {
           // ★ '지울까요?'만 묻지 않는다. 어디에 있고, 무슨 파일이고, 얼마나 오래됐고,
           //    지우면 어떻게 되는지를 함께 준다. 근거 없는 질문은 그냥 강요다.
           const b = buildBreakdown(items.map((i) => ({ path: i.path, size: i.size, ageDays: i.ageDays })))
+          const kinds = groupByKind(items)
           out({
             unknown,
             count: b.count,
             bytes: b.bytes,
+            kinds,
+            mix: describeMix(kinds, b.bytes),
             folders: b.folders,
             exts: b.exts,
             age: b.age,
-            samples: b.samples,
+            samples: b.samples.map((x) => ({ ...x, kind: kindOf(x.path).label })),
             explain: (UNKNOWN_EXPLAIN as any)[unknown] ?? null,
             items: items.slice(0, 200),
           })

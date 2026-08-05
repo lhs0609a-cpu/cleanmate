@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.8.0'
+const APP_VERSION = '0.8.1'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -292,6 +292,14 @@ async function answerAction(host: HTMLElement, unknown: string, outcome: string)
           ${p.age ? `<span class="bd-age">가장 오래된 것 ${Math.floor(p.age.oldestDays / 30)}개월 전${
             p.age.overYearPercent >= 20 ? ` · 1년 넘은 것 ${p.age.overYearPercent}%` : ''}</span>` : ''}
         </div>
+
+        ${p.mix ? `<div class="bd-mix">${esc(p.mix)}</div>` : ''}
+        ${p.kinds?.length ? `<div class="bd-kinds">${p.kinds.map((k: any) => `
+          <div class="bd-kind">
+            <span class="bd-kind-l">${esc(k.label)}</span>
+            <span class="bd-kind-v">${fmtBytes(k.bytes)} · ${k.count.toLocaleString()}개</span>
+            <span class="bd-kind-w">${esc(k.why)}</span>
+          </div>`).join('')}</div>` : ''}
 
         ${e ? `
         <div class="bd-ex">
