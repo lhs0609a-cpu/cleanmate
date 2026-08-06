@@ -78,6 +78,18 @@ jobs:
       - name: 프론트엔드 빌드 (→ dist/)
         run: npm run build
 
+      # ★ 글꼴은 없어도 빌드가 성공한다 — 그게 문제다.
+      #   빠지면 에러도 빈 화면도 없이 그냥 맑은 고딕으로 돌아가고, 아무도 모른다.
+      #   실제로 그 상태로 오래 있었다(스택 1순위 Pretendard가 윈도우엔 없었다).
+      #   그래서 '산출물에 실제로 담겼는지'를 여기서 못 박는다.
+      - name: 글꼴이 빌드 산출물에 담겼는지 확인
+        shell: bash
+        run: |
+          f=dist/fonts/PretendardVariable.woff2
+          test -s "$f" || { echo "::error::글꼴이 dist에 없습니다 — 앱이 조용히 맑은 고딕으로 돌아갑니다"; exit 1; }
+          head -c4 "$f" | grep -q wOF2 || { echo "::error::$f 가 woff2가 아닙니다"; exit 1; }
+          echo "글꼴 OK — $(wc -c < "$f") bytes"
+
       # ★ 아이콘 자산: assets/logo.png 가 있으면 모든 크기를 생성한다.
       #   없으면 이 단계에서 실패한다 — 브랜드 아이콘은 어차피 필요한 자산.
       - name: 아이콘 생성

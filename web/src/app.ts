@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.9.1'
+const APP_VERSION = '0.9.2'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -327,7 +327,7 @@ async function answerAction(host: HTMLElement, unknown: string, outcome: string)
   // 보존을 뜻하는 답은 실행할 게 없다. 버튼을 만들지 않는다.
   if (outcome === 'KEEP') return
   if (outcome === 'MOVE') {
-    host.innerHTML = `<div style="margin-top:10px;font-size:13px;color:var(--ink-2)">
+    host.innerHTML = `<div class="t-small" style="margin-top:10px;color:var(--ink-2)">
       옮기기는 대상 드라이브가 필요해요.
       <button class="opt" data-goto-move="1" style="margin-left:6px">드라이브 옮기기 열기 →</button></div>`
     host.querySelector<HTMLButtonElement>('[data-goto-move]')!.addEventListener('click', () => go('move'))
@@ -351,9 +351,9 @@ async function answerAction(host: HTMLElement, unknown: string, outcome: string)
       b.textContent = '정리 중…'
       try {
         const r = await engine('answer-apply', [unknown, outcome, ...(scannedPath ? [scannedPath] : [])])
-        host.innerHTML = `<div style="margin-top:10px;font-size:13px;color:var(--safe);font-weight:650">
+        host.innerHTML = `<div class="t-small" style="margin-top:10px;color:var(--safe);font-weight:var(--w-em)">
           ${r.quarantinedCount.toLocaleString()}개를 격리했어요 — 30일 안에 되돌릴 수 있습니다.
-          ${r.failed.length ? `<span style="color:var(--muted);font-weight:400">${r.failed.length}개는 사용 중이라 건너뜀</span>` : ''}</div>`
+          ${r.failed.length ? `<span style="color:var(--muted);font-weight:var(--w-text)">${r.failed.length}개는 사용 중이라 건너뜀</span>` : ''}</div>`
         toast(`${r.quarantinedCount.toLocaleString()}개를 격리했어요. 격리함에서 되돌릴 수 있습니다.`, 'good')
         quarLoaded = false
         loadDisk()
@@ -372,10 +372,10 @@ function renderKept(kept: { meaning: string; bytes: number }[], lockBytes: numbe
   const el = $('kept')
   if (!kept.length) { el.hidden = true; return }
   el.hidden = false
-  el.innerHTML = `<div style="font-size:12px;font-weight:700;color:var(--safe)">지켜드린 것 — 지웠으면 뭔가 깨졌을 것들</div>
+  el.innerHTML = `<div class="t-small" style="font-weight:var(--w-head);color:var(--safe)">지켜드린 것 — 지웠으면 뭔가 깨졌을 것들</div>
     <div class="n">${fmtBytes(lockBytes)}</div>
     <ul>${kept.map((k) => `<li>${esc(k.meaning)} — ${fmtBytes(k.bytes)}</li>`).join('')}</ul>
-    <div style="font-size:11.5px;color:var(--muted);margin-top:8px">경쟁 도구는 "지운 양"을 자랑해요. 우리는 "지킨 양"을 보여드립니다.</div>`
+    <div class="t-small" style="color:var(--muted);margin-top:8px">경쟁 도구는 "지운 양"을 자랑해요. 우리는 "지킨 양"을 보여드립니다.</div>`
 }
 
 /* ── 스캔 실행 ─────────────────────────────────────────────── */
@@ -515,13 +515,13 @@ function explainCard(f: any, index: number): string {
      둘 다 없으면 아직 안전한 경로를 모르는 것이므로 솔직히 그렇게 쓴다. */
   const foot = f.assist
     ? `<button class="btn${f.assist.irreversible ? '' : ' ghost'}" data-assist="${index}">${esc(f.assist.label)}</button>
-       <span style="font-size:12px;color:var(--muted);margin-left:10px">${esc(f.assist.note)}</span>`
+       <span class="t-small" style="color:var(--muted);margin-left:10px">${esc(f.assist.note)}</span>`
     : `<span class="pill desk">실행(관리자 권한)은 다음 업데이트에서 연결됩니다</span>`
 
   return `
     <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
-      <h2 style="font-size:17px;font-weight:750">${esc(f.title)}</h2>
-      <span style="font-family:var(--mono);font-size:20px;font-weight:800;color:var(--safe);margin-left:auto">${gb(f.bytes)}</span>
+      <h2 class="t-title" style="font-weight:var(--w-num)">${esc(f.title)}</h2>
+      <span class="t-h2 tnum" style="font-weight:var(--w-num);color:var(--safe);margin-left:auto">${gb(f.bytes)}</span>
     </div>
     <div class="expl" style="margin-top:14px">
       ${blk('이게 뭔가요', `<p>${esc(e.what)}</p>`)}
@@ -580,35 +580,35 @@ const FOLDER_ACTION: Record<string, string> = {
  * 비슷한 사진 고르기는 하지 않는다. 잘못 고르면 되돌릴 수 없는 손해다.
  */
 async function photosFlow(host: HTMLElement) {
-  host.innerHTML = `<div style="font-size:12.5px;color:var(--muted);margin-top:10px">사진을 확인하는 중… (수천 장이면 몇 분 걸릴 수 있어요)</div>`
+  host.innerHTML = `<div class="t-small" style="color:var(--muted);margin-top:10px">사진을 확인하는 중… (수천 장이면 몇 분 걸릴 수 있어요)</div>`
   try {
     const p = await engine('photos-plan')
     if (!p.screenshotCount && !p.dupGroupCount) {
-      host.innerHTML = `<div style="font-size:13px;color:var(--safe);margin-top:10px">
+      host.innerHTML = `<div class="t-small" style="color:var(--safe);margin-top:10px">
         사진 ${p.scanned.toLocaleString()}장을 봤는데 정리할 게 없어요. 이미 깔끔합니다.</div>`
       return
     }
 
     const dupPreview = p.dupGroups.slice(0, 3).map((g: any) =>
-      `<div style="font-size:12px;color:var(--ink-2);padding:2px 0">
+      `<div class="t-small" style="color:var(--ink-2);padding:2px 0">
         · 남길 것 <b>${esc(g.keeper.name)}</b> — ${esc(g.keeperReason)} (사본 ${g.copies.length}장)</div>`).join('')
 
     host.innerHTML = `
       <div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px;background:var(--surface-2)">
-        <div style="font-size:12px;color:var(--muted)">사진 ${p.scanned.toLocaleString()}장을 봤어요</div>
-        ${p.screenshotCount ? `<div style="font-size:13.5px;font-weight:650;margin-top:6px">
+        <div class="t-small" style="color:var(--muted)">사진 ${p.scanned.toLocaleString()}장을 봤어요</div>
+        ${p.screenshotCount ? `<div class="t-small" style="font-weight:var(--w-em);margin-top:6px">
           오래된 스크린샷 ${p.screenshotCount.toLocaleString()}장 · ${fmtBytes(p.screenshotBytes)}</div>
-          <div style="font-size:12px;color:var(--muted)">최근 ${p.recentScreenshots}장은 아직 쓰실 수 있어 그대로 둡니다.
+          <div class="t-small" style="color:var(--muted)">최근 ${p.recentScreenshots}장은 아직 쓰실 수 있어 그대로 둡니다.
             정리 폴더로 옮기기만 해요.</div>` : ''}
-        ${p.dupGroupCount ? `<div style="font-size:13.5px;font-weight:650;margin-top:8px">
+        ${p.dupGroupCount ? `<div class="t-small" style="font-weight:var(--w-em);margin-top:8px">
           같은 사진이 여러 벌 — ${p.dupGroupCount.toLocaleString()}묶음 · ${fmtBytes(p.dupBytes)}</div>
-          <div style="font-size:12px;color:var(--muted)">원본은 그대로 두고 사본만 격리함으로 보냅니다(30일 되돌리기).</div>
+          <div class="t-small" style="color:var(--muted)">원본은 그대로 두고 사본만 격리함으로 보냅니다(30일 되돌리기).</div>
           <div style="margin-top:6px">${dupPreview}</div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
           ${p.screenshotCount ? `<button class="btn" data-photos="screenshots">스크린샷 정리</button>` : ''}
           ${p.dupGroupCount ? `<button class="btn ghost" data-photos="duplicates">중복 사본만 정리</button>` : ''}
         </div>
-        <div style="font-size:12px;color:var(--muted);margin-top:8px">
+        <div class="t-small" style="color:var(--muted);margin-top:8px">
           일반 사진은 아무리 오래돼도 건드리지 않습니다.</div>
       </div>`
 
@@ -621,8 +621,8 @@ async function photosFlow(host: HTMLElement) {
           const r = await engine('photos-apply', [what])
           host.innerHTML = `<div style="border:1px solid var(--line);border-left:3px solid var(--safe);
                 border-radius:8px;padding:12px;margin-top:10px;background:var(--surface)">
-            <div style="font-size:13.5px;font-weight:650;color:var(--safe)">정리했어요</div>
-            <div style="font-size:12.5px;color:var(--ink-2);margin-top:4px">
+            <div class="t-small" style="font-weight:var(--w-em);color:var(--safe)">정리했어요</div>
+            <div class="t-small" style="color:var(--ink-2);margin-top:4px">
               ${r.movedCount ? `스크린샷 ${r.movedCount.toLocaleString()}장을 ${esc(r.destFolder)}로 옮겼어요.<br>` : ''}
               ${r.quarantinedCount ? `중복 사본 ${r.quarantinedCount.toLocaleString()}장(${fmtBytes(r.quarantinedBytes)})을 격리함으로 보냈어요 — 30일 안에 되돌릴 수 있습니다.<br>` : ''}
               ${r.failed.length ? `${r.failed.length}장은 사용 중이라 건너뛰었습니다.` : ''}</div>
@@ -642,29 +642,29 @@ async function photosFlow(host: HTMLElement) {
  * "정리했습니다"라고 통보하는 도구가 되지 않으려면 이 순서를 지켜야 한다.
  */
 async function tidyFolderFlow(target: string, host: HTMLElement) {
-  host.innerHTML = `<div style="font-size:12.5px;color:var(--muted);margin-top:10px">무엇을 옮길지 확인하는 중…</div>`
+  host.innerHTML = `<div class="t-small" style="color:var(--muted);margin-top:10px">무엇을 옮길지 확인하는 중…</div>`
   try {
     const p = await engine('tidy-folder-plan', [target])
     if (!p.moveCount && !p.broken.length) {
-      host.innerHTML = `<div style="font-size:13px;color:var(--safe);margin-top:10px">
+      host.innerHTML = `<div class="t-small" style="color:var(--safe);margin-top:10px">
         이미 정리돼 있어요. 옮길 게 없습니다.</div>`
       return
     }
 
     const list = p.moves.slice(0, 8).map((m: any) =>
-      `<div style="font-size:12px;color:var(--ink-2);padding:2px 0">· ${esc(m.name)}</div>`).join('')
+      `<div class="t-small" style="color:var(--ink-2);padding:2px 0">· ${esc(m.name)}</div>`).join('')
 
     host.innerHTML = `
       <div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px;background:var(--surface-2)">
-        <div style="font-size:13.5px;font-weight:650">${p.moveCount.toLocaleString()}개를 옮길게요
-          ${p.bytes ? `<span style="color:var(--muted);font-weight:400">· ${fmtBytes(p.bytes)}</span>` : ''}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">
+        <div class="t-small" style="font-weight:var(--w-em)">${p.moveCount.toLocaleString()}개를 옮길게요
+          ${p.bytes ? `<span style="color:var(--muted);font-weight:var(--w-text)">· ${fmtBytes(p.bytes)}</span>` : ''}</div>
+        <div class="t-small" style="color:var(--muted);margin-top:2px">
           → ${esc(p.destFolder)}<br>최근 ${p.keepCount}개는 작업 중으로 보고 그대로 둡니다.
           ${p.broken.length ? `<br>대상이 사라진 바로가기 ${p.broken.length}개는 격리함으로 보냅니다(30일 되돌리기).` : ''}
         </div>
-        <div style="margin-top:8px">${list}${p.moveCount > 8 ? `<div style="font-size:12px;color:var(--muted)">…외 ${p.moveCount - 8}개</div>` : ''}</div>
+        <div style="margin-top:8px">${list}${p.moveCount > 8 ? `<div class="t-small" style="color:var(--muted)">…외 ${p.moveCount - 8}개</div>` : ''}</div>
         <button class="btn" data-tidyapply="${esc(target)}" style="margin-top:10px">옮기기</button>
-        <span style="font-size:12px;color:var(--muted);margin-left:8px">지우지 않습니다. 언제든 되돌릴 수 있어요.</span>
+        <span class="t-small" style="color:var(--muted);margin-left:8px">지우지 않습니다. 언제든 되돌릴 수 있어요.</span>
       </div>`
 
     host.querySelector<HTMLButtonElement>('[data-tidyapply]')!.addEventListener('click', async (ev) => {
@@ -675,8 +675,8 @@ async function tidyFolderFlow(target: string, host: HTMLElement) {
         const r = await engine('tidy-folder-apply', [target])
         host.innerHTML = `<div style="border:1px solid var(--line);border-left:3px solid var(--safe);
               border-radius:8px;padding:12px;margin-top:10px;background:var(--surface)">
-          <div style="font-size:13.5px;font-weight:650;color:var(--safe)">${r.movedCount.toLocaleString()}개를 옮겼어요</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px">
+          <div class="t-small" style="font-weight:var(--w-em);color:var(--safe)">${r.movedCount.toLocaleString()}개를 옮겼어요</div>
+          <div class="t-small" style="color:var(--muted);margin-top:3px">
             ${esc(r.destFolder)}<br>
             ${r.brokenQuarantined ? `깨진 바로가기 ${r.brokenQuarantined}개는 격리함에 있어요. ` : ''}
             ${r.failed.length ? `${r.failed.length}개는 사용 중이라 건너뛰었습니다.` : ''}</div>
@@ -735,20 +735,20 @@ async function loadTidy(mark?: { id: string; done: boolean }) {
     return `<div style="border:1px solid var(--line);border-left:3px solid ${border};border-radius:10px;
                         background:var(--surface);padding:14px;margin-top:10px">
       <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
-        <b style="font-size:15px">${esc(r.title)}</b>
-        <span style="font-size:11.5px;color:var(--accent);font-weight:700">${esc(CATEGORY_LABEL[r.category as keyof typeof CATEGORY_LABEL])}</span>
-        <span style="font-size:12px;color:var(--muted)">${r.minutes}분 · ${meta}</span>
-        ${r.streak > 1 ? `<span style="font-size:12px;color:var(--safe);font-weight:700">${r.streak}회 연속</span>` : ''}
+        <b class="t-lead">${esc(r.title)}</b>
+        <span class="t-micro" style="color:var(--accent);font-weight:var(--w-head)">${esc(CATEGORY_LABEL[r.category as keyof typeof CATEGORY_LABEL])}</span>
+        <span class="t-small" style="color:var(--muted)">${r.minutes}분 · ${meta}</span>
+        ${r.streak > 1 ? `<span class="t-small" style="color:var(--safe);font-weight:var(--w-head)">${r.streak}회 연속</span>` : ''}
         <button class="opt" data-tidy="${esc(r.id)}" data-done="${state === 'done' ? '0' : '1'}"
                 style="margin-left:auto">${state === 'done' ? '되돌리기' : '했어요'}</button>
       </div>
-      <div style="font-size:13px;color:var(--ink-2);margin-top:8px;line-height:1.6">${esc(r.why)}</div>
+      <div class="t-small" style="color:var(--ink-2);margin-top:8px;line-height:1.6">${esc(r.why)}</div>
       <details style="margin-top:8px">
-        <summary style="cursor:pointer;font-size:12.5px;color:var(--muted)">이렇게 하면 됩니다</summary>
-        <ol style="margin:8px 0 0;padding-left:20px;font-size:13px;color:var(--ink-2);line-height:1.7">
+        <summary class="t-small" style="cursor:pointer;color:var(--muted)">이렇게 하면 됩니다</summary>
+        <ol class="t-small" style="margin:8px 0 0;padding-left:20px;color:var(--ink-2);line-height:1.7">
           ${r.steps.map((s: string) => `<li>${esc(s)}</li>`).join('')}
         </ol>
-        ${r.tip ? `<div style="font-size:12.5px;color:var(--muted);margin-top:8px">막히는 지점: ${esc(r.tip)}</div>` : ''}
+        ${r.tip ? `<div class="t-small" style="color:var(--muted);margin-top:8px">막히는 지점: ${esc(r.tip)}</div>` : ''}
         ${FOLDER_ACTION[r.id] && inTauri
           ? `<button class="opt" data-tidyfolder="${FOLDER_ACTION[r.id]}" style="margin-top:10px">이건 앱이 대신 해드릴게요 — 먼저 보여드릴게요</button>
              <div data-plan="${FOLDER_ACTION[r.id]}"></div>`
@@ -762,18 +762,18 @@ async function loadTidy(mark?: { id: string; done: boolean }) {
 
   host.innerHTML = `
     <div style="display:flex;align-items:baseline;gap:10px;margin:16px 0 4px;flex-wrap:wrap">
-      <h2 style="font-size:16px;font-weight:750">오늘 할 것 ${d.due.length}개</h2>
-      <span style="margin-left:auto;font-size:12.5px;color:var(--muted)">
+      <h2 class="t-title" style="font-weight:var(--w-num)">오늘 할 것 ${d.due.length}개</h2>
+      <span class="t-small" style="margin-left:auto;color:var(--muted)">
         오늘 완료 ${d.doneToday.length}개 · 전체 ${d.total}개</span>
     </div>
     ${d.due.length
       ? d.due.map((r: any) => card(r, 'due')).join('')
       : '<div class="empty">오늘 할 건 다 하셨어요. 더 안 하셔도 됩니다.</div>'}
     ${d.doneToday.length ? `<details open style="margin-top:16px">
-      <summary style="cursor:pointer;font-size:13px;color:var(--safe);font-weight:600">오늘 끝낸 ${d.doneToday.length}개</summary>
+      <summary class="t-small" style="cursor:pointer;color:var(--safe);font-weight:var(--w-ui)">오늘 끝낸 ${d.doneToday.length}개</summary>
       ${doneCards}</details>` : ''}
     ${d.later.length ? `<details style="margin-top:12px">
-      <summary style="cursor:pointer;font-size:13px;color:var(--muted)">아직 때가 아닌 ${d.later.length}개</summary>
+      <summary class="t-small" style="cursor:pointer;color:var(--muted)">아직 때가 아닌 ${d.later.length}개</summary>
       ${d.later.map((r: any) => card(r, 'later')).join('')}</details>` : ''}
     <p class="note" style="margin-top:14px">기록은 이 컴퓨터에만 있습니다.
       <b>못 한 날을 세지 않습니다</b> — 며칠 걸러도 연속 기록은 이어집니다.</p>
@@ -824,7 +824,7 @@ function renderReferral(plan: any, askedByUser = false) {
 
   if (!suggestions.length) {
     // 조용한 입구 하나만 남긴다. 권하지 않되 길은 열어둔다.
-    host.innerHTML = `<div style="margin-top:16px;font-size:12.5px;color:var(--muted)">
+    host.innerHTML = `<div class="t-small" style="margin-top:16px;color:var(--muted)">
       혼자 하기 어려운 정리가 있으신가요?
       <button class="opt" id="ref-ask" style="margin-left:6px">사람 도움 알아보기</button></div>`
     document.getElementById('ref-ask')?.addEventListener('click', () => renderReferral(plan, true))
@@ -833,25 +833,25 @@ function renderReferral(plan: any, askedByUser = false) {
 
   host.innerHTML = `
     <div style="margin-top:18px;border:1px solid var(--line-2);border-radius:12px;padding:16px;background:var(--surface)">
-      <div style="font-size:12px;font-weight:700;color:var(--accent)">사람이 하면 빠른 것</div>
-      <h2 style="font-size:16px;font-weight:750;margin:6px 0 4px">여기부터는 혼자 하기 어려울 수 있어요</h2>
-      <p style="font-size:13px;color:var(--ink-2);line-height:1.6">
+      <div class="t-small" style="font-weight:var(--w-head);color:var(--accent)">사람이 하면 빠른 것</div>
+      <h2 class="t-title" style="font-weight:var(--w-num);margin:6px 0 4px">여기부터는 혼자 하기 어려울 수 있어요</h2>
+      <p class="t-small" style="color:var(--ink-2);line-height:1.6">
         아래는 기록을 보고 고른 것이고, <b style="color:var(--ink)">안 누르셔도 됩니다.</b></p>
 
       ${suggestions.map((s, i) => `
         <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px">
           <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
-            <b style="font-size:14.5px">${esc(s.service.label)}</b>
+            <b class="t-body">${esc(s.service.label)}</b>
             <button class="opt" data-ref="${i}" style="margin-left:auto">문의 내용 만들기</button>
           </div>
-          <div style="font-size:12.5px;color:var(--muted);margin-top:4px">왜 보여드리나: ${esc(s.reason)}</div>
-          <div style="font-size:13px;color:var(--ink-2);margin-top:6px">${esc(s.service.whatTheyDo)}</div>
-          <div style="font-size:12.5px;color:var(--muted);margin-top:4px">언제 부르나: ${esc(s.service.when)}</div>
-          <div style="font-size:12.5px;color:var(--amb);margin-top:4px">비용: ${esc(s.service.priceNote)}</div>
+          <div class="t-small" style="color:var(--muted);margin-top:4px">왜 보여드리나: ${esc(s.reason)}</div>
+          <div class="t-small" style="color:var(--ink-2);margin-top:6px">${esc(s.service.whatTheyDo)}</div>
+          <div class="t-small" style="color:var(--muted);margin-top:4px">언제 부르나: ${esc(s.service.when)}</div>
+          <div class="t-small" style="color:var(--amb);margin-top:4px">비용: ${esc(s.service.priceNote)}</div>
           <div data-refform="${i}"></div>
         </div>`).join('')}
 
-      <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px;font-size:12px;color:var(--muted);line-height:1.7">
+      <div class="t-small" style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px;color:var(--muted);line-height:1.7">
         · ${esc(DISCLOSURE.fee)}<br>
         · ${esc(DISCLOSURE.status)}<br>
         · ${esc(DISCLOSURE.privacy)}<br>
@@ -866,13 +866,13 @@ function renderReferral(plan: any, askedByUser = false) {
       const form = host.querySelector<HTMLElement>(`[data-refform="${i}"]`)!
       form.innerHTML = `
         <div style="margin-top:10px;background:var(--surface-2);border-radius:8px;padding:12px">
-          <div style="font-size:12.5px;color:var(--muted)">보낼 내용을 먼저 보여드릴게요. 확인하신 뒤에만 나갑니다.</div>
-          <input id="ref-region-${i}" placeholder="지역 (예: 서울 강남구)" style="width:100%;margin-top:8px;padding:9px;
-            border:1px solid var(--line-2);border-radius:7px;background:var(--surface);color:var(--ink);font-size:13.5px">
-          <textarea id="ref-note-${i}" rows="2" placeholder="어떤 게 제일 급한지 (선택)" style="width:100%;margin-top:6px;padding:9px;
-            border:1px solid var(--line-2);border-radius:7px;background:var(--surface);color:var(--ink);font-size:13.5px"></textarea>
-          <input id="ref-contact-${i}" placeholder="연락 받으실 방법 (선택)" style="width:100%;margin-top:6px;padding:9px;
-            border:1px solid var(--line-2);border-radius:7px;background:var(--surface);color:var(--ink);font-size:13.5px">
+          <div class="t-small" style="color:var(--muted)">보낼 내용을 먼저 보여드릴게요. 확인하신 뒤에만 나갑니다.</div>
+          <input id="ref-region-${i}" placeholder="지역 (예: 서울 강남구)" class="t-small" style="width:100%;margin-top:8px;padding:9px;
+            border:1px solid var(--line-2);border-radius:7px;background:var(--surface);color:var(--ink)">
+          <textarea id="ref-note-${i}" rows="2" placeholder="어떤 게 제일 급한지 (선택)" class="t-small" style="width:100%;margin-top:6px;padding:9px;
+            border:1px solid var(--line-2);border-radius:7px;background:var(--surface);color:var(--ink)"></textarea>
+          <input id="ref-contact-${i}" placeholder="연락 받으실 방법 (선택)" class="t-small" style="width:100%;margin-top:6px;padding:9px;
+            border:1px solid var(--line-2);border-radius:7px;background:var(--surface);color:var(--ink)">
           <button class="btn" data-refmake="${i}" style="margin-top:8px">내용 확인하기</button>
           <div data-refout="${i}"></div>
         </div>`
@@ -890,8 +890,8 @@ function renderReferral(plan: any, askedByUser = false) {
           return
         }
         outEl.innerHTML = `
-          <pre style="margin-top:8px;padding:10px;background:var(--surface);border:1px solid var(--line);
-            border-radius:7px;font-size:12.5px;white-space:pre-wrap;color:var(--ink-2)">${esc(r.text)}</pre>
+          <pre class="t-small" style="margin-top:8px;padding:10px;background:var(--surface);border:1px solid var(--line);
+            border-radius:7px;white-space:pre-wrap;color:var(--ink-2)">${esc(r.text)}</pre>
           <button class="opt" data-refcopy="${i}">복사하기</button>
           <a class="opt" style="display:inline-block;text-decoration:none;margin-left:6px"
              href="https://github.com/lhs0609a-cpu/teraclean-releases/issues/new?title=%EC%A0%95%EB%A6%AC%20%EB%8F%84%EC%9B%80%20%EC%9A%94%EC%B2%AD"
@@ -926,7 +926,7 @@ async function loadStartup() {
         <div class="row-main">
           <div class="row-t">
             <b>${esc(e.name)}</b>
-            <span style="font-size:var(--t-xs);color:${tone};font-weight:700">${esc(v.meaning)}</span>
+            <span style="font-size:var(--t-caption);color:${tone};font-weight:var(--w-head)">${esc(v.meaning)}</span>
             <span class="ver">${e.enabled ? '켜짐' : '꺼둠'}</span>
           </div>
           <div class="row-sub">${esc(v.reason)}</div>
@@ -944,18 +944,18 @@ async function loadStartup() {
 
     host.innerHTML = `
       <div style="display:flex;align-items:baseline;gap:10px;margin:14px 0 4px;flex-wrap:wrap">
-        <h2 style="font-size:16px;font-weight:750">켜져 있는 ${d.enabledCount}개 중 ${suggest.length}개를 제안</h2>
-        <span style="margin-left:auto;font-size:12.5px;color:var(--muted)">전체 ${entries.length}개</span>
+        <h2 class="t-title" style="font-weight:var(--w-num)">켜져 있는 ${d.enabledCount}개 중 ${suggest.length}개를 제안</h2>
+        <span class="t-small" style="margin-left:auto;color:var(--muted)">전체 ${entries.length}개</span>
       </div>
       ${suggest.length ? suggest.map(row).join('') : '<div class="empty">지금은 끄자고 권할 만한 항목이 없어요.</div>'}
 
       <details style="margin-top:18px">
-        <summary style="cursor:pointer;font-size:13px;color:var(--muted)">
+        <summary class="t-small" style="cursor:pointer;color:var(--muted)">
           제안하지 않은 ${others.length}개와 그 이유</summary>
         <div>${others.map(row).join('')}</div>
       </details>
       ${off.length ? `<details style="margin-top:10px">
-        <summary style="cursor:pointer;font-size:13px;color:var(--muted)">꺼둔 ${off.length}개 (되돌릴 수 있어요)</summary>
+        <summary class="t-small" style="cursor:pointer;color:var(--muted)">꺼둔 ${off.length}개 (되돌릴 수 있어요)</summary>
         <div>${off.map(row).join('')}</div></details>` : ''}
       ${d.logonTaskCount ? `<p class="note" style="margin-top:14px">
         이 밖에 <b>예약작업 ${d.logonTaskCount}개</b>가 더 있어요. 대부분 윈도우가 만든 거라
@@ -991,8 +991,8 @@ async function loadPrograms() {
   try {
     const d = await engine('programs')
     const head = `<div style="display:flex;align-items:baseline;gap:10px;margin:14px 0 10px">
-        <h2 style="font-size:16px;font-weight:750">제거 후보 ${d.suggestions.length}개 · ${fmtBytes(d.suggestibleBytes)}</h2>
-        <span style="margin-left:auto;font-size:12.5px;color:var(--muted)">설치 항목 ${d.totalScanned}개 중</span>
+        <h2 class="t-title" style="font-weight:var(--w-num)">제거 후보 ${d.suggestions.length}개 · ${fmtBytes(d.suggestibleBytes)}</h2>
+        <span class="t-small" style="margin-left:auto;color:var(--muted)">설치 항목 ${d.totalScanned}개 중</span>
       </div>`
 
     if (!d.suggestions.length) {
@@ -1125,9 +1125,9 @@ async function uninstallOne(p: any, btn: HTMLButtonElement) {
 function excludedBlock(d: any): string {
   if (!d.excluded?.length) return ''
   return `<details style="margin-top:16px">
-    <summary style="cursor:pointer;font-size:13px;color:var(--muted)">제안하지 않은 ${d.excludedCount}개와 그 이유</summary>
+    <summary class="t-small" style="cursor:pointer;color:var(--muted)">제안하지 않은 ${d.excludedCount}개와 그 이유</summary>
     <div style="margin-top:8px">${d.excluded.map((e: any) =>
-      `<div style="font-size:12px;color:var(--muted);padding:3px 0">${esc(e.name)} — ${esc(e.reason)}</div>`).join('')}</div>
+      `<div class="t-small" style="color:var(--muted);padding:3px 0">${esc(e.name)} — ${esc(e.reason)}</div>`).join('')}</div>
   </details>`
 }
 
@@ -1141,7 +1141,7 @@ async function loadMove() {
       <button class="opt" id="mv-src">옮길 폴더 고르기</button>
       <button class="opt" id="mv-dst">대상 드라이브 고르기</button>
     </div>
-    <div id="mv-status" style="font-size:12.5px;color:var(--muted);margin-top:10px"></div></div>`
+    <div id="mv-status" class="t-small" style="color:var(--muted);margin-top:10px"></div></div>`
 
   let src: string | null = null
   const status = () => {
@@ -1177,17 +1177,17 @@ async function planMove(src: string, dest: string) {
     }
     host.innerHTML = prev + `<div class="card" style="margin-top:12px">
       <div style="display:flex;align-items:baseline;gap:10px">
-        <h2 style="font-size:16px;font-weight:750">${d.count.toLocaleString()}개 · ${fmtBytes(d.bytes)}</h2>
-        <span style="margin-left:auto;font-size:12.5px;color:var(--muted)">→ ${esc(d.destFolder)}</span>
+        <h2 class="t-title" style="font-weight:var(--w-num)">${d.count.toLocaleString()}개 · ${fmtBytes(d.bytes)}</h2>
+        <span class="t-small" style="margin-left:auto;color:var(--muted)">→ ${esc(d.destFolder)}</span>
       </div>
-      <div style="font-size:12.5px;color:var(--muted);margin-top:4px">지우지 않습니다. 옮긴 기록이 남아 언제든 되돌릴 수 있어요.</div>
+      <div class="t-small" style="color:var(--muted);margin-top:4px">지우지 않습니다. 옮긴 기록이 남아 언제든 되돌릴 수 있어요.</div>
       ${d.items.slice(0, 30).map((it: any) => `<div class="row">
         <div class="row-main">
           <div class="row-path" style="margin-top:0">${esc(it.path)}</div>
           <div class="row-sub">${esc(it.meaning)}</div>
         </div>
         <div class="row-val">${fmtBytes(it.size)}</div></div>`).join('')}
-      ${d.refusedCount ? `<div style="font-size:12px;color:var(--muted);margin-top:10px">옮기면 위험해서 제외한 항목 ${d.refusedCount}개 (프로그램 폴더·앱 설정·동기화 폴더 등)</div>` : ''}
+      ${d.refusedCount ? `<div class="t-small" style="color:var(--muted);margin-top:10px">옮기면 위험해서 제외한 항목 ${d.refusedCount}개 (프로그램 폴더·앱 설정·동기화 폴더 등)</div>` : ''}
       <button class="oneclick" id="mv-apply" style="margin-top:14px">${fmtBytes(d.bytes)} 옮기기</button>
     </div>`
 
@@ -1235,8 +1235,8 @@ async function loadQuar() {
     host.innerHTML = `<div class="card">
       ${purgeNote}
       <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-        <h2 style="font-size:16px;font-weight:750">격리된 ${data.items.length.toLocaleString()}개 · ${fmtBytes(data.totalBytes)}</h2>
-        ${drives.length > 1 ? `<span style="font-size:12px;color:var(--muted)">드라이브 ${drives.join(' · ')}</span>` : ''}
+        <h2 class="t-title" style="font-weight:var(--w-num)">격리된 ${data.items.length.toLocaleString()}개 · ${fmtBytes(data.totalBytes)}</h2>
+        ${drives.length > 1 ? `<span class="t-small" style="color:var(--muted)">드라이브 ${drives.join(' · ')}</span>` : ''}
         <button class="btn" id="restore-all" style="margin-left:auto">전부 되돌리기</button>
       </div>
       ${data.items.slice(0, 50).map((it: any) => {
@@ -1249,7 +1249,7 @@ async function loadQuar() {
           <div class="row-act"><button class="opt" data-restore="${esc(it.id)}">되돌리기</button></div>
         </div>`
       }).join('')}
-      ${data.items.length > 50 ? `<div style="font-size:12px;color:var(--muted);margin-top:10px">…외 ${(data.items.length - 50).toLocaleString()}개</div>` : ''}
+      ${data.items.length > 50 ? `<div class="t-small" style="color:var(--muted);margin-top:10px">…외 ${(data.items.length - 50).toLocaleString()}개</div>` : ''}
     </div>`
 
     /* ★ 항목마다 되돌리기 — "전부"만 있으면 하나 되살리려고 전부를 되살려야 한다.
