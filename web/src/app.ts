@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.9.0'
+const APP_VERSION = '0.9.1'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -188,15 +188,15 @@ function renderReport(r: Report) {
     ? `<b style="color:var(--ink)">본 곳 ${r.roots.length}곳</b>: ${r.roots.map((x) => esc(x.path)).join(' · ')}<br>`
     : ''
   $('plan-lede').innerHTML =
-    where + '원클릭은 이렇게 해요: 확실한 캐시는 격리로 정리하고(되돌리기 가능), 애매한 건 아래 질문으로 모아서 보여드려요.'
+    where + '확실한 건 알아서 문 앞에 내놓고(되돌리기 가능), 애매한 건 아래에서 물어봅니다.'
   $('plan3').innerHTML = `
     <div class="stat"><div class="n g">${fmtBytes(r.plan.autoBytes)}</div><div class="l">지금 정리 가능<br>확실한 캐시 ${r.plan.autoCount.toLocaleString()}개 · 규칙 확증분만</div></div>
     <div class="stat"><div class="n a">${fmtBytes(r.plan.askBytes)}</div><div class="l">물어보면 정리 가능<br>애매한 ${r.plan.askCount.toLocaleString()}개 · 아래 질문으로</div></div>
     <div class="stat"><div class="n m">${fmtBytes(r.plan.lockBytes)}</div><div class="l">지켜드린 것<br>${r.plan.lockCount.toLocaleString()}개 · 건드리면 위험</div></div>`
 
   $('apply-note').innerHTML = esc(r.plan.inferredBytes > 0
-    ? `규칙이 확증 못 한 ${fmtBytes(r.plan.inferredBytes)}는 존 A로 보여도 자동 정리에서 뺐어요. 추론만으로는 자동으로 안 지웁니다(오삭제 방어선).`
-    : '자동 정리 대상은 전부 규칙이 확증한 캐시예요. 지워도 다시 생깁니다.')
+    ? `“아마 캐시일” ${fmtBytes(r.plan.inferredBytes)}는 자동에서 뺐어요. “아마”로는 안 지웁니다.`
+    : '자동으로 치우는 건 전부 캐시예요. 지워도 다시 생기는 것들입니다.')
 
   renderQuestions(r.questions)
   renderKept(r.kept, r.plan.lockBytes)
@@ -475,9 +475,9 @@ $('apply-btn').addEventListener('click', async () => {
     // 경로가 없으면(기본 스캔) 엔진이 같은 기본 목록을 다시 씁니다 — 방금 본 그 범위.
     const res = await engine('apply-sweep', scannedPath ? [scannedPath] : [])
     $('apply-note').innerHTML =
-      `<b style="color:var(--safe)">${res.quarantinedCount.toLocaleString()}개를 격리했어요.</b> ` +
-      `지금 즉시 확보는 0 — 격리는 옮기기만 한 거예요. <b>30일 뒤 ${fmtBytes(res.bytesAfterGrace)}</b>가 최종 확보되고, ` +
-      `그 사이 언제든 격리함에서 되돌릴 수 있어요.` +
+      `<b style="color:var(--safe)">${res.quarantinedCount.toLocaleString()}개를 문 앞에 내놨어요.</b> ` +
+      `아직 용량은 그대로예요 — 버린 게 아니라 내놓기만 했거든요. ` +
+      `<b>30일 뒤 ${fmtBytes(res.bytesAfterGrace)}</b>가 진짜 빕니다. 그 전엔 언제든 되돌려요.` +
       (res.failed.length ? ` (${res.failed.length}개는 사용 중이라 건너뜀)` : '')
     btn.textContent = '정리 완료'
     quarLoaded = false // 격리함 새로고침 필요
@@ -958,10 +958,10 @@ async function loadStartup() {
         <summary style="cursor:pointer;font-size:13px;color:var(--muted)">꺼둔 ${off.length}개 (되돌릴 수 있어요)</summary>
         <div>${off.map(row).join('')}</div></details>` : ''}
       ${d.logonTaskCount ? `<p class="note" style="margin-top:14px">
-        이 외에 <b>로그온 예약작업 ${d.logonTaskCount}개</b>가 더 있습니다. 대부분 시스템이 만든 것이라
-        관리자 권한이 있어야 손댈 수 있어서, 여기서는 개수만 알려드려요.</p>` : ''}
-      <p class="note" style="margin-top:10px">부팅이 몇 초 빨라지는지는 윈도우가 알려주지 않습니다.
-        그래서 <b>"○초 단축" 같은 숫자를 지어내지 않습니다.</b> 작업관리자에도 같은 상태로 보이고, 거기서도 되돌릴 수 있어요.</p>`
+        이 밖에 <b>예약작업 ${d.logonTaskCount}개</b>가 더 있어요. 대부분 윈도우가 만든 거라
+        여기서는 개수만 알려드립니다.</p>` : ''}
+      <p class="note" style="margin-top:10px">몇 초 빨라지는지는 윈도우가 안 알려줘요.
+        그래서 <b>“○초 단축” 같은 숫자를 지어내지 않습니다.</b> 작업관리자에서도 똑같이 보이고, 거기서도 되돌릴 수 있어요.</p>`
 
     host.querySelectorAll<HTMLButtonElement>('[data-toggle]').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -1011,12 +1011,12 @@ async function loadPrograms() {
           <div class="row-sub">${esc(p.reason)}</div>
           ${p.installLocation ? `<div class="row-path">${esc(p.installLocation)}</div>` : ''}
           <button class="opt" data-uninstall="${i}" style="margin-top:8px">${
-            p.silentUninstall ? '제거하기' : '제거 프로그램 열기'
+            p.silentUninstall ? '제거하기' : '제거 창 열기'
           }</button>
           <div class="row-sub" data-ustate="${i}" style="margin-top:6px">${
             p.silentUninstall
-              ? '여기서 바로 제거합니다 — 제조사가 등록한 무인 제거 명령이 있어요.'
-              : '이 프로그램은 무인 제거 명령을 등록하지 않았어요. 제조사 마법사가 열립니다.'
+              ? '여기서 바로 지웁니다.'
+              : '여기선 못 끝내요 — 만든 회사의 제거 창이 열립니다.'
           }</div>
         </div>
         <div class="row-val">${fmtBytes(p.bytes)}</div>
@@ -1055,26 +1055,26 @@ async function uninstallOne(p: any, btn: HTMLButtonElement) {
   if (!p.silentUninstall) {
     // 처음부터 무인 명령이 없었을 수도, 방금 무인 제거가 실패해 여기로 내려왔을 수도 있다.
     // 어느 쪽이든 참인 문장으로 쓴다.
-    if (!confirm(`"${p.name}"의 제거 프로그램을 실행할까요?\n\n여기서 바로 끝낼 수 있는 무인 제거 명령이 없어서, 제조사가 만든 제거 마법사가 열립니다. 나머지 단계는 그 창에서 진행해 주세요.\n\n제거는 되돌릴 수 없어요.`)) return
+    if (!confirm(`"${p.name}"의 제거 창을 열까요?\n\n이건 여기서 바로 끝낼 수 없어서, 만든 회사의 제거 창이 열립니다. 거기서 마저 진행해 주세요.\n\n되돌릴 수 없어요.`)) return
     try {
       await TAURI.core.invoke('run_uninstaller', { command: p.uninstallString, silent: false, elevate: false })
       btn.disabled = true
-      btn.textContent = '제거 프로그램을 열었어요'
-      say('열린 창에서 제거를 마치면 목록을 새로 고쳐 주세요.')
+      btn.textContent = '제거 창을 열었어요'
+      say('그 창에서 제거를 마치면 목록을 새로 고쳐 주세요.')
     } catch (err) {
-      toast('제거 프로그램을 실행하지 못했어요: ' + (err as Error).message, 'bad')
+      toast('제거 창을 열지 못했어요: ' + (err as Error).message, 'bad')
     }
     return
   }
 
   // 되돌릴 수 없는 유일한 동작 — 반드시 개별로 확인받는다.
-  if (!confirm(`"${p.name}"을(를) 지금 제거할까요?\n\n제조사가 등록해 둔 정식 제거 명령을 그대로 실행합니다. 테라클린이 프로그램 파일을 직접 지우지는 않아요.\n\n이 작업은 격리로 되돌릴 수 없습니다. 다시 쓰려면 새로 설치해야 해요.`)) return
+  if (!confirm(`"${p.name}"을(를) 지울까요?\n\n만든 회사가 준 제거 도구로 지웁니다. 폴더를 직접 퍼내지 않아요.\n\n되돌릴 수 없어요. 다시 쓰려면 새로 설치해야 합니다.`)) return
 
   btn.disabled = true
-  btn.textContent = '제거하는 중…'
+  btn.textContent = '지우는 중…'
   say(p.needsAdmin
-    ? '이 프로그램은 컴퓨터 전체에 설치돼 있어요. 관리자 확인 창이 뜨면 허용해 주세요.'
-    : '제조사 제거 프로그램이 도는 중이에요.')
+    ? '관리자 확인 창이 뜨면 “예”를 눌러주세요.'
+    : '제거 도구가 도는 중이에요.')
 
   let outcome: { waited: boolean; code: number | null }
   try {
@@ -1084,7 +1084,7 @@ async function uninstallOne(p: any, btn: HTMLButtonElement) {
   } catch (err) {
     btn.disabled = false
     btn.textContent = '제거하기'
-    say('제거를 시작하지 못했어요: ' + (err as Error).message)
+    say('시작하지 못했어요: ' + (err as Error).message)
     toast('제거를 시작하지 못했어요: ' + (err as Error).message, 'bad')
     return
   }
@@ -1096,7 +1096,7 @@ async function uninstallOne(p: any, btn: HTMLButtonElement) {
   //   그때는 30초를 헛되이 기다리지 않고 한 번만 확인하고 끝낸다.
   //   3010은 "성공했는데 재부팅이 필요함"이라 실패가 아니다.
   const failed = typeof outcome.code === 'number' && outcome.code !== 0 && outcome.code !== 3010
-  say('정말 지워졌는지 레지스트리에서 확인하는 중…')
+  say('정말 없어졌는지 확인하는 중…')
   let gone = false
   for (let i = 0; i < (failed ? 1 : 15) && !gone; i++) {
     try {
@@ -1106,18 +1106,18 @@ async function uninstallOne(p: any, btn: HTMLButtonElement) {
   }
 
   if (gone) {
-    btn.textContent = '제거됐어요'
-    say(`레지스트리에서 항목이 사라진 걸 확인했어요. ${fmtBytes(p.bytes)} 정도가 비워집니다.`)
+    btn.textContent = '지웠어요'
+    say(`목록에서 사라진 걸 확인했어요. ${fmtBytes(p.bytes)}가 비워집니다.`)
     btn.closest<HTMLElement>('.row')!.style.opacity = '0.55'
-    toast(`"${p.name}"을(를) 제거했어요`, 'good')
+    toast(`"${p.name}"을(를) 지웠어요`, 'good')
   } else {
     // 실패했을 수도, 아직 도는 중일 수도 있다. 둘 다 "제거됐다"가 아니다.
     btn.disabled = false
-    btn.textContent = '제거 프로그램 열기'
-    p.silentUninstall = null // 다음 클릭은 마법사로 간다
+    btn.textContent = '제거 창 열기'
+    p.silentUninstall = null // 다음 클릭은 제조사 창으로 간다
     say(failed
-      ? '제거되지 않았어요. 관리자 확인을 취소하셨거나 권한이 모자란 경우예요 — 제조사 제거 프로그램으로 열어서 마무리해 주세요.'
-      : '아직 목록에 남아 있어요. 제거가 끝나지 않았을 수도 있어요 — 제조사 제거 프로그램으로 열어서 마무리해 주세요.')
+      ? '안 지워졌어요. 관리자 확인을 취소했거나 권한이 모자란 경우예요 — 제거 창으로 마무리해 주세요.'
+      : '아직 목록에 남아 있어요 — 제거 창으로 마무리해 주세요.')
   }
 }
 
@@ -1221,9 +1221,9 @@ async function loadQuar() {
     // 유예가 끝난 것이 있으면 이 화면에 오기 전에 이미 지워졌다(시작할 때 purge).
     // 무엇이 사라졌는지 말하지 않으면 사용자는 파일이 증발했다고 느낀다.
     const purgeNote = lastPurge && lastPurge.purgedCount
-      ? `<div class="note" style="margin-bottom:12px">유예 ${data.graceDays}일이 끝난
-           <b>${lastPurge.purgedCount.toLocaleString()}개(${fmtBytes(lastPurge.bytes)})</b>를 최종 삭제했어요.
-           여기서 사라진 만큼 실제 용량이 비었습니다.</div>`
+      ? `<div class="note" style="margin-bottom:12px">${data.graceDays}일이 지난
+           <b>${lastPurge.purgedCount.toLocaleString()}개(${fmtBytes(lastPurge.bytes)})</b>를 이제 진짜 버렸어요.
+           그만큼 용량이 비었습니다.</div>`
       : ''
 
     if (!data.items.length) {

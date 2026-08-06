@@ -42,8 +42,10 @@ test('★ 휴지통은 되돌릴 수 없다고 말한다 — 격리로 못 가�
   const f = probeRecycleBin(facts({ recycleBytes: 2 * GB, recycleCount: 10 }))!
   assert.equal(f.explain.recovery, 'none')
   assert.match(f.explain.recoveryNote, /비우면 끝/)
+  // 어미('없습니다'/'없어요')가 아니라 '되돌릴 수 없다고 말하는가'를 잠근다.
+  // 문구는 다듬을 수 있어도 이 사실은 빠지면 안 된다.
   assert.ok(
-    f.explain.ifRemoved.some((s) => s.includes('되돌릴 수 없습니다')),
+    f.explain.ifRemoved.some((s) => /되돌릴 수 없/.test(s)),
     '손해를 먼저 말해야 한다(양면 정직)'
   )
   assert.equal(f.assist?.irreversible, true)
@@ -86,5 +88,5 @@ test('설명 7문답이 비어 있지 않다 — usedBy 없는 규칙은 만들�
 
 test('안 지워도 된다는 선택지를 뺏지 않는다', () => {
   const f = probeRecycleBin(facts({ recycleBytes: 2 * GB, recycleCount: 5 }))!
-  assert.match(f.explain.ifKept, /아무 문제 없습니다/)
+  assert.match(f.explain.ifKept, /아무 문제 없/)
 })

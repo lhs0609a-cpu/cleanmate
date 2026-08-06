@@ -32,8 +32,8 @@ export function probeHiberfil(f: SystemFacts): Finding | null {
   ]
   if (f.fastStartupEnabled) {
     usedBy.push(
-      '빠른 시작(Fast Startup) — 윈도우를 켤 때 몇 초 빨라지는 기능이에요. ' +
-        '지금 켜져 있습니다. 기본값이라 쓰는 줄 모르는 분이 대부분이에요.'
+      '빠른 시작 — 켤 때 몇 초 빨라지는 기능이에요. 지금 켜져 있습니다. ' +
+        '기본값이라 쓰는 줄 모르는 분이 대부분이에요.'
     )
   }
 
@@ -47,10 +47,9 @@ export function probeHiberfil(f: SystemFacts): Finding | null {
   }
   ifRemoved.push(
     f.isLaptop
-      ? `★ 이 PC는 노트북으로 보입니다(${f.laptopSignals.join(', ')}). 덮개를 닫아 최대절전을 쓰신다면 ` +
-        '한 번 더 생각해보세요. 배터리가 떨어져도 작업 상태를 지켜주는 게 이 기능이거든요.'
-      : '이 PC는 데스크톱으로 보입니다(배터리 없음). 데스크톱에서 최대절전을 쓰는 분은 드물어서, ' +
-        '아마 없어진 줄도 모르실 거예요.'
+      ? `★ 이 PC는 노트북 같아요(${f.laptopSignals.join(', ')}). 덮개 닫아두는 편이면 한 번 더 생각해보세요. ` +
+        '배터리가 나가도 하던 일을 지켜주는 게 이 기능이거든요.'
+      : '이 PC는 데스크톱 같아요(배터리 없음). 데스크톱에서 최대절전 쓰는 분은 드물어서, 없어진 줄도 모르실 거예요.'
   )
 
   return {
@@ -62,16 +61,16 @@ export function probeHiberfil(f: SystemFacts): Finding | null {
     zone: 'LOCKED',
     explain: {
       what:
-        '컴퓨터를 완전히 끄기 전에, 지금 열어둔 것들을 통째로 저장해두는 파일이에요. ' +
-        '다시 켜면 어제 그 상태로 돌아오게 해줍니다.',
+        '컴퓨터가 잘 때 덮는 이불이에요. 끄기 전에 열어둔 걸 통째로 적어놨다가, ' +
+        '다시 켜면 그대로 펼쳐줍니다.',
 
       /* ── ② 왜 이렇게 큰가 — "내가 뭘 잘못했나?"에 답한다.
          마지막 문장이 중요하다. 다른 청소 도구를 아무리 돌려도 이게 안 줄어든
          이유를 여기서 처음 알게 된다. */
       why:
-        `메모리(RAM)에 있는 걸 통째로 옮겨 적어야 해서, RAM 크기의 약 40%를 미리 잡아둡니다. ` +
+        `이불은 침대에 맞춰 미리 재단해둡니다 — 메모리(RAM)의 약 40%요. ` +
         `이 PC는 RAM이 ${gb(f.ramBytes)}GB라서 ${gb(f.hiberfilBytes)}GB예요(${pct}%). ` +
-        `뭔가 쌓여서 커진 게 아니라 처음부터 이 크기입니다 — 그래서 파일을 아무리 정리해도 절대 줄지 않아요.` +
+        `뭐가 쌓인 게 아니라 처음부터 이 크기라, 파일을 아무리 지워도 안 줄어요.` +
         (f.hiberFileSizePercent > 0
           ? ` (참고: 이 PC는 크기가 ${f.hiberFileSizePercent}%로 직접 지정돼 있네요.)`
           : ''),
@@ -81,12 +80,12 @@ export function probeHiberfil(f: SystemFacts): Finding | null {
 
       recovery: 'one-command',
       recoveryNote:
-        '네, 명령 한 줄이면 원래대로 돌아옵니다. 파일을 지우는 게 아니라 기능을 끄는 거라서, ' +
-        '다시 켜면 윈도우가 파일을 새로 만들어요. 되돌리기 버튼을 함께 드립니다.',
+        '네. 이불을 버리는 게 아니라 개어 넣는 거예요. 다시 켜면 윈도우가 새로 펴줍니다. ' +
+        '되돌리기 버튼도 같이 드려요.',
 
       /* ── ⑦ 안 지우면요 — '안 지운다'는 선택지를 절대 뺏지 않는다.
          이게 없으면 아무리 친절해도 압박이 된다. */
-      ifKept: `아무 문제 없습니다. ${gb(f.hiberfilBytes)}GB를 계속 쓸 뿐이에요. 지금 용량이 급하지 않으면 그냥 두셔도 됩니다.`,
+      ifKept: `아무 문제 없어요. ${gb(f.hiberfilBytes)}GB를 계속 쓸 뿐입니다. 급하지 않으면 그냥 두셔도 돼요.`,
     },
 
     action: {
