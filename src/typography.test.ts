@@ -99,6 +99,32 @@ test('참조하는 CSS 변수가 전부 정의돼 있다 — var(--mono) 같은 
   assert.deepEqual(missing, [], `정의되지 않은 CSS 변수: ${missing.join(', ')}`)
 })
 
+/**
+ * ★ CSS 주석이 제대로 닫혀 있는가.
+ *
+ * 실물에서 릴리스를 깬 버그다. 주석 블록 중간에 `*​/`가 하나 더 생겨서,
+ * 그 뒤 두 줄이 CSS 선언 자리에 알몸으로 놓였다.
+ *
+ *   **브라우저는 이걸 봐준다.** 크롬은 깨진 선언을 조용히 버리고 나머지를
+ *   그린다. 그래서 헤드리스로 렌더링해봤을 때 멀쩡해 보였다. 반면 빌드의
+ *   PostCSS는 엄격해서 "Unknown word"로 멈춘다 — 화면으로는 절대 못 잡는다.
+ *   그러니 파서로 잡아야 한다.
+ */
+test('★ CSS 주석이 짝이 맞는다 — 브라우저는 봐주지만 빌드는 안 봐준다', () => {
+  const css = appHtml().split('<style>')[1].split('</style>')[0]
+  let inComment = false
+  for (let i = 0; i < css.length - 1; i++) {
+    const two = css.slice(i, i + 2)
+    if (!inComment && two === '/*') { inComment = true; i++ }
+    else if (inComment && two === '*/') { inComment = false; i++ }
+    else if (!inComment && two === '*/') {
+      const line = css.slice(0, i).split('\n').length
+      assert.fail(`주석 밖에 닫는 '*/'가 있다 (style 기준 ${line}번째 줄) — 그 앞 줄들이 CSS 선언 자리에 노출된다`)
+    }
+  }
+  assert.equal(inComment, false, '열린 주석이 닫히지 않았다 — 뒤 규칙이 통째로 먹힌다')
+})
+
 test('한글이 아무 데서나 안 끊긴다 — word-break:keep-all', () => {
   // 없으면 "정해집니 / 다"처럼 낱말 가운데가 잘린다.
   assert.match(appHtml(), /word-break:\s*keep-all/)
