@@ -88,7 +88,9 @@ import {
   todayISO,
   type TidyState,
 } from './content/tidy.ts'
-import { probePrograms } from './probes/programs.ts'
+import {
+  probePrograms, silentUninstallCommand, uninstallCommandFor, needsElevation, isStillInstalled,
+} from './probes/programs.ts'
 import {
   isRelocatable,
   planRelocate,
@@ -892,13 +894,14 @@ async function main() {
         break
       }
       case 'programs': {
-        // 제안만 한다. 제거는 셸이 정식 언인스톨러를 띄워서 한다.
+        // 제안만 한다. 제거는 셸이 정식 언인스톨러를 호출해서 한다.
         const r = await probePrograms()
         out({
           totalScanned: r.totalScanned,
           suggestibleBytes: r.suggestibleBytes,
           suggestions: r.suggestions.map((s) => ({
             key: s.key,
+            keyPath: s.keyPath,
             name: s.name,
             publisher: s.publisher,
             version: s.version,
@@ -906,13 +909,27 @@ async function main() {
             unusedDays: s.unusedDays,
             runCount: s.runCount,
             reason: s.verdict.reason,
-            uninstallString: s.uninstallString,
+            uninstallString: uninstallCommandFor(s),
+            // 있으면 앱 안에서 끝난다. 없으면 화면이 "마법사가 열린다"고 말해야 한다.
+            silentUninstall: silentUninstallCommand(s),
+            // 컴퓨터 전체에 설치된 것 — 승격해서 실행해야 UAC가 정상적으로 뜬다.
+            needsAdmin: needsElevation(s),
             installLocation: s.installLocation,
           })),
           // 안 건드린 것도 보여준다 — "무엇을 제외했는지"가 신뢰의 근거다.
           excluded: r.excluded.slice(0, 60),
           excludedCount: r.excluded.length,
         })
+        break
+      }
+      /**
+       * 제거가 **진짜** 끝났는지 레지스트리에 다시 물어본다.
+       * 언인스톨러의 종료 코드는 못 믿는다(probes/programs.ts isStillInstalled 머리말).
+       * 화면은 이 대답을 받고 나서야 "제거됐어요"라고 말한다.
+       */
+      case 'program-installed': {
+        if (!args[0]) fail('확인할 레지스트리 경로가 필요합니다.')
+        out({ installed: await isStillInstalled(args[0]) })
         break
       }
       default:

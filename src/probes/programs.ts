@@ -29,11 +29,23 @@ const run = promisify(execFile)
 export interface InstalledProgram {
   /** 레지스트리 키 이름 — 고유 식별자로 쓴다 */
   key: string
+  /**
+   * 이 항목의 레지스트리 전체 경로 — **제거가 실제로 끝났는지 확인할 때** 다시 조회한다.
+   * parseRegQuery는 항상 채운다. 선택형인 건 이 경로 없이 만든 객체도 있어서다.
+   * 없으면 확인할 방법이 없으므로, 화면은 무인 제거를 제안하지 않는다.
+   */
+  keyPath?: string
   name: string
   publisher?: string
   version?: string
   installLocation?: string
+  /** 제조사가 등록한 원시 제거 명령. 대개 마법사 창이 뜬다. */
   uninstallString?: string
+  /**
+   * 제조사가 **직접 등록한** 무인 제거 명령(QuietUninstallString).
+   * 있으면 창 없이 끝난다 — 우리가 인자를 지어내지 않고 등록된 것만 쓴다.
+   */
+  quietUninstallString?: string
   /** 레지스트리가 보고한 크기(KB 단위 값을 바이트로 환산). 없으면 0 — 믿을 수 없다. */
   estimatedBytes: number
   /** 설치일 (YYYYMMDD 문자열이 오는 경우가 많다) */
@@ -98,7 +110,7 @@ export function judgeProgram(p: ProgramUsage, minUnusedDays = 180): ProgramVerdi
   for (const rule of PROTECTED) {
     if (rule.test.test(name)) return { suggestible: false, reason: rule.why }
   }
-  if (!p.uninstallString) {
+  if (!uninstallCommandFor(p)) {
     // 정식 제거 방법을 모르면 손대지 않는다. 파일을 직접 지우는 건 이 프로브의 금기다.
     return { suggestible: false, reason: '정식 제거 방법이 등록돼 있지 않아 손대지 않습니다' }
   }
@@ -280,11 +292,16 @@ export function parseRegQuery(output: string): InstalledProgram[] {
 
     programs.push({
       key: keyLine.split('\\').pop() ?? keyLine,
+      keyPath: keyLine,
       name,
       publisher: values.get('Publisher'),
       version: values.get('DisplayVersion'),
       installLocation: values.get('InstallLocation') || undefined,
-      uninstallString: values.get('QuietUninstallString') || values.get('UninstallString') || undefined,
+      // ★ 두 값을 합치지 않고 따로 둔다. 예전엔 Quiet 쪽을 우선해 하나로 뭉갰는데,
+      //   그러면 "이건 창 없이 끝난다"와 "마법사가 뜬다"를 화면이 구분할 수 없다.
+      //   사용자에게 무슨 일이 일어날지 미리 말해주려면 이 구분이 남아 있어야 한다.
+      uninstallString: values.get('UninstallString') || values.get('QuietUninstallString') || undefined,
+      quietUninstallString: values.get('QuietUninstallString') || undefined,
       estimatedBytes: kbToBytes(values.get('EstimatedSize')),
       installDate: values.get('InstallDate'),
     })
@@ -318,6 +335,13 @@ const UNINSTALL_KEYS = [
   'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
 ]
 
+/** 같은 세 곳의 전체 이름 — `reg query /s` 출력의 키 줄은 축약형이 아니라 이 형태로 온다. */
+const UNINSTALL_KEYS_FULL = [
+  'HKEY_LOCAL_MACHINE\\SOFTWARE\\MICROSOFT\\WINDOWS\\CURRENTVERSION\\UNINSTALL\\',
+  'HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432NODE\\MICROSOFT\\WINDOWS\\CURRENTVERSION\\UNINSTALL\\',
+  'HKEY_CURRENT_USER\\SOFTWARE\\MICROSOFT\\WINDOWS\\CURRENTVERSION\\UNINSTALL\\',
+]
+
 /** 레지스트리에서 설치 목록을 모은다. 윈도우가 아니면 빈 배열. */
 export async function collectInstalled(): Promise<InstalledProgram[]> {
   if (process.platform !== 'win32') return []
@@ -338,6 +362,45 @@ export async function collectInstalled(): Promise<InstalledProgram[]> {
     }
   }
   return [...all.values()]
+}
+
+/**
+ * 이 프로그램을 지우려면 관리자 권한이 필요한가.
+ *
+ * HKLM에 등록됐다는 건 **컴퓨터 전체에** 설치됐다는 뜻이고, 그건 관리자만 지울 수 있다.
+ * 이게 왜 중요하냐면 — msiexec은 권한이 없으면 UAC를 띄우지 않고 그냥 실패한다.
+ * 그러면 사용자 눈에는 "눌렀는데 아무 일도 안 일어남"으로 보인다.
+ * 미리 알고 승격해서 실행해야 UAC 창이 정상적으로 뜬다.
+ *
+ * HKCU 항목은 내 계정에만 설치된 것이라 권한이 필요 없다 — 괜히 UAC를 띄우지 않는다.
+ */
+export function needsElevation(p: InstalledProgram): boolean {
+  return (p.keyPath ?? '').toUpperCase().startsWith('HKEY_LOCAL_MACHINE\\')
+}
+
+/**
+ * 이 레지스트리 항목이 **아직 있는가**. 제거가 진짜 끝났는지 확인하는 유일한 근거다.
+ *
+ * ★ 왜 종료 코드를 믿지 않나: 이노셋업 언인스톨러는 자기 자신을 임시 폴더로
+ *   복사한 뒤 그쪽에 일을 넘기고 **즉시 0을 반환한다.** 그 순간 "제거 완료"라고
+ *   하면 거짓말이 된다. 실제로 지워졌는지는 레지스트리에 물어봐야 안다.
+ *
+ * 밖에서 온 문자열로 아무 키나 조회하지 않도록, 제거 항목이 사는 세 곳
+ * 아래인지 먼저 확인한다.
+ */
+export async function isStillInstalled(keyPath: string): Promise<boolean> {
+  if (process.platform !== 'win32') return false
+  const path = keyPath.trim()
+  if (!UNINSTALL_KEYS_FULL.some((root) => path.toUpperCase().startsWith(root))) {
+    throw new Error('제거 항목이 사는 곳이 아닌 레지스트리 경로예요')
+  }
+  try {
+    await run('reg', ['query', path], { windowsHide: true })
+    return true
+  } catch {
+    // 키가 없으면 reg가 1로 끝난다 — 그게 곧 "지워졌다"이다.
+    return false
+  }
 }
 
 /**
@@ -468,5 +531,43 @@ export async function probePrograms(minUnusedDays = 180, now = Date.now()): Prom
  * 우리가 파일을 지우는 경로는 어디에도 없다.
  */
 export function uninstallCommandFor(p: InstalledProgram): string | null {
-  return p.uninstallString ?? null
+  return p.uninstallString ?? p.quietUninstallString ?? null
+}
+
+/**
+ * **앱 안에서 끝낼 수 있는** 제거 명령. 없으면 null (= 마법사를 띄워야 한다).
+ *
+ * ── 왜 인자를 지어내지 않나 ───────────────────────────────────
+ * "/S를 붙이면 대부분 조용히 지워진다"는 건 사실이지만, **대부분**이다.
+ * 설치 프로그램마다 무인 스위치가 다르고(/S, /SILENT, /qn, --uninstall),
+ * 못 알아들으면 그 문자열을 **파일 이름으로 해석**하거나 인자를 무시하고
+ * 마법사를 띄운다. 남의 프로그램을 지우면서 추측한 스위치를 던지지 않는다.
+ *
+ * 그래서 근거가 있는 두 가지만 쓴다.
+ *   1. QuietUninstallString — 제조사가 "이렇게 부르면 조용히 지워진다"고
+ *      레지스트리에 **직접 적어둔** 명령. 추측이 아니라 선언이다.
+ *   2. MSI — 윈도우 인스톨러는 규격이다. `/qn`은 우리가 지어낸 게 아니라
+ *      msiexec의 문서화된 UI 수준 지정이고, 제품 코드(GUID)로 대상이 확정된다.
+ *      `/norestart`도 함께 준다 — 우리가 사용자 컴퓨터를 재부팅시키지 않는다.
+ *
+ * 둘 다 아니면 null을 돌려주고, 화면은 정직하게 "제거 프로그램 열기"로 바꾼다.
+ * 여기서 null이 나오는 건 실패가 아니라 **모른다고 말하는 것**이다.
+ */
+export function silentUninstallCommand(p: InstalledProgram): string | null {
+  // 확인할 레지스트리 경로가 없으면 무인 제거를 제안하지 않는다. 끝났는지
+  // 물어볼 데가 없으면 "제거됐어요"라고 말할 근거도 없기 때문이다.
+  if (!p.keyPath) return null
+
+  const quiet = p.quietUninstallString?.trim()
+  if (quiet) return quiet
+
+  const raw = p.uninstallString?.trim()
+  if (!raw) return null
+
+  // MsiExec.exe /X{GUID} · msiexec /i{GUID} · "C:\Windows\System32\msiexec.exe" /X {GUID}
+  // 레지스트리에는 MsiExec.exe·msiexec 등 표기가 제각각이라 대소문자를 가리지 않는다.
+  const m = raw.match(/^"?([^"]*?msiexec(?:\.exe)?)"?\s+\/[ix]\s*\{([0-9a-f-]{36})\}/i)
+  if (m) return `"${m[1]}" /X{${m[2]}} /qn /norestart`
+
+  return null
 }

@@ -15,6 +15,9 @@ import {
   daysSince,
   judgeProgram,
   uninstallCommandFor,
+  silentUninstallCommand,
+  needsElevation,
+  isStillInstalled,
   rot13,
   filetimeToMs,
   parseUserAssist,
@@ -250,5 +253,106 @@ test('★제거 명령은 등록된 언인스톨러 그대로다 — 파일 경�
   assert.equal(
     uninstallCommandFor({ key: '{Y}', name: 'Y', estimatedBytes: 0, installLocation: 'C:\\Program Files\\Y' }),
     null
+  )
+})
+
+/* ────────────────────────────────────────────────────────────
+   앱 안에서 끝내는 제거 — 무엇을 '무인'으로 볼 것인가
+
+   여기서 잠그는 건 **추측한 스위치를 남의 프로그램에 던지지 않는 것**이다.
+   "/S 붙이면 대충 되더라"는 대부분 맞고 가끔 틀린다. 가끔 틀리면 마법사가
+   그냥 열리거나(사용자는 우리가 멈춘 줄 안다) 인자가 파일명으로 해석된다.
+   그래서 근거가 있는 두 가지만 통과시킨다.
+   ──────────────────────────────────────────────────────────── */
+
+const KEY_PATH = 'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{X}'
+
+test('★제조사가 등록한 무인 명령이 있으면 그걸 쓴다', () => {
+  assert.equal(
+    silentUninstallCommand({
+      key: '{X}', keyPath: KEY_PATH, name: 'X', estimatedBytes: 0,
+      uninstallString: '"C:\\Program Files\\X\\unins000.exe"',
+      quietUninstallString: '"C:\\Program Files\\X\\unins000.exe" /SILENT /NORESTART',
+    }),
+    '"C:\\Program Files\\X\\unins000.exe" /SILENT /NORESTART'
+  )
+})
+
+test('★무인 스위치를 지어내지 않는다 — 등록돼 있지 않으면 null', () => {
+  // /S를 붙이면 "대체로" 되지만 대체로는 근거가 아니다. 마법사로 보낸다.
+  assert.equal(
+    silentUninstallCommand({
+      key: '{X}', keyPath: KEY_PATH, name: 'X', estimatedBytes: 0,
+      uninstallString: '"C:\\Program Files\\X\\uninst.exe"',
+    }),
+    null
+  )
+})
+
+test('MSI는 규격이라 /qn을 붙여도 된다 — 제품 코드로 대상이 확정된다', () => {
+  const cmd = silentUninstallCommand({
+    key: '{X}', keyPath: KEY_PATH, name: 'X', estimatedBytes: 0,
+    uninstallString: 'MsiExec.exe /X{0FE30B5F-1234-4321-ABCD-0123456789AB}',
+  })
+  assert.equal(cmd, '"MsiExec.exe" /X{0FE30B5F-1234-4321-ABCD-0123456789AB} /qn /norestart')
+  assert.match(cmd!, /\/norestart/, '우리가 사용자 컴퓨터를 재부팅시키지 않는다')
+})
+
+test('MSI 설치 명령(/I)도 제거(/X)로 바꿔 부른다', () => {
+  assert.equal(
+    silentUninstallCommand({
+      key: '{X}', keyPath: KEY_PATH, name: 'X', estimatedBytes: 0,
+      uninstallString: '"C:\\Windows\\System32\\msiexec.exe" /I {0FE30B5F-1234-4321-ABCD-0123456789AB}',
+    }),
+    '"C:\\Windows\\System32\\msiexec.exe" /X{0FE30B5F-1234-4321-ABCD-0123456789AB} /qn /norestart'
+  )
+})
+
+test('★확인할 레지스트리 경로가 없으면 무인 제거를 제안하지 않는다', () => {
+  // 끝났는지 물어볼 데가 없으면 "제거됐어요"라고 말할 근거도 없다.
+  assert.equal(
+    silentUninstallCommand({
+      key: '{X}', name: 'X', estimatedBytes: 0,
+      quietUninstallString: '"C:\\X\\unins000.exe" /SILENT',
+    }),
+    null
+  )
+})
+
+test('★컴퓨터 전체에 설치된 것(HKLM)은 승격해서 부른다', () => {
+  // msiexec은 권한이 없으면 UAC를 띄우지 않고 그냥 실패한다. 미리 알아야 한다.
+  assert.equal(needsElevation({ key: '{X}', keyPath: KEY_PATH, name: 'X', estimatedBytes: 0 }), true)
+})
+
+test('내 계정에만 설치된 것(HKCU)은 괜히 UAC를 띄우지 않는다', () => {
+  assert.equal(
+    needsElevation({
+      key: '{X}', name: 'X', estimatedBytes: 0,
+      keyPath: 'HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{X}',
+    }),
+    false
+  )
+})
+
+test('★확인 조회는 제거 항목이 사는 곳 밖으로 나가지 않는다', async () => {
+  await assert.rejects(
+    () => isStillInstalled('HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run'),
+    /레지스트리 경로/
+  )
+})
+
+test('제거 명령 두 종류를 뭉개지 않고 따로 읽는다', () => {
+  const [p] = parseRegQuery(
+    'HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{Z}\r\n' +
+    '    DisplayName    REG_SZ    Z\r\n' +
+    '    UninstallString    REG_SZ    "C:\\Z\\unins000.exe"\r\n' +
+    '    QuietUninstallString    REG_SZ    "C:\\Z\\unins000.exe" /SILENT\r\n'
+  )
+  assert.equal(p.uninstallString, '"C:\\Z\\unins000.exe"', '마법사용 원시 명령')
+  assert.equal(p.quietUninstallString, '"C:\\Z\\unins000.exe" /SILENT', '무인 명령')
+  assert.equal(
+    p.keyPath,
+    'HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{Z}',
+    '끝났는지 확인하려면 전체 경로가 있어야 한다'
   )
 })

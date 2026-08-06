@@ -7,7 +7,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use sha2::{Digest, Sha256};
+use std::os::windows::process::CommandExt;
 use std::process::Command as StdCommand;
+
+/// 자식 프로세스에 콘솔 창을 붙이지 않는다 (winbase.h CREATE_NO_WINDOW).
+/// 값 하나 때문에 windows-sys를 끌어오지 않는다.
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
@@ -137,17 +142,94 @@ async fn download_update(url: String) -> Result<DownloadedUpdate, String> {
     })
 }
 
-/// 설치 제거 — 프로그램이 등록해 둔 **정식 언인스톨러**를 띄운다.
+/// 원시 명령줄을 (실행 파일, 나머지 인자 문자열)로 가른다.
+///
+/// UninstallString은 `"C:\Program Files\Foo\unins000.exe" /SILENT` 같은 **원시 명령줄**이라
+/// 그냥 넘길 수 없다. 예전엔 `cmd /C`에 통째로 던졌는데, 그러면 (1) 검은 창이 뜨고
+/// (2) cmd의 악명 높은 따옴표 처리에 명령이 망가질 수 있고 (3) 남의 문자열이
+/// **셸을 통과한다.** 이 앱은 밖에서 온 문자열을 셸에 넘기지 않는다.
+/// 그래서 우리가 직접 가르고 실행 파일을 바로 부른다.
+///
+/// 따옴표가 없는데 경로에 공백이 있는 경우(`C:\Program Files\...`)는 윈도우의
+/// CreateProcess와 같은 방식으로 앞에서부터 잘라보며 실제 파일을 찾는다.
+fn split_command_line(command: &str) -> (String, String) {
+    let cmd = command.trim();
+
+    if let Some(rest) = cmd.strip_prefix('"') {
+        if let Some(end) = rest.find('"') {
+            return (
+                rest[..end].to_string(),
+                rest[end + 1..].trim_start().to_string(),
+            );
+        }
+    }
+
+    for (i, _) in cmd.match_indices(' ') {
+        if std::path::Path::new(&cmd[..i]).is_file() {
+            return (cmd[..i].to_string(), cmd[i + 1..].trim_start().to_string());
+        }
+    }
+
+    match cmd.find(' ') {
+        // 파일로 확인되진 않았지만 msiexec처럼 PATH에서 찾히는 경우가 있다 — OS에 맡긴다.
+        Some(i) => (cmd[..i].to_string(), cmd[i + 1..].trim_start().to_string()),
+        None => (cmd.to_string(), String::new()),
+    }
+}
+
+/// run_uninstaller가 UI에 돌려주는 것.
+#[derive(serde::Serialize)]
+struct UninstallOutcome {
+    /// 끝까지 기다렸나. 마법사를 띄운 경우는 false — 그때는 우리가 결과를 모른다.
+    waited: bool,
+    /// 언인스톨러의 종료 코드. **성공의 증거로 쓰지 않는다**(아래 머리말 참고).
+    code: Option<i32>,
+}
+
+/// 설치 제거 — 프로그램이 등록해 둔 **정식 언인스톨러**를 호출한다.
 ///
 /// ★ 우리가 프로그램 파일을 지우는 경로는 어디에도 없다. 폴더를 직접 지우면
 ///   레지스트리·서비스·셸 확장이 남아 시스템이 지저분해지고 재설치도 막힌다.
-///   그래서 레지스트리의 UninstallString을 그대로 실행하고, 그 다음은
-///   제조사의 제거 마법사와 사용자에게 맡긴다.
+///   그래서 레지스트리의 제거 명령을 그대로 실행한다.
+///
+/// `silent`가 참이면 **앱 안에서 끝낸다** — 창 없이 실행하고 끝날 때까지 기다린다.
+/// 이때 넘어오는 명령은 제조사가 등록한 QuietUninstallString이거나 MSI 규격 명령뿐이다
+/// (src/probes/programs.ts의 silentUninstallCommand). 우리가 무인 스위치를 지어내지 않는다.
+/// 거짓이면 예전처럼 제조사 마법사를 띄우고 곧바로 돌아온다.
+///
+/// ★ 종료 코드는 성공의 증거가 아니다. 이노셋업 언인스톨러는 자기를 임시 폴더로
+///   복사한 뒤 0을 반환하고 빠진다. 그래서 여기서는 판정하지 않고, 화면이
+///   엔진의 `program-installed`로 레지스트리에 다시 물어본 뒤에 결론을 낸다.
 ///
 /// 격리로 되돌릴 수 없는 유일한 동작이라, UI가 하나씩 확인을 받은 뒤에만 부른다.
 /// (일괄 제거 API를 만들지 않는 이유 — src/probes/programs.ts 머리말)
+/// 관리자 권한으로 올려서 실행하는 조각.
+///
+/// ★ 왜 필요한가: HKLM에 등록된 프로그램(= 컴퓨터 전체에 설치된 것)은 관리자만 지운다.
+///   그런데 **msiexec은 권한이 없으면 UAC를 띄우지 않고 그냥 실패한다.** 그러면
+///   사용자 눈에는 "제거하기를 눌렀는데 아무 일도 안 일어남"으로 보인다.
+///   승격해서 띄워야 UAC 창이 정상적으로 뜨고, 사용자가 허용하면 진짜로 지워진다.
+///
+/// ★ 왜 문자열을 스크립트에 박지 않고 환경변수로 넘기나: 레지스트리에서 읽은 값이라도
+///   스크립트 본문에 이어붙이는 순간 주입 통로가 된다. 스크립트는 **고정 문자열**이고
+///   값은 TC_EXE·TC_ARGS로만 들어간다. (같은 이유·같은 방식 — src/probes/startup.ts)
+const ELEVATE_SCRIPT: &str = r#"
+$ErrorActionPreference = 'Stop'
+$a = $env:TC_ARGS
+if ([string]::IsNullOrWhiteSpace($a)) {
+  $p = Start-Process -FilePath $env:TC_EXE -Verb RunAs -Wait -PassThru -WindowStyle Hidden
+} else {
+  $p = Start-Process -FilePath $env:TC_EXE -ArgumentList $a -Verb RunAs -Wait -PassThru -WindowStyle Hidden
+}
+exit $p.ExitCode
+"#;
+
 #[tauri::command]
-fn run_uninstaller(command: String) -> Result<(), String> {
+async fn run_uninstaller(
+    command: String,
+    silent: bool,
+    elevate: bool,
+) -> Result<UninstallOutcome, String> {
     let cmd = command.trim();
     if cmd.is_empty() {
         return Err("제거 명령이 비어 있어요".into());
@@ -157,12 +239,45 @@ fn run_uninstaller(command: String) -> Result<(), String> {
     if !(lower.contains(".exe") || lower.contains("msiexec")) {
         return Err("실행 파일을 가리키지 않는 제거 명령이라 실행하지 않았어요".into());
     }
-    // UninstallString은 따옴표·인자가 섞인 원시 명령줄이라 cmd에 그대로 넘긴다.
-    StdCommand::new("cmd")
-        .args(["/C", cmd])
-        .spawn()
-        .map_err(|e| format!("제거 프로그램을 실행하지 못했어요: {e}"))?;
-    Ok(())
+
+    let (exe, rest) = split_command_line(cmd);
+
+    if !silent {
+        // 마법사 경로 — 창을 띄우고 그 다음은 제조사와 사용자에게 맡긴다.
+        let mut c = StdCommand::new(&exe);
+        if !rest.is_empty() {
+            c.raw_arg(&rest);
+        }
+        c.spawn()
+            .map_err(|e| format!("제거 프로그램을 실행하지 못했어요: {e}"))?;
+        return Ok(UninstallOutcome { waited: false, code: None });
+    }
+
+    let mut c = if elevate {
+        // 승격이 필요한 항목 — 파워셸의 Start-Process -Verb RunAs로 올려서 부른다.
+        // 파워셸 자체는 창 없이 돌고, UAC 확인 창만 사용자에게 보인다.
+        let mut c = StdCommand::new("powershell.exe");
+        c.args(["-NoProfile", "-NonInteractive", "-Command", ELEVATE_SCRIPT])
+            .env("TC_EXE", &exe)
+            .env("TC_ARGS", &rest);
+        c
+    } else {
+        let mut c = StdCommand::new(&exe);
+        if !rest.is_empty() {
+            // raw_arg — 원시 명령줄의 따옴표를 그대로 넘긴다. 다시 이스케이프하면 망가진다.
+            c.raw_arg(&rest);
+        }
+        c
+    };
+    c.creation_flags(CREATE_NO_WINDOW);
+    // 제거는 몇 분이 걸릴 수 있다. 블로킹 풀에서 기다린다 —
+    // 메인 스레드에서 기다리면 그동안 창이 통째로 얼어붙는다.
+    let status = tokio::task::spawn_blocking(move || c.status())
+        .await
+        .map_err(|e| format!("제거를 기다리지 못했어요: {e}"))?
+        .map_err(|e| format!("제거를 시작하지 못했어요: {e}"))?;
+
+    Ok(UninstallOutcome { waited: true, code: status.code() })
 }
 
 /// ★ 엔진 사이드카 호출 — UI와 검증된 TS 엔진을 잇는 유일한 통로.
@@ -178,6 +293,13 @@ async fn run_engine(command: String, args: Vec<String>) -> Result<serde_json::Va
     let engine = exe_dir.join("teraclean-engine.exe");
 
     let output = tokio::process::Command::new(&engine)
+        // ★ 콘솔 창을 만들지 않는다 (실물에서 보인 버그).
+        //   엔진 exe는 node.exe를 복사해 만든 SEA다 → **콘솔 서브시스템** 프로그램이다.
+        //   콘솔이 없는 GUI 프로세스(우리 앱)가 콘솔 프로그램을 띄우면 윈도우가
+        //   친절하게 새 콘솔 창을 하나 붙여준다. 그래서 탭을 누를 때마다
+        //   시커먼 창이 깜빡였다. CREATE_NO_WINDOW면 콘솔 자체가 안 생긴다.
+        //   (stdout은 콘솔이 아니라 파이프로 받으니 출력은 그대로 온다)
+        .creation_flags(CREATE_NO_WINDOW)
         .arg(&command)
         .args(&args)
         .output()
