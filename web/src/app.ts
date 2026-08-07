@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.9.3'
+const APP_VERSION = '0.9.4'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -114,6 +114,28 @@ function toast(message: string, kind: 'info' | 'good' | 'bad' = 'info') {
 /* ── 디스크 상태 ──────────────────────────────────────────────
    화면 맨 위. "정리 가능 용량"보다 이게 먼저다 — 사람들이 이 앱을 여는
    이유가 "용량이 부족해서"라서, 얼마나 부족한지가 첫 화면이어야 한다. */
+let diskReadAt = 0
+
+/**
+ * 디스크 상태를 다시 읽는다. 너무 자주 부르는 건 막되, 낡은 값을 보여주진 않는다.
+ *
+ * ★ 왜 필요한가 (실물에서 나온 문제): loadDisk는 앱이 **켜질 때 한 번**만 돌았다.
+ *   그런데 이 앱은 트레이 상주라 창을 닫아도 며칠씩 떠 있는다. 그래서 화면의
+ *   "남은 공간"이 마지막 실행 시점의 값으로 굳어버렸다. 실측에서 탐색기는
+ *   75.5GB인데 앱은 111.3GB라고 하고 있었다 — 36GB 차이.
+ *
+ *   용량을 알려주는 도구가 용량을 틀리게 말하면 나머지를 다 잘해도 소용이 없다.
+ *   엔진 호출은 statfs 한 번이라 싸다. 홈으로 올 때와 창이 다시 앞으로 나올 때
+ *   읽는다.
+ */
+function refreshDisk(force = false) {
+  if (!inTauri) return
+  const now = Date.now()
+  if (!force && now - diskReadAt < 5000) return // 연달아 부르는 것만 막는다
+  diskReadAt = now
+  loadDisk()
+}
+
 async function loadDisk() {
   if (!inTauri) {
     $('disk-title').textContent = '브라우저 체험판'
@@ -148,6 +170,8 @@ let startupLoaded = false
 function go(name: string) {
   for (const s of screens) $(`s-${s}`).classList.toggle('on', s === name)
   document.querySelectorAll<HTMLButtonElement>('.nav button').forEach((b) => b.classList.toggle('on', b.dataset.go === name))
+  // 홈은 디스크 상태가 주인공이다. 올 때마다 실제 값을 다시 읽는다.
+  if (name === 'home') refreshDisk()
   // 생활 정리는 파일을 안 건드리므로 브라우저에서도 그대로 돈다(기록만 localStorage).
   if (name === 'tidy') loadTidy()
   if (inTauri && name === 'startup' && !startupLoaded) { startupLoaded = true; loadStartup() }
@@ -356,7 +380,7 @@ async function answerAction(host: HTMLElement, unknown: string, outcome: string)
           ${r.failed.length ? `<span style="color:var(--muted);font-weight:var(--w-text)">${r.failed.length}개는 사용 중이라 건너뜀</span>` : ''}</div>`
         toast(`${r.quarantinedCount.toLocaleString()}개를 격리했어요. 격리함에서 되돌릴 수 있습니다.`, 'good')
         quarLoaded = false
-        loadDisk()
+        refreshDisk(true)
       } catch (err) {
         toast('정리하지 못했어요: ' + (err as Error).message, 'bad')
         b.disabled = false
@@ -481,7 +505,7 @@ $('apply-btn').addEventListener('click', async () => {
       (res.failed.length ? ` (${res.failed.length}개는 사용 중이라 건너뜀)` : '')
     btn.textContent = '정리 완료'
     quarLoaded = false // 격리함 새로고침 필요
-    loadDisk()
+    refreshDisk(true)
   } catch (err) {
     $('apply-note').textContent = `정리 실패: ${(err as Error).message}`
     btn.disabled = false; btn.textContent = '다시 시도'
@@ -1431,7 +1455,11 @@ if (inTauri) {
   $('hero-cap').textContent = '원클릭을 누르면 이 PC의 주요 폴더를 훑어서 정리 가능한 용량을 보여드려요.'
   // 창을 닫으면 트레이로 내려간다. 어디로 갔는지 모르면 그건 사라진 것이다.
   ;($('tray-note') as HTMLElement).hidden = false
-  loadDisk()
+  refreshDisk(true)
+  // ★ 트레이에서 창을 다시 꺼냈을 때도 읽는다. 그 사이 며칠이 지났을 수 있다.
+  //   (같은 이유로 업데이트 확인도 6시간마다 돈다 — 아래)
+  window.addEventListener('focus', () => refreshDisk())
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshDisk() })
   purgeExpiredQuarantine() // 유예 끝난 것 실제 삭제
   // 시작할 때 한 번, 그 뒤 6시간마다. 트레이에 상주하는 앱이라
   // '시작할 때만' 보면 며칠 켜둔 사이 나온 버전을 영영 모른다.
