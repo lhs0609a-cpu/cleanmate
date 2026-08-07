@@ -348,21 +348,17 @@ export interface PurgeResult {
   failed: { entry: QuarantineEntry; reason: string }[]
 }
 
-/**
- * 30일이 지난 것만 실제로 지운다.
- *
- * 이 함수가 이 프로젝트에서 파일을 영구히 없애는 유일한 지점이다.
- * 그래서 만료 검사를 여기 한 곳에 가둬둔다 — 호출자가 "지금 지워줘"라고
- * 요청할 방법이 없다.
- */
-export async function purgeExpired(root: string, now = Date.now()): Promise<PurgeResult> {
-  const manifest = await readManifest(root)
+/** 고른 항목을 실제로 지운다. 아래 두 공개 함수가 공유하는 유일한 삭제 루프. */
+async function purgeChosen(
+  root: string,
+  manifest: QuarantineEntry[],
+  chosen: QuarantineEntry[]
+): Promise<PurgeResult> {
   const purged: QuarantineEntry[] = []
   const failed: PurgeResult['failed'] = []
   let bytes = 0
 
-  for (const entry of manifest) {
-    if (!isExpired(entry, now)) continue
+  for (const entry of chosen) {
     try {
       await rm(storePath(root, entry.id), { force: true })
       purged.push(entry)
@@ -378,6 +374,34 @@ export async function purgeExpired(root: string, now = Date.now()): Promise<Purg
   }
 
   return { purged, bytes, failed }
+}
+
+/**
+ * 30일이 지난 것만 실제로 지운다. 앱이 켜질 때 조용히 도는 자동 경로다.
+ * 자동으로 도는 쪽은 만료된 것 외에는 절대 건드리지 않는다.
+ */
+export async function purgeExpired(root: string, now = Date.now()): Promise<PurgeResult> {
+  const manifest = await readManifest(root)
+  return purgeChosen(root, manifest, manifest.filter((e) => isExpired(e, now)))
+}
+
+/**
+ * 유예를 기다리지 않고 **지금** 비운다.
+ *
+ * ── 왜 만들었나 ──────────────────────────────────────────────
+ * 격리는 "버리기 전에 문 앞에 내놓기"다. 그런데 격리 폴더는 같은 드라이브에
+ * 있으므로 **용량이 하나도 안 준다.** 디스크가 92% 찬 사람에게 "30일 뒤에
+ * 37GB가 빕니다"는 답이 아니다. 지금 필요해서 이 앱을 연 사람이다.
+ * 실제로 "삭제가 안 됐다니 이게 무슨 소리냐"는 말을 들었다.
+ *
+ * ── 그래도 자동은 아니다 ─────────────────────────────────────
+ * 이 함수는 **사용자가 명시적으로 확인한 뒤에만** 불린다. 되돌릴 수 없기
+ * 때문이다. 기본 경로는 여전히 30일 격리다 — 되돌릴 수 있다는 게 이 제품의
+ * 약속이고, 그 약속을 없애는 게 아니라 '기다리지 않을 자유'를 더하는 것이다.
+ */
+export async function purgeNow(root: string): Promise<PurgeResult> {
+  const manifest = await readManifest(root)
+  return purgeChosen(root, manifest, manifest)
 }
 
 /* ── 유틸 ──────────────────────────────────────────────────── */

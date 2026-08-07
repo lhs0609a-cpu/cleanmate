@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.9.4'
+const APP_VERSION = '0.9.5'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -376,8 +376,9 @@ async function answerAction(host: HTMLElement, unknown: string, outcome: string)
       try {
         const r = await engine('answer-apply', [unknown, outcome, ...(scannedPath ? [scannedPath] : [])])
         host.innerHTML = `<div class="t-small" style="margin-top:10px;color:var(--safe);font-weight:var(--w-em)">
-          ${r.quarantinedCount.toLocaleString()}개를 격리했어요 — 30일 안에 되돌릴 수 있습니다.
+          ${r.quarantinedCount.toLocaleString()}개를 격리함으로 옮겼어요 — 30일 안에 되돌릴 수 있습니다.
           ${r.failed.length ? `<span style="color:var(--muted);font-weight:var(--w-text)">${r.failed.length}개는 사용 중이라 건너뜀</span>` : ''}</div>`
+        mountPurgeNow(host, bytes)
         toast(`${r.quarantinedCount.toLocaleString()}개를 격리했어요. 격리함에서 되돌릴 수 있습니다.`, 'good')
         quarLoaded = false
         refreshDisk(true)
@@ -499,10 +500,12 @@ $('apply-btn').addEventListener('click', async () => {
     // 경로가 없으면(기본 스캔) 엔진이 같은 기본 목록을 다시 씁니다 — 방금 본 그 범위.
     const res = await engine('apply-sweep', scannedPath ? [scannedPath] : [])
     $('apply-note').innerHTML =
-      `<b style="color:var(--safe)">${res.quarantinedCount.toLocaleString()}개를 문 앞에 내놨어요.</b> ` +
-      `아직 용량은 그대로예요 — 버린 게 아니라 내놓기만 했거든요. ` +
-      `<b>30일 뒤 ${fmtBytes(res.bytesAfterGrace)}</b>가 진짜 빕니다. 그 전엔 언제든 되돌려요.` +
+      `<b style="color:var(--safe)">${res.quarantinedCount.toLocaleString()}개를 격리함으로 옮겼어요.</b> ` +
+      `<b>용량은 아직 그대로입니다</b> — 격리함이 같은 드라이브에 있거든요. ` +
+      `그냥 두면 30일 뒤 ${fmtBytes(res.bytesAfterGrace)}가 자동으로 비워지고, 그때까진 언제든 되돌릴 수 있어요.` +
       (res.failed.length ? ` (${res.failed.length}개는 사용 중이라 건너뜀)` : '')
+    // ★ "지금 필요해서 연 사람"에게 30일은 답이 아니다. 바로 여기에 즉시 확보를 놓는다.
+    mountPurgeNow($('apply-note'), res.bytesAfterGrace)
     btn.textContent = '정리 완료'
     quarLoaded = false // 격리함 새로고침 필요
     refreshDisk(true)
@@ -511,6 +514,49 @@ $('apply-btn').addEventListener('click', async () => {
     btn.disabled = false; btn.textContent = '다시 시도'
   }
 })
+
+/**
+ * "지금 비우기" 버튼을 붙인다 — 유예 30일을 안 기다리고 즉시 용량을 확보한다.
+ *
+ * ── 왜 필요한가 ──────────────────────────────────────────────
+ * 격리함은 **같은 드라이브에 있다.** 그래서 격리만으로는 용량이 1바이트도 안 준다.
+ * 디스크가 92% 찬 사람에게 "30일 뒤에 37GB가 빕니다"는 답이 아니다 —
+ * 지금 부족해서 이 앱을 연 사람이다. 실제로 "삭제가 안 됐다니 이게 무슨
+ * 소리냐"는 말을 들었고, 그 말이 맞았다.
+ *
+ * ── 그래도 기본값은 30일이다 ─────────────────────────────────
+ * 되돌릴 수 있다는 게 이 제품의 약속이고, 그건 안 없앤다. 없애는 게 아니라
+ * **기다리지 않을 자유**를 더하는 것이다. 그래서 누를 때 한 번 더 확인받고,
+ * 되돌릴 수 없다는 걸 숫자와 함께 분명히 말한다.
+ */
+function mountPurgeNow(host: HTMLElement, bytes: number) {
+  if (!inTauri || !bytes) return
+  const box = document.createElement('div')
+  box.style.marginTop = '12px'
+  box.innerHTML = `<button class="btn ghost" data-purge-now="1">지금 비우기 — ${fmtBytes(bytes)} 즉시 확보</button>
+    <span class="t-small" style="color:var(--muted);margin-left:8px">되돌릴 수 없어요</span>`
+  host.appendChild(box)
+
+  box.querySelector<HTMLButtonElement>('[data-purge-now]')!.addEventListener('click', async (ev) => {
+    const b = ev.currentTarget as HTMLButtonElement
+    if (!confirm(`격리함을 지금 비울까요?\n\n${fmtBytes(bytes)}가 바로 확보됩니다.\n\n30일을 기다리지 않고 지금 지우는 거라 되돌릴 수 없어요.`)) return
+    b.disabled = true
+    b.textContent = '비우는 중…'
+    try {
+      const r = await engine('quar-purge-now')
+      box.innerHTML = `<span class="t-small" style="color:var(--safe);font-weight:var(--w-em)">
+        ${r.purgedCount.toLocaleString()}개를 지웠어요 — ${fmtBytes(r.bytes)}가 비었습니다.</span>` +
+        (r.failed.length ? `<span class="t-small" style="color:var(--muted);margin-left:6px">${r.failed.length}개는 사용 중이라 남겨뒀어요</span>` : '')
+      quarLoaded = false
+      refreshDisk(true)
+      toast(`${fmtBytes(r.bytes)}를 비웠어요`, 'good')
+    } catch (err) {
+      b.disabled = false
+      b.textContent = '지금 비우기'
+      toast('비우지 못했어요: ' + (err as Error).message, 'bad')
+    }
+  })
+}
 
 /* ── 숨은 공간 (데스크톱: 실측) ─────────────────────────────── */
 async function loadHidden() {
@@ -1261,7 +1307,12 @@ async function loadQuar() {
       <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap">
         <h2 class="t-title" style="font-weight:var(--w-num)">격리된 ${data.items.length.toLocaleString()}개 · ${fmtBytes(data.totalBytes)}</h2>
         ${drives.length > 1 ? `<span class="t-small" style="color:var(--muted)">드라이브 ${drives.join(' · ')}</span>` : ''}
+        <button class="btn ghost" id="purge-all">지금 비우기</button>
         <button class="btn" id="restore-all" style="margin-left:auto">전부 되돌리기</button>
+      </div>
+      <div class="t-small" style="color:var(--muted);margin:-4px 0 12px">
+        여기 있는 동안은 <b>용량이 안 줄어듭니다</b> — 격리함이 같은 드라이브에 있거든요.
+        30일을 안 기다리려면 '지금 비우기'를 누르세요.
       </div>
       ${data.items.slice(0, 50).map((it: any) => {
         const left = Math.ceil((data.graceDays * day - (Date.now() - it.quarantinedAt)) / day)
@@ -1306,6 +1357,24 @@ async function loadQuar() {
       const r = await engine('restore', ['--all'])
       toast(`${r.restoredCount.toLocaleString()}개를 되돌렸어요.`)
       loadQuar()
+    })
+
+    // 유예를 안 기다리고 지금 비운다. 되돌릴 수 없으므로 숫자와 함께 한 번 더 확인받는다.
+    document.getElementById('purge-all')?.addEventListener('click', async (ev) => {
+      const b = ev.currentTarget as HTMLButtonElement
+      if (!confirm(`격리함을 지금 비울까요?\n\n${data.items.length.toLocaleString()}개 · ${fmtBytes(data.totalBytes)}가 바로 확보됩니다.\n\n30일을 기다리지 않고 지금 지우는 거라 되돌릴 수 없어요.`)) return
+      b.disabled = true
+      b.textContent = '비우는 중…'
+      try {
+        const r = await engine('quar-purge-now')
+        toast(`${r.purgedCount.toLocaleString()}개를 지웠어요 — ${fmtBytes(r.bytes)}가 비었습니다.`, 'good')
+        refreshDisk(true)
+        loadQuar() // 실제 상태를 다시 읽는다
+      } catch (err) {
+        b.disabled = false
+        b.textContent = '지금 비우기'
+        toast('비우지 못했어요: ' + (err as Error).message, 'bad')
+      }
     })
   } catch (err) {
     host.innerHTML = `<div class="card"><div class="note">격리함을 읽지 못했어요: ${esc((err as Error).message)}</div></div>`

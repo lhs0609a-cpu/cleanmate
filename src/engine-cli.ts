@@ -52,6 +52,7 @@ import {
   isExpired,
   listQuarantineRoots,
   purgeExpired,
+  purgeNow,
   GRACE_DAYS,
 } from './quarantine.ts'
 import { defaultRoots } from './presets.ts'
@@ -528,6 +529,25 @@ async function main() {
           for (const f of r.failed) failed.push({ path: f.entry.originalPath, reason: f.reason })
         }
         out({ purgedCount, bytes, graceDays: GRACE_DAYS, failed })
+        break
+      }
+      /**
+       * 유예를 기다리지 않고 지금 비운다. **되돌릴 수 없다.**
+       *
+       * 격리 폴더는 같은 드라이브에 있어서 격리만으로는 용량이 하나도 안 준다.
+       * 디스크가 꽉 찬 사람에게 "30일 뒤에 빕니다"는 답이 아니다.
+       * UI가 명시적으로 확인을 받은 뒤에만 부른다.
+       */
+      case 'quar-purge-now': {
+        let purgedCount = 0, bytes = 0
+        const failed: { path: string; reason: string }[] = []
+        for (const root of await listQuarantineRoots()) {
+          const r = await purgeNow(root)
+          purgedCount += r.purged.length
+          bytes += r.bytes
+          for (const f of r.failed) failed.push({ path: f.entry.originalPath, reason: f.reason })
+        }
+        out({ purgedCount, bytes, failed })
         break
       }
       case 'probe': {

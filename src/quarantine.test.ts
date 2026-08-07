@@ -18,6 +18,7 @@ import {
   quarantine,
   restore,
   purgeExpired,
+  purgeNow,
   readManifest,
   isExpired,
   isUnchanged,
@@ -242,6 +243,52 @@ test('30일이 지나야 실제로 지운다', async () => {
     // 이제는 진짜 없다
     const back = await restore([q.quarantined[0].id], s.root)
     assert.equal(back.restored.length, 0, '지웠는데 복구가 됐다 — 둘 중 하나가 거짓말이다')
+  } finally {
+    await s.cleanup()
+  }
+})
+
+/* ────────────────────────────────────────────────────────────
+   "지금 비우기" — 유예를 안 기다리는 경로
+
+   격리함은 같은 드라이브에 있어서, 격리만으로는 용량이 1바이트도 안 준다.
+   92% 찬 디스크를 들고 온 사람에게 "30일 뒤에 빕니다"는 답이 아니다.
+   그래서 사용자가 확인하면 지금 지운다. 되돌릴 수 없는 경로이므로
+   '무엇이 지워지고 무엇이 남는지'를 여기서 못 박는다.
+   ──────────────────────────────────────────────────────────── */
+
+test('★지금 비우기 — 유예가 안 끝났어도 지운다 (사용자가 확인한 경우)', async () => {
+  const s = await sandbox()
+  try {
+    const p = await s.file('now.txt', 'gone')
+    const q = await quarantine([{ path: p, reason: 't', zone: 'AMBIG' }], s.opts)
+
+    // 방금 격리한 것 — purgeExpired였다면 하나도 안 지웠을 상태다
+    assert.equal((await purgeExpired(s.root)).purged.length, 0, '자동 경로는 여전히 30일을 지켜야 한다')
+
+    const r = await purgeNow(s.root)
+    assert.equal(r.purged.length, 1)
+    assert.equal(r.bytes, 4)
+    assert.equal((await readManifest(s.root)).length, 0, '장부에서도 빠져야 한다')
+
+    const back = await restore([q.quarantined[0].id], s.root)
+    assert.equal(back.restored.length, 0, '지웠는데 복구가 됐다 — 둘 중 하나가 거짓말이다')
+  } finally {
+    await s.cleanup()
+  }
+})
+
+test('★지금 비우기는 격리함 안의 것만 건드린다 — 원본 자리는 손대지 않는다', async () => {
+  const s = await sandbox()
+  try {
+    const parked = await s.file('parked.txt', 'x')
+    const untouched = await s.file('untouched.txt', 'keep me')
+    await quarantine([{ path: parked, reason: 't', zone: 'AMBIG' }], s.opts)
+
+    await purgeNow(s.root)
+
+    // 격리한 적 없는 파일은 그대로 있어야 한다
+    assert.equal(await readFile(untouched, 'utf8'), 'keep me')
   } finally {
     await s.cleanup()
   }
