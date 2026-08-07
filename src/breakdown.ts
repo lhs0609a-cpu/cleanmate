@@ -73,15 +73,31 @@ export interface AgeSpan {
   overYearPercent: number
 }
 
-/** 나이 분포. '오래된 자료'라고 말하려면 근거가 있어야 한다. */
+/**
+ * 나이 분포. '오래된 자료'라고 말하려면 근거가 있어야 한다.
+ *
+ * ★ Math.max(...ages)를 쓰지 않는다 — 실물에서 원클릭을 통째로 죽인 버그다.
+ *   스프레드는 **배열 길이만큼 함수 인자를 만든다.** V8은 인자 개수에 한계가
+ *   있어서(십수만 개), 파일이 많은 PC에서 RangeError: Maximum call stack size
+ *   exceeded 로 터졌다. 파일이 적은 개발 PC에선 절대 재현되지 않는다 —
+ *   디스크가 꽉 찬 사람일수록 이 도구가 필요한데, 그 사람만 못 쓴 셈이다.
+ *   한 번 훑으면 되는 일이라 반복문이 더 빠르기도 하다.
+ */
 export function ageSpan(items: BreakdownItem[]): AgeSpan | null {
-  const ages = items.map((i) => i.ageDays).filter((a): a is number => typeof a === 'number')
-  if (!ages.length) return null
-  const overYear = ages.filter((a) => a >= 365).length
+  let oldest = -Infinity, newest = Infinity, count = 0, overYear = 0
+  for (const it of items) {
+    const a = it.ageDays
+    if (typeof a !== 'number') continue
+    count++
+    if (a > oldest) oldest = a
+    if (a < newest) newest = a
+    if (a >= 365) overYear++
+  }
+  if (!count) return null
   return {
-    oldestDays: Math.max(...ages),
-    newestDays: Math.min(...ages),
-    overYearPercent: Math.round((overYear / ages.length) * 100),
+    oldestDays: oldest,
+    newestDays: newest,
+    overYearPercent: Math.round((overYear / count) * 100),
   }
 }
 

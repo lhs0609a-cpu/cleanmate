@@ -463,7 +463,7 @@ async function main() {
           const result = await applySweep(plan)
           quarantinedCount += result.quarantinedCount
           bytesAfterGrace += result.bytesAfterGrace
-          failed.push(...result.failed)
+          for (const f of result.failed) failed.push(f)
         }
         out({ quarantinedCount, bytesAfterGrace, failed })
         break
@@ -505,7 +505,7 @@ async function main() {
           const r = await restore(ids, root)
           restoredCount += r.restored.length
           restoredBytes += r.restored.reduce((s, e) => s + e.size, 0)
-          failed.push(...r.failed.map((f) => ({ path: f.entry.originalPath, reason: f.reason })))
+          for (const f of r.failed) failed.push({ path: f.entry.originalPath, reason: f.reason })
         }
         out({ restoredCount, restoredBytes, failed })
         break
@@ -525,7 +525,7 @@ async function main() {
           const r = await purgeExpired(root)
           purgedCount += r.purged.length
           bytes += r.bytes
-          failed.push(...r.failed.map((f) => ({ path: f.entry.originalPath, reason: f.reason })))
+          for (const f of r.failed) failed.push({ path: f.entry.originalPath, reason: f.reason })
         }
         out({ purgedCount, bytes, graceDays: GRACE_DAYS, failed })
         break
@@ -779,7 +779,7 @@ async function main() {
             const r = await applyFolderTidy(sub)
             movedCount += r.movedCount
             movedBytes += r.movedBytes
-            failed.push(...r.failed)
+            for (const f of r.failed) failed.push(f)
             destFolder = r.destFolder
           }
         }
@@ -798,7 +798,7 @@ async function main() {
           )
           quarantinedCount = q.quarantined.length
           quarantinedBytes = q.bytes
-          failed.push(...q.failed)
+          for (const f of q.failed) failed.push(f)
         }
 
         out({ movedCount, movedBytes, destFolder, quarantinedCount, quarantinedBytes, failed })
