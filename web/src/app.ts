@@ -32,7 +32,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.9.5'
+const APP_VERSION = '0.9.6'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -237,19 +237,56 @@ function renderReport(r: Report) {
 }
 
 /**
- * 근거 패널 — ★ 답을 고르기 '전에' 보여준다.
+ * 파일 한 개 — "이건 무엇의 것이고, 지우면 어떻게 되나"
+ *
+ * ★ 여기 이렇게 떠 있었다:
+ *     torch_cuda.dll   [개발 중간 산출물]   1.2GB
+ *   1.2GB짜리를 보여주면서 이름표 하나만 달아놓은 셈이다. 사용자는
+ *   "그래서 이게 뭐냐, 지우면 뭐가 안 되냐"를 알 수 없으니 아무 답도 못 누른다.
+ *
+ * 그래서 파일마다 다섯 줄을 편다 — 누구 것 / 왜 그렇게 봤나 / 지워도 되나 /
+ * 지우면 무슨 일이 생기나 / 어디까지 영향을 주나. 사실은 owners.ts가 만들고
+ * 여기서는 그리기만 한다(화면이 판단을 지어내지 않게).
+ */
+function fileCardHtml(s: any): string {
+  const o = s.owner
+  const name = esc(s.path.split(/[\\/]/).pop())
+  // 소유자 판별이 없는 옛 응답(사이드카가 구버전일 때)에서도 목록은 떠야 한다.
+  if (!o) {
+    return `<div class="bd-file">
+      <span class="bd-name">${name}</span>
+      ${s.kind ? `<span class="bd-kindtag">${esc(s.kind)}</span>` : ''}
+      <span class="bd-size">${fmtBytes(s.size)}</span>
+      <span class="bd-path">${esc(s.path)}</span>
+    </div>`
+  }
+  return `
+    <div class="bd-file of of-${esc(o.verdict)}">
+      <div class="of-h">
+        <span class="bd-name">${name}</span>
+        <span class="of-v">${esc(o.verdictLabel)}</span>
+        <span class="bd-size">${fmtBytes(s.size)}</span>
+      </div>
+      <div class="of-who">${esc(s.headline ?? o.role)}</div>
+      <div class="kd-line"><b>왜 이렇게 봤나</b> ${esc(o.because)}</div>
+      <div class="kd-line"><b>지우면</b> ${esc(o.onDelete)}</div>
+      <div class="kd-line"><b>영향 범위</b> ${esc(o.affects.join(' · '))}</div>
+      <span class="bd-path">${esc(s.path)}</span>
+    </div>`
+}
+
+/**
+ * 근거 패널 — ★ 답을 고르기 '전에' 보여주고, 접지 않는다.
  *
  * 전에는 답을 누른 뒤에야 나왔다. 판단하려고 정보가 필요한데 정보를 보려면
- * 먼저 결정해야 하는 구조였다 — 순서가 거꾸로였다.
- * 이제 스캔이 근거를 함께 실어 오므로(engine-cli의 scanPlan) 즉시 그린다.
- */
-/**
- * 근거 패널 — 접지 않는다.
+ * 먼저 결정해야 하는 구조였다 — 순서가 거꾸로였다. 이제 스캔이 근거를 함께
+ * 실어 오므로(engine-cli의 scanPlan) 즉시 그린다.
  *
  * 사용자가 결정을 못 내리는 이유는 셋이다:
  *   "이게 정확히 뭐냐 / 지워도 되냐 / 지우면 뭐가 영향받냐"
  * 그래서 종류마다 [무엇인지 · 왜 그렇게 봤나 · 지우면 어떻게 되나 · 다시 생기나]를
  * 한 줄도 접지 않고 편다. 접어두면 아무도 안 펴고, 안 펴면 없는 것과 같다.
+ * 파일 하나하나도 같은 질문에 답한다 — fileCardHtml.
  */
 function evidenceHtml(ev: any): string {
   if (!ev) return ''
@@ -273,13 +310,7 @@ function evidenceHtml(ev: any): string {
       <span class="bd-v">${fmtBytes(g.bytes)} · ${g.count.toLocaleString()}개</span>
     </div>`).join('')
 
-  const files = (ev.samples ?? []).slice(0, 5).map((s: any) => `
-    <div class="bd-file">
-      <span class="bd-name">${esc(s.path.split(/[\\/]/).pop())}</span>
-      ${s.kind ? `<span class="bd-kindtag">${esc(s.kind)}</span>` : ''}
-      <span class="bd-size">${fmtBytes(s.size)}</span>
-      <span class="bd-path">${esc(s.path)}</span>
-    </div>`).join('')
+  const files = (ev.samples ?? []).slice(0, 5).map(fileCardHtml).join('')
 
   return `
     <div class="bd">
@@ -297,7 +328,7 @@ function evidenceHtml(ev: any): string {
 
       <div class="bd-sec">어디에 있나</div>
       ${folders}
-      <div class="bd-sec">큰 파일부터</div>
+      <div class="bd-sec">큰 파일부터 — 무엇의 것이고, 지우면 어떻게 되나</div>
       ${files}
     </div>`
 }

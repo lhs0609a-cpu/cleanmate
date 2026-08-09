@@ -58,6 +58,7 @@ import {
 import { defaultRoots } from './presets.ts'
 import { buildBreakdown } from './breakdown.ts'
 import { groupByKind, describeMix, kindOf } from './kinds.ts'
+import { ownerOf, ownerHeadline } from './owners.ts'
 import { UNKNOWN_EXPLAIN } from './content/unknowns.ts'
 import { gatherFacts } from './probes/facts.ts'
 import { probeHiberfil } from './probes/hiberfil.ts'
@@ -108,6 +109,19 @@ import type { Classified, Outcome } from './types.ts'
 
 /** 이보다 작은 파일은 옮겨봐야 체감이 없다 — 목록만 길어진다. */
 const RELOCATE_MIN_BYTES = 100 * 1024 * 1024 // 100MB
+
+/**
+ * 목록에 올릴 파일 하나를 사람이 읽을 수 있게 만든다.
+ *
+ * 종류(kind)만 붙이던 자리다. `torch_cuda.dll · 개발 중간 산출물 · 1.2GB`로는
+ * 아무도 결정을 못 내린다 — 뭐가 깨지는지를 말하지 않으니까. 그래서 소유자
+ * 판별(owners.ts)을 함께 실어 보낸다: 누구 것이고, 지우면 무슨 일이 생기고,
+ * 어디까지 영향을 주는지. 판단은 화면이 아니라 여기서 끝난다.
+ */
+function withOwner<T extends { path: string }>(x: T) {
+  const owner = ownerOf(x.path)
+  return { ...x, kind: kindOf(x.path).label, owner, headline: ownerHeadline(owner) }
+}
 
 /**
  * 옮길 후보를 고른다. 스캔 → 옮겨도 되는 것만 → 큰 것만.
@@ -374,7 +388,7 @@ async function scanPlan(paths: string[]) {
         folders: b.folders,
         exts: b.exts,
         age: b.age,
-        samples: b.samples.map((x) => ({ ...x, kind: kindOf(x.path).label })),
+        samples: b.samples.map(withOwner),
         explain: (UNKNOWN_EXPLAIN as any)[q.unknown] ?? null,
       },
     }
@@ -650,7 +664,7 @@ async function main() {
             folders: b.folders,
             exts: b.exts,
             age: b.age,
-            samples: b.samples.map((x) => ({ ...x, kind: kindOf(x.path).label })),
+            samples: b.samples.map(withOwner),
             explain: (UNKNOWN_EXPLAIN as any)[unknown] ?? null,
             items: items.slice(0, 200),
           })

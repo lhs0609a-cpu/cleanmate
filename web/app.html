@@ -524,6 +524,22 @@
   .bd-path{display:block;color:var(--faint);font-family:var(--font-mono);
            font-size:var(--t-micro);line-height:var(--lh-micro);letter-spacing:var(--tr-micro);word-break:break-all;margin-top:1px}
 
+  /* 파일 한 개 = 카드 하나.
+     이름표만 달던 한 줄에서 "누구 것 / 지우면 / 영향 범위"까지 펴는 자리다.
+     왼쪽 색띠가 판정을 말한다 — 초록은 지워도 되는 것, 빨강은 두는 것.
+     문구와 색이 서로 다른 말을 하면 색을 지운다(색이 거짓말을 하면 안 된다). */
+  .of{--k:var(--amb);border-top:0;border-left:3px solid var(--k);
+      background:var(--surface-2);border-radius:var(--r-sm);
+      padding:var(--s-2) var(--s-3);margin-top:var(--s-2)}
+  .of-safe{--k:var(--safe)} .of-ask{--k:var(--amb)} .of-keep{--k:var(--lock)}
+  .of-h{display:flex;align-items:baseline;gap:var(--s-2);flex-wrap:wrap}
+  .of-v{font-size:var(--t-micro);line-height:var(--lh-micro);letter-spacing:var(--tr-micro);
+        font-weight:var(--w-num);color:var(--k);white-space:nowrap}
+  .of-h .bd-size{margin-left:auto;white-space:nowrap}
+  .of-who{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
+          font-weight:var(--w-em);color:var(--ink);margin-top:1px}
+  .of .bd-path{margin-top:var(--s-1)}
+
   .bd-act{display:flex;align-items:center;gap:var(--s-3);flex-wrap:wrap;
           margin-top:var(--s-4);padding-top:var(--s-3);border-top:1px solid var(--line)}
   .bd-act span{font-size:var(--t-caption);line-height:var(--lh-caption);letter-spacing:var(--tr-caption);color:var(--muted)}
