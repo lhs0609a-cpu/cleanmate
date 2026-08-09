@@ -215,8 +215,19 @@ jobs:
       #   실제로 토큰이 없어 게시 단계에서 멈췄는데, 그때 만들어진 설치파일이
       #   러너와 함께 사라져서 11분짜리 빌드가 통째로 헛일이 됐다.
       #   여기 올려두면 토큰이 없어도 런 페이지에서 받아 설치할 수 있다.
+      #
+      # ★★ 이 단계는 절대 릴리스를 막아선 안 된다 (continue-on-error).
+      #   v0.9.6에서 이걸로 릴리스가 통째로 안 나갔다. 빌드·서명·설치파일 생성이
+      #   전부 성공한 뒤, 여기서 "Artifact storage quota has been hit"으로 실패했고
+      #   그러면 잡이 실패로 꺾여서 **게시 단계가 아예 실행되지 않았다.**
+      #   보험으로 넣은 단계가 정작 본 작업을 막은 셈이다.
+      #   보관은 게시가 막혔을 때의 대비책이지 릴리스의 조건이 아니다.
+      #
+      #   retention-days: 게시된 릴리스가 이미 같은 exe를 영구 보관한다. 여기 쌓인
+      #   19개(약 450MB)가 무료 용량을 다 먹어서 위 사고가 났다. 짧게 두고 버린다.
       - name: 설치파일 보관 (게시가 막혀도 받을 수 있게)
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: TeraClean-Setup-${{ steps.ver.outputs.version }}
@@ -224,6 +235,7 @@ jobs:
             dist-installer/TeraClean-Setup-${{ steps.ver.outputs.version }}.exe
             latest.json
           if-no-files-found: warn
+          retention-days: 7
 
       # 시크릿이 없으면 여기서 '조용히 넘어가지 않고' 멈춘다.
       # 게시가 안 된 릴리스는 성공으로 보고돼선 안 된다 — 그게 다운로드가 막혀 있는데
