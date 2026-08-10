@@ -19,6 +19,7 @@ import {
   restore,
   purgeExpired,
   purgeNow,
+  purgeEntries,
   readManifest,
   isExpired,
   isUnchanged,
@@ -483,6 +484,53 @@ test('★ 유예가 끝난 것만 지운다 — 만료 삭제가 실제로 용�
     const left = await readManifest(s.root)
     assert.equal(left.length, 1, '남은 것은 장부에 그대로')
     assert.equal(left[0].reason, '방금 캐시')
+  } finally {
+    await s.cleanup()
+  }
+})
+
+/* ────────────────────────────────────────────────────────────
+   방금 격리한 것만 지우기 (원클릭이 곧바로 용량을 비우는 경로)
+   ──────────────────────────────────────────────────────────── */
+
+test('★ purgeEntries는 방금 격리한 것만 지운다 — 남의 것을 건드리면 약속을 깬 것이다', async () => {
+  const s = await sandbox()
+  try {
+    // 며칠 전 질문에 답해서 격리해 둔 것 — 아직 되돌릴 수 있다고 약속한 것
+    const old = await s.file('중요한자료.psd', 'x'.repeat(4096))
+    const before = await quarantine([{ path: old, reason: '질문에 답함', zone: 'AMBIG' }], s.opts)
+
+    // 지금 원클릭이 격리한 캐시
+    const c1 = await s.file('cache/a.bin', 'y'.repeat(1024))
+    const c2 = await s.file('cache/b.bin', 'z'.repeat(2048))
+    const now = await quarantine(
+      [{ path: c1, reason: '캐시', zone: 'SAFE' }, { path: c2, reason: '캐시', zone: 'SAFE' }],
+      s.opts
+    )
+
+    const r = await purgeEntries(now.quarantined, s.opts)
+    assert.equal(r.purged.length, 2, '방금 격리한 둘만 지운다')
+    assert.equal(r.bytes, 1024 + 2048)
+
+    // ★ 며칠 전 것은 장부에도, 저장소에도 그대로 있어야 한다
+    const left = await readManifest(s.root)
+    assert.equal(left.length, 1, '남의 격리물이 사라졌다')
+    assert.equal(left[0].id, before.quarantined[0].id)
+    assert.ok(await s.exists(join(s.root, 'store', before.quarantined[0].id)),
+      '되돌릴 수 있다고 약속한 파일이 실제로 없어졌다')
+  } finally {
+    await s.cleanup()
+  }
+})
+
+test('purgeEntries에 빈 목록을 주면 아무것도 안 지운다', async () => {
+  const s = await sandbox()
+  try {
+    const p = await s.file('a.bin', 'x'.repeat(512))
+    await quarantine([{ path: p, reason: '캐시', zone: 'SAFE' }], s.opts)
+    const r = await purgeEntries([], s.opts)
+    assert.equal(r.purged.length, 0)
+    assert.equal((await readManifest(s.root)).length, 1, '장부를 건드리면 안 된다')
   } finally {
     await s.cleanup()
   }

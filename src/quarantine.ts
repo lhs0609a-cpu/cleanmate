@@ -404,6 +404,47 @@ export async function purgeNow(root: string): Promise<PurgeResult> {
   return purgeChosen(root, manifest, manifest)
 }
 
+/**
+ * **방금 격리한 것만** 지운다. 격리함에 이미 있던 건 건드리지 않는다.
+ *
+ * ── 왜 purgeNow로는 안 되나 ──────────────────────────────────
+ * purgeNow는 그 드라이브의 격리함을 통째로 비운다. 원클릭이 곧바로 비우게
+ * 만들면서 그걸 쓰면, 며칠 전 질문에 "정리해도 돼요"라고 답해 격리해 둔 것들도
+ * — 아직 되돌릴 수 있다고 약속한 것들도 — 함께 사라진다. 사용자는 캐시를
+ * 비운다고 눌렀을 뿐인데.
+ *
+ * 그래서 방금 만든 항목의 id만 골라 지운다. 약속의 범위를 좁히지 않는다.
+ */
+export async function purgeEntries(
+  entries: QuarantineEntry[],
+  opts: QuarantineOptions = {}
+): Promise<PurgeResult> {
+  const rootFor = opts.rootFor ?? quarantineRoot
+  // 드라이브마다 격리함(장부)이 따로 있다. 원본 경로로 어느 격리함인지 되짚는다.
+  const byRoot = new Map<string, QuarantineEntry[]>()
+  for (const e of entries) {
+    const root = rootFor(e.originalPath)
+    const list = byRoot.get(root)
+    if (list) list.push(e)
+    else byRoot.set(root, [e])
+  }
+
+  const purged: QuarantineEntry[] = []
+  const failed: PurgeResult['failed'] = []
+  let bytes = 0
+  for (const [root, mine] of byRoot) {
+    const ids = new Set(mine.map((e) => e.id))
+    const manifest = await readManifest(root)
+    const r = await purgeChosen(root, manifest, manifest.filter((e) => ids.has(e.id)))
+    // ★ push(...배열)로 쓰면 안 된다. 인자로 펼치는 건 12만 개쯤에서 스택이 터진다 —
+    //   원클릭이 4만~50만 개를 지우는 경로라 정확히 그 사례다(테스트가 잡았다).
+    for (const p of r.purged) purged.push(p)
+    for (const f of r.failed) failed.push(f)
+    bytes += r.bytes
+  }
+  return { purged, bytes, failed }
+}
+
 /* ── 유틸 ──────────────────────────────────────────────────── */
 
 async function rewriteManifest(root: string, entries: QuarantineEntry[]): Promise<void> {

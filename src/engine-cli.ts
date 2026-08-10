@@ -15,7 +15,8 @@
  * 사용: teraclean-engine <command> [json-args]
  *   default-roots                    이 PC에서 기본으로 훑을 폴더 목록
  *   scan-plan      <path...>         스캔(여러 곳 가능) → 3-존 + 정리 계획 + 질문
- *   apply-sweep    <path...>         존 A 자동 정리(격리로 이동)
+ *   apply-sweep    <path...> [--quarantine]  존 A 자동 정리. 기본은 즉시 삭제 —
+ *                                    --quarantine을 붙이면 30일 격리에서 멈춘다
  *   quar-list                        격리함 목록 (전 드라이브)
  *   restore        <id|--all>        되돌리기
  *   purge                            유예 30일이 지난 것만 실제 삭제
@@ -545,18 +546,31 @@ async function main() {
         break
       }
       case 'apply-sweep': {
-        const paths = args.length ? args : (await presentDefaultRoots()).map((r) => r.path)
+        /**
+         * 기본은 **곧바로 지운다** — 용량이 지금 빈다.
+         *
+         * 격리에서 멈추던 게 기본이었는데, 격리함은 같은 드라이브에 있어서
+         * 용량이 하나도 안 줬다. "지금 정리 가능 7.0GB"를 보고 누른 사람에게
+         * "용량은 아직 그대로입니다"는 버튼이 약속을 깬 것이다.
+         *
+         * 30일 격리를 원하면 --quarantine을 붙인다. 없애지 않고 남겨둔다 —
+         * 되돌릴 수 있다는 선택지를 뺏지는 않는다.
+         */
+        const keep = args.includes('--quarantine')
+        const rest = args.filter((a) => !a.startsWith('--'))
+        const paths = rest.length ? rest : (await presentDefaultRoots()).map((r) => r.path)
         if (!paths.length) fail('정리할 폴더를 찾지 못했습니다.')
-        let quarantinedCount = 0, bytesAfterGrace = 0
+        let quarantinedCount = 0, purgedCount = 0, bytesAfterGrace = 0
         const failed: { path: string; reason: string }[] = []
         for (const path of paths) {
           const plan = await planSweep(path)
-          const result = await applySweep(plan)
+          const result = await applySweep(plan, { purge: !keep })
           quarantinedCount += result.quarantinedCount
+          purgedCount += result.purgedCount
           bytesAfterGrace += result.bytesAfterGrace
           for (const f of result.failed) failed.push(f)
         }
-        out({ quarantinedCount, bytesAfterGrace, failed })
+        out({ quarantinedCount, purgedCount, purged: !keep, bytesAfterGrace, failed })
         break
       }
       case 'quar-list': {

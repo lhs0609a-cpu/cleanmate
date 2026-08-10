@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.9.8'
+const APP_VERSION = '0.9.9'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -212,8 +212,10 @@ function renderReport(r: Report) {
   const where = r.roots?.length
     ? `<b style="color:var(--ink)">본 곳 ${r.roots.length}곳</b>: ${r.roots.map((x) => esc(x.path)).join(' · ')}<br>`
     : ''
+  // ★ "문 앞에 내놓고"는 격리 시절의 말이다. 이제 확실한 건 진짜로 지운다 —
+  //   화면이 동작과 다른 말을 하면, 맞는 말을 해도 안 믿게 된다.
   $('plan-lede').innerHTML =
-    where + '확실한 건 알아서 문 앞에 내놓고(되돌리기 가능), 애매한 건 아래에서 물어봅니다.'
+    where + '확실한 건 알아서 지우고(용량이 바로 빕니다), 애매한 건 아래에서 물어봅니다.'
   $('plan3').innerHTML = `
     <div class="stat"><div class="n g">${fmtBytes(r.plan.autoBytes)}</div><div class="l">지금 정리 가능<br>확실한 캐시 ${r.plan.autoCount.toLocaleString()}개 · 규칙 확증분만</div></div>
     <div class="stat"><div class="n a">${fmtBytes(r.plan.askBytes)}</div><div class="l">물어보면 정리 가능<br>애매한 ${r.plan.askCount.toLocaleString()}개 · 아래 질문으로</div></div>
@@ -234,7 +236,8 @@ function renderReport(r: Report) {
   applyBtn.disabled = r.plan.autoBytes === 0
   // 데스크톱에서는 실제로 정리한다. 브라우저에서는 안내만.
   document.querySelectorAll<HTMLElement>('#s-home .pill.desk').forEach((p) => { p.hidden = inTauri })
-  applyBtn.textContent = inTauri ? `확실한 캐시 ${fmtBytes(r.plan.autoBytes)} 정리하기` : '확실한 캐시 정리하기'
+  // 버튼이 무슨 일을 하는지 그대로 쓴다. '정리하기'는 옮기는 것도 지우는 것도 될 수 있다.
+  applyBtn.textContent = inTauri ? `캐시 ${fmtBytes(r.plan.autoBytes)} 지금 지우기` : '확실한 캐시 정리하기'
 }
 
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p
@@ -654,24 +657,39 @@ async function runScan(pickFolder = false) {
 $('oneclick').addEventListener('click', () => runScan(false))
 $('pick2').addEventListener('click', () => runScan(true))
 
-/* ── 정리 실행 (데스크톱: 진짜 격리 / 브라우저: 안내) ── */
+/* ── 정리 실행 ─────────────────────────────────────────────────
+   ★ 이 버튼은 이제 **실제로 지운다.** 전에는 격리함으로 옮기고 멈췄는데,
+     격리함은 같은 드라이브에 있어서 용량이 1바이트도 안 줬다. "지금 정리 가능
+     7.0GB"를 보고 누른 사람에게 "용량은 아직 그대로입니다"가 뜨는 화면이었다.
+     두 번 같은 항의를 들었고, 두 번 다 맞는 말이었다.
+
+     30일 격리를 원하는 사람을 위해 선택지는 아래에 남겨둔다 — 없애는 게 아니라
+     기본을 바꾸는 것이다. */
 $('apply-btn').addEventListener('click', async () => {
   if (!inTauri) {
-    toast('실제 정리(격리로 이동)는 데스크톱 앱에서 실행됩니다. 브라우저는 보안상 파일을 옮기거나 지울 수 없어요.', 'bad')
+    toast('실제 정리는 데스크톱 앱에서 실행됩니다. 브라우저는 보안상 파일을 지울 수 없어요.', 'bad')
     return
   }
   const btn = $('apply-btn') as HTMLButtonElement
-  btn.disabled = true; btn.textContent = '정리 중...'
+  btn.disabled = true; btn.textContent = '지우는 중...'
   try {
     // 경로가 없으면(기본 스캔) 엔진이 같은 기본 목록을 다시 씁니다 — 방금 본 그 범위.
     const res = await engine('apply-sweep', scannedPath ? [scannedPath] : [])
-    $('apply-note').innerHTML =
-      `<b style="color:var(--safe)">${res.quarantinedCount.toLocaleString()}개를 격리함으로 옮겼어요.</b> ` +
-      `<b>용량은 아직 그대로입니다</b> — 격리함이 같은 드라이브에 있거든요. ` +
-      `그냥 두면 30일 뒤 ${fmtBytes(res.bytesAfterGrace)}가 자동으로 비워지고, 그때까진 언제든 되돌릴 수 있어요.` +
-      (res.failed.length ? ` (${res.failed.length}개는 사용 중이라 건너뜀)` : '')
-    // ★ "지금 필요해서 연 사람"에게 30일은 답이 아니다. 바로 여기에 즉시 확보를 놓는다.
-    mountPurgeNow($('apply-note'), res.bytesAfterGrace)
+    const skipped = res.failed.length ? ` (${res.failed.length}개는 사용 중이라 건너뜀)` : ''
+    if (res.purged) {
+      $('apply-note').innerHTML =
+        `<b style="color:var(--safe)">${res.purgedCount.toLocaleString()}개를 지웠어요 — ` +
+        `${fmtBytes(res.bytesAfterGrace)}가 지금 비었습니다.</b>${skipped}` +
+        `<div class="t-small" style="color:var(--muted);margin-top:6px">` +
+        `규칙이 확증한 캐시·로그·임시 파일만 지웠어요. 애매한 건 아래에서 물어봅니다.</div>`
+    } else {
+      // --quarantine으로 돌린 경우(선택지를 쓴 사람). 용량이 안 준다는 걸 숨기지 않는다.
+      $('apply-note').innerHTML =
+        `<b style="color:var(--safe)">${res.quarantinedCount.toLocaleString()}개를 격리함으로 옮겼어요.</b> ` +
+        `<b>용량은 아직 그대로입니다</b> — 격리함이 같은 드라이브에 있거든요. ` +
+        `30일 뒤 ${fmtBytes(res.bytesAfterGrace)}가 자동으로 비워집니다.${skipped}`
+      mountPurgeNow($('apply-note'), res.bytesAfterGrace)
+    }
     btn.textContent = '정리 완료'
     quarLoaded = false // 격리함 새로고침 필요
     refreshDisk(true)
