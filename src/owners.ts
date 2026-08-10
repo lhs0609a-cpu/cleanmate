@@ -27,7 +27,7 @@
  * `identified: false`로 표시하고 문장이 "…로 보입니다"로 바뀐다.
  */
 
-import { kindOf, impactOf } from './kinds.ts'
+import { kindOf, kindByExt, impactOf } from './kinds.ts'
 
 /** 지워도 되나 — 세 가지뿐이다. 애매한 등급을 늘리면 아무 뜻도 없어진다. */
 export type OwnerVerdict =
@@ -47,10 +47,20 @@ export interface Owner {
   verdict: OwnerVerdict
   /** 등급을 사람 말로 */
   verdictLabel: string
-  /** 지우면 무슨 일이 생기나 — 구체적으로. '주의하세요'는 답이 아니다 */
+  /** 지우면 무슨 일이 생기나 — 한 문장. '주의하세요'는 답이 아니다 */
   onDelete: string
-  /** 어디까지 영향을 주나. 영향받지 않는 것도 적는다 — 안심의 근거가 된다 */
-  affects: string[]
+  /**
+   * 영향 범위를 두 칸으로 가른다.
+   *
+   * ★ 왜 한 덩어리가 아닌가: 처음엔 문장 하나에 다 담았다. 그랬더니 화면이
+   *   "프로그램 설정·저장 데이터가 섞여 있습니다. 지우면 그 앱의 설정이 초기화될 수
+   *   있어요."처럼 길고, '지우면' 칸과 '영향 범위' 칸에 같은 말이 두 번 실렸다.
+   *   사람이 실제로 찾는 건 두 가지다 — **뭐가 깨지나**, 그리고 **뭐가 안전하나**.
+   *   갈라놓으면 화면이 ✕/✓ 두 줄로 그릴 수 있고, 눈으로 훑어도 결정이 된다.
+   */
+  breaks: string[]
+  /** 그대로 남는 것. 이게 안심의 근거다 — 없으면 사용자는 최악을 가정한다 */
+  intact: string[]
   /** 프로그램을 확정했나. false면 추정이므로 문장이 '…로 보입니다'가 된다 */
   identified: boolean
 }
@@ -82,72 +92,72 @@ const PROGRAMS: ProgramRule[] = [
   /* ── 게임 ─────────────────────────────────────────────────
      게임 캐시는 용량이 크고 지워도 대개 안전해서 회수 효율이 가장 좋다.
      동시에 세이브를 잘못 지우면 되돌릴 수 없어서, 이름을 정확히 아는 게 중요하다. */
-  { test: /\/(tslgame|pubg)/, name: '배틀그라운드', kind: '게임', because: '경로에 배틀그라운드 폴더(TslGame/PUBG)가 있습니다' },
-  { test: /\/league of legends\/|\/leagueoflegends\//, name: '리그 오브 레전드', kind: '게임', because: '경로에 League of Legends 폴더가 있습니다' },
-  { test: /\/valorant\//, name: '발로란트', kind: '게임', because: '경로에 VALORANT 폴더가 있습니다' },
-  { test: /\/maplestory/, name: '메이플스토리', kind: '게임', because: '경로에 MapleStory 폴더가 있습니다' },
-  { test: /\/lostark\/|\/lost ark\//, name: '로스트아크', kind: '게임', because: '경로에 로스트아크 폴더가 있습니다' },
-  { test: /\/overwatch\//, name: '오버워치', kind: '게임', because: '경로에 Overwatch 폴더가 있습니다' },
-  { test: /\/\.?minecraft\//, name: '마인크래프트', kind: '게임', because: '경로에 .minecraft 폴더가 있습니다' },
-  { test: /\/(genshin ?impact|yuanshen)\//, name: '원신', kind: '게임', because: '경로에 원신 폴더가 있습니다' },
-  { test: /\/fortnitegame\/|\/fortnite\//, name: '포트나이트', kind: '게임', because: '경로에 Fortnite 폴더가 있습니다' },
-  { test: /\/(diablo|starcraft|hearthstone|world of warcraft)/, name: '블리자드 게임', kind: '게임', because: '경로에 블리자드 게임 폴더가 있습니다' },
-  { test: /\/roblox\//, name: '로블록스', kind: '게임', because: '경로에 Roblox 폴더가 있습니다' },
-  { test: /\/(counter-strike|cs2)\//, name: '카운터 스트라이크', kind: '게임', because: '경로에 Counter-Strike 폴더가 있습니다' },
-  { test: /\/grand theft auto|\/gta[5v]\//, name: 'GTA', kind: '게임', because: '경로에 GTA 폴더가 있습니다' },
-  { test: /\/elden ?ring\//, name: '엘든 링', kind: '게임', because: '경로에 Elden Ring 폴더가 있습니다' },
+  { test: /\/(tslgame|pubg)/, name: '배틀그라운드', kind: '게임', because: 'TslGame·PUBG 폴더' },
+  { test: /\/league of legends\/|\/leagueoflegends\//, name: '리그 오브 레전드', kind: '게임', because: 'League of Legends 폴더' },
+  { test: /\/valorant\//, name: '발로란트', kind: '게임', because: 'VALORANT 폴더' },
+  { test: /\/maplestory/, name: '메이플스토리', kind: '게임', because: 'MapleStory 폴더' },
+  { test: /\/lostark\/|\/lost ark\//, name: '로스트아크', kind: '게임', because: '로스트아크 폴더' },
+  { test: /\/overwatch\//, name: '오버워치', kind: '게임', because: 'Overwatch 폴더' },
+  { test: /\/\.?minecraft\//, name: '마인크래프트', kind: '게임', because: '.minecraft 폴더' },
+  { test: /\/(genshin ?impact|yuanshen)\//, name: '원신', kind: '게임', because: '원신 폴더' },
+  { test: /\/fortnitegame\/|\/fortnite\//, name: '포트나이트', kind: '게임', because: 'Fortnite 폴더' },
+  { test: /\/(diablo|starcraft|hearthstone|world of warcraft)/, name: '블리자드 게임', kind: '게임', because: '블리자드 게임 폴더' },
+  { test: /\/roblox\//, name: '로블록스', kind: '게임', because: 'Roblox 폴더' },
+  { test: /\/(counter-strike|cs2)\//, name: '카운터 스트라이크', kind: '게임', because: 'Counter-Strike 폴더' },
+  { test: /\/grand theft auto|\/gta[5v]\//, name: 'GTA', kind: '게임', because: 'GTA 폴더' },
+  { test: /\/elden ?ring\//, name: '엘든 링', kind: '게임', because: 'Elden Ring 폴더' },
 
   /* 게임 런처 — 개별 게임을 못 알아본 경우의 상위 답. 아래쪽에 둔다. */
-  { test: /\/nexon\//, name: '넥슨 게임', kind: '게임', because: '넥슨 폴더 안에 있습니다' },
-  { test: /\/riot games\//, name: '라이엇 게임', kind: '게임', because: 'Riot Games 폴더 안에 있습니다' },
-  { test: /\/battle\.net\/|\/blizzard/, name: '블리자드 게임', kind: '게임', because: '배틀넷 폴더 안에 있습니다' },
-  { test: /\/epic ?games\//, name: '에픽게임즈 게임', kind: '게임', because: 'Epic Games 폴더 안에 있습니다' },
-  { test: /\/steamapps?\/|\/steam\//, name: 'Steam 게임', kind: '게임', because: 'Steam 폴더 안에 있습니다' },
+  { test: /\/nexon\//, name: '넥슨 게임', kind: '게임', because: '넥슨 폴더 안' },
+  { test: /\/riot games\//, name: '라이엇 게임', kind: '게임', because: 'Riot Games 폴더 안' },
+  { test: /\/battle\.net\/|\/blizzard/, name: '블리자드 게임', kind: '게임', because: '배틀넷 폴더 안' },
+  { test: /\/epic ?games\//, name: '에픽게임즈 게임', kind: '게임', because: 'Epic Games 폴더 안' },
+  { test: /\/steamapps?\/|\/steam\//, name: 'Steam 게임', kind: '게임', because: 'Steam 폴더 안' },
 
   /* ── 브라우저 ───────────────────────────────────────────── */
-  { test: /\/google\/chrome\//, name: '크롬', kind: '웹 브라우저', because: 'Chrome 폴더 안에 있습니다' },
-  { test: /\/microsoft\/edge\//, name: '엣지', kind: '웹 브라우저', because: 'Edge 폴더 안에 있습니다' },
-  { test: /\/naver\/(whale|네이버 ?웨일)\//, name: '네이버 웨일', kind: '웹 브라우저', because: 'Whale 폴더 안에 있습니다' },
-  { test: /\/mozilla\/firefox\//, name: '파이어폭스', kind: '웹 브라우저', because: 'Firefox 폴더 안에 있습니다' },
-  { test: /\/(bravesoftware|opera software|vivaldi)\//, name: '웹 브라우저', kind: '웹 브라우저', because: '브라우저 폴더 안에 있습니다' },
+  { test: /\/google\/chrome\//, name: '크롬', kind: '웹 브라우저', because: 'Chrome 폴더 안' },
+  { test: /\/microsoft\/edge\//, name: '엣지', kind: '웹 브라우저', because: 'Edge 폴더 안' },
+  { test: /\/naver\/(whale|네이버 ?웨일)\//, name: '네이버 웨일', kind: '웹 브라우저', because: 'Whale 폴더 안' },
+  { test: /\/mozilla\/firefox\//, name: '파이어폭스', kind: '웹 브라우저', because: 'Firefox 폴더 안' },
+  { test: /\/(bravesoftware|opera software|vivaldi)\//, name: '웹 브라우저', kind: '웹 브라우저', because: '브라우저 폴더 안' },
 
   /* ── 메신저·회의 ───────────────────────────────────────── */
-  { test: /\/kakaotalk\/|\/카카오톡\//, name: '카카오톡', kind: '메신저', because: '카카오톡 폴더 안에 있습니다' },
-  { test: /\/discord\//, name: '디스코드', kind: '메신저', because: 'Discord 폴더 안에 있습니다' },
-  { test: /\/telegram/, name: '텔레그램', kind: '메신저', because: 'Telegram 폴더 안에 있습니다' },
-  { test: /\/slack\//, name: '슬랙', kind: '업무용 메신저', because: 'Slack 폴더 안에 있습니다' },
-  { test: /\/zoom\//, name: 'Zoom', kind: '화상회의', because: 'Zoom 폴더 안에 있습니다' },
-  { test: /\/microsoft ?teams\//, name: 'Teams', kind: '화상회의·업무 메신저', because: 'Teams 폴더 안에 있습니다' },
+  { test: /\/kakaotalk\/|\/카카오톡\//, name: '카카오톡', kind: '메신저', because: '카카오톡 폴더 안' },
+  { test: /\/discord\//, name: '디스코드', kind: '메신저', because: 'Discord 폴더 안' },
+  { test: /\/telegram/, name: '텔레그램', kind: '메신저', because: 'Telegram 폴더 안' },
+  { test: /\/slack\//, name: '슬랙', kind: '업무용 메신저', because: 'Slack 폴더 안' },
+  { test: /\/zoom\//, name: 'Zoom', kind: '화상회의', because: 'Zoom 폴더 안' },
+  { test: /\/microsoft ?teams\//, name: 'Teams', kind: '화상회의·업무 메신저', because: 'Teams 폴더 안' },
 
   /* ── 영상·디자인 ───────────────────────────────────────── */
-  { test: /\/(adobe )?premiere/, name: '프리미어 프로', kind: '영상 편집', because: 'Premiere 폴더 안에 있습니다' },
-  { test: /\/after ?effects/, name: '애프터 이펙트', kind: '영상 편집', because: 'After Effects 폴더 안에 있습니다' },
-  { test: /\/photoshop/, name: '포토샵', kind: '이미지 편집', because: 'Photoshop 폴더 안에 있습니다' },
-  { test: /\/(davinci ?resolve|blackmagic)/, name: '다빈치 리졸브', kind: '영상 편집', because: 'DaVinci Resolve 폴더 안에 있습니다' },
-  { test: /\/obs[- ]?studio\//, name: 'OBS', kind: '화면 녹화·방송', because: 'OBS 폴더 안에 있습니다' },
-  { test: /\/(bandicam|반디캠)\//, name: '반디캠', kind: '화면 녹화', because: '반디캠 폴더 안에 있습니다' },
-  { test: /\/capcut\//, name: '캡컷', kind: '영상 편집', because: 'CapCut 폴더 안에 있습니다' },
-  { test: /\/adobe\//, name: '어도비 프로그램', kind: '디자인·영상 도구', because: 'Adobe 폴더 안에 있습니다' },
-  { test: /\/(unity|unityhub)\//, name: '유니티', kind: '게임 개발 도구', because: 'Unity 폴더 안에 있습니다' },
-  { test: /\/unreal ?engine\//, name: '언리얼 엔진', kind: '게임 개발 도구', because: 'Unreal Engine 폴더 안에 있습니다' },
-  { test: /\/blender\//, name: '블렌더', kind: '3D 도구', because: 'Blender 폴더 안에 있습니다' },
-  { test: /\/figma\//, name: '피그마', kind: '디자인 도구', because: 'Figma 폴더 안에 있습니다' },
+  { test: /\/(adobe )?premiere/, name: '프리미어 프로', kind: '영상 편집', because: 'Premiere 폴더 안' },
+  { test: /\/after ?effects/, name: '애프터 이펙트', kind: '영상 편집', because: 'After Effects 폴더 안' },
+  { test: /\/photoshop/, name: '포토샵', kind: '이미지 편집', because: 'Photoshop 폴더 안' },
+  { test: /\/(davinci ?resolve|blackmagic)/, name: '다빈치 리졸브', kind: '영상 편집', because: 'DaVinci Resolve 폴더 안' },
+  { test: /\/obs[- ]?studio\//, name: 'OBS', kind: '화면 녹화·방송', because: 'OBS 폴더 안' },
+  { test: /\/(bandicam|반디캠)\//, name: '반디캠', kind: '화면 녹화', because: '반디캠 폴더 안' },
+  { test: /\/capcut\//, name: '캡컷', kind: '영상 편집', because: 'CapCut 폴더 안' },
+  { test: /\/adobe\//, name: '어도비 프로그램', kind: '디자인·영상 도구', because: 'Adobe 폴더 안' },
+  { test: /\/(unity|unityhub)\//, name: '유니티', kind: '게임 개발 도구', because: 'Unity 폴더 안' },
+  { test: /\/unreal ?engine\//, name: '언리얼 엔진', kind: '게임 개발 도구', because: 'Unreal Engine 폴더 안' },
+  { test: /\/blender\//, name: '블렌더', kind: '3D 도구', because: 'Blender 폴더 안' },
+  { test: /\/figma\//, name: '피그마', kind: '디자인 도구', because: 'Figma 폴더 안' },
 
   /* ── 개발 도구 ─────────────────────────────────────────── */
-  { test: /\/(microsoft vs code|vscode|\/code)\//, name: 'VS Code', kind: '코드 편집기', because: 'VS Code 폴더 안에 있습니다' },
-  { test: /\/jetbrains\//, name: 'JetBrains IDE', kind: '개발 도구', because: 'JetBrains 폴더 안에 있습니다' },
-  { test: /\/(docker|\.docker)\//, name: 'Docker', kind: '개발 환경 도구', because: 'Docker 폴더 안에 있습니다' },
-  { test: /\/android( |-)?(studio|sdk)\/|\/\.android\//, name: '안드로이드 개발 도구', kind: '개발 도구', because: 'Android SDK 폴더 안에 있습니다' },
-  { test: /\/visual studio/, name: '비주얼 스튜디오', kind: '개발 도구', because: 'Visual Studio 폴더 안에 있습니다' },
-  { test: /\/\.ollama\/|\/ollama\//, name: 'Ollama', kind: 'AI 모델 실행 도구', because: 'Ollama 폴더 안에 있습니다' },
-  { test: /\/(stable[- ]diffusion|comfyui|automatic1111)/, name: '이미지 생성 AI 도구', kind: 'AI 도구', because: '이미지 생성 AI 폴더 안에 있습니다' },
+  { test: /\/(microsoft vs code|vscode|\/code)\//, name: 'VS Code', kind: '코드 편집기', because: 'VS Code 폴더 안' },
+  { test: /\/jetbrains\//, name: 'JetBrains IDE', kind: '개발 도구', because: 'JetBrains 폴더 안' },
+  { test: /\/(docker|\.docker)\//, name: 'Docker', kind: '개발 환경 도구', because: 'Docker 폴더 안' },
+  { test: /\/android( |-)?(studio|sdk)\/|\/\.android\//, name: '안드로이드 개발 도구', kind: '개발 도구', because: 'Android SDK 폴더 안' },
+  { test: /\/visual studio/, name: '비주얼 스튜디오', kind: '개발 도구', because: 'Visual Studio 폴더 안' },
+  { test: /\/\.ollama\/|\/ollama\//, name: 'Ollama', kind: 'AI 모델 실행 도구', because: 'Ollama 폴더 안' },
+  { test: /\/(stable[- ]diffusion|comfyui|automatic1111)/, name: '이미지 생성 AI 도구', kind: 'AI 도구', because: '이미지 생성 AI 폴더 안' },
 
   /* ── 마이크로소프트·시스템 ─────────────────────────────── */
-  { test: /\/microsoft ?office\/|\/office1[456]\//, name: '오피스(워드·엑셀)', kind: '문서 프로그램', because: 'Office 폴더 안에 있습니다' },
-  { test: /\/onedrive\//, name: '원드라이브', kind: '클라우드 동기화', because: 'OneDrive 폴더 안에 있습니다' },
-  { test: /\/windows\/softwaredistribution\//, name: '윈도우 업데이트', kind: '윈도우 기능', because: '윈도우 업데이트 저장 폴더입니다' },
-  { test: /\/windows\/temp\//, name: '윈도우', kind: '운영체제', because: '윈도우 임시 폴더입니다' },
-  { test: /\/nvidia( corporation)?\//, name: '엔비디아 그래픽 드라이버', kind: '드라이버', because: 'NVIDIA 폴더 안에 있습니다' },
+  { test: /\/microsoft ?office\/|\/office1[456]\//, name: '오피스(워드·엑셀)', kind: '문서 프로그램', because: 'Office 폴더 안' },
+  { test: /\/onedrive\//, name: '원드라이브', kind: '클라우드 동기화', because: 'OneDrive 폴더 안' },
+  { test: /\/windows\/softwaredistribution\//, name: '윈도우 업데이트', kind: '윈도우 기능', because: '윈도우 업데이트 저장 폴더' },
+  { test: /\/windows\/temp\//, name: '윈도우', kind: '운영체제', because: '윈도우 임시 폴더' },
+  { test: /\/nvidia( corporation)?\//, name: '엔비디아 그래픽 드라이버', kind: '드라이버', because: 'NVIDIA 폴더 안' },
 ]
 
 /**
@@ -171,7 +181,9 @@ function projectOwner(norm: string, raw: string): ProgramRule | null {
     test: /(?:)/,
     name,
     kind: '개발 프로젝트',
-    because: `${name} 폴더 안의 ${m[1]}입니다 — 그 프로젝트가 만든 것입니다`,
+    // 근거는 경로 조각으로 짧게: 'ACE-Step-1.5 › .venv'.
+    // 문장으로 쓰면 카드 맨 아래 한 줄이 두 줄로 넘쳐서 아무도 안 읽는다.
+    because: `${name} › ${m[1]}`,
   }
 }
 
@@ -189,7 +201,7 @@ function appDataOwner(norm: string, raw: string): ProgramRule | null {
   const idx = m.index + '/appdata/'.length + m[1].length + 1
   const name = raw.replace(/\\/g, '/').slice(idx, idx + m[2].length)
   if (!name || /^(temp|tmp|cache|packages|microsoft)$/i.test(name)) return null
-  return { test: /(?:)/, name, kind: '프로그램', because: `AppData 안 ${name} 폴더에 있습니다 — 그 이름의 프로그램이 만든 것 같습니다` }
+  return { test: /(?:)/, name, kind: '프로그램', because: `AppData › ${name} (폴더 이름으로 추정)` }
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -202,10 +214,13 @@ function appDataOwner(norm: string, raw: string): ProgramRule | null {
 interface RoleRule {
   test: RegExp
   role: string
+  /** 근거는 짧은 조각으로. 문장으로 쓰면 카드가 글 덩어리가 된다 */
   because: string
   verdict: OwnerVerdict
+  /** 한 문장. 두 문장이 되면 아래 breaks/intact와 말이 겹친다 */
   onDelete: string
-  affects: string[]
+  breaks: string[]
+  intact: string[]
 }
 
 /**
@@ -228,18 +243,20 @@ const ROLES: RoleRule[] = [
      */
     test: /^(?!.*\/(node_modules|site-packages|\.venv|venv)\/).*\/(save|savegame|savegames|savedgames|savedata|저장|세이브)\//,
     role: '저장 파일(진행 상황)',
-    because: '경로에 세이브 폴더가 있습니다',
+    because: '세이브 폴더',
     verdict: 'keep',
-    onDelete: '★ {프로그램}의 진행 상황이 사라집니다. 클라우드 저장을 안 쓰셨다면 되돌릴 수 없습니다.',
-    affects: ['{프로그램}에서 지금까지 한 것 전부', '다시 처음부터 해야 합니다'],
+    onDelete: '★ {프로그램}의 진행 상황이 사라지고, 되돌릴 수 없습니다.',
+    breaks: ['지금까지 한 것 전부', '처음부터 다시'],
+    intact: [],
   },
   {
     test: /^(?!.*\/(node_modules|site-packages|\.venv|venv)\/).*\/(settings|preferences|config|프로필)\//,
     role: '설정 파일',
-    because: '경로에 설정 폴더가 있습니다',
+    because: '설정 폴더',
     verdict: 'keep',
-    onDelete: '★ {프로그램}의 설정이 처음 상태로 돌아갑니다. 로그인·단축키·작업 환경을 다시 맞춰야 합니다.',
-    affects: ['{프로그램}의 설정과 로그인 상태', '만든 파일 자체는 남습니다'],
+    onDelete: '★ {프로그램}의 설정이 처음 상태로 돌아갑니다.',
+    breaks: ['로그인·단축키·작업 환경'],
+    intact: ['만들어 둔 파일'],
   },
 
   /* AI 스택 — 파일 하나가 수백 MB~수 GB라 목록 맨 위에 잘 올라온다.
@@ -250,128 +267,143 @@ const ROLES: RoleRule[] = [
     // 빠지면 "다시 받으면 된다"는 답을 못 준다.
     test: /\/@?huggingface\/|\/hub\/models--/,
     role: '허깅페이스에서 내려받은 AI 모델',
-    because: '허깅페이스 모델 캐시 폴더에 있습니다',
+    because: '허깅페이스 모델 캐시',
     verdict: 'safe',
-    onDelete: '{프로그램}이 그 기능을 다시 쓸 때 인터넷에서 자동으로 다시 받습니다. 수백 MB~수 GB를 다시 내려받는 만큼 그때 한 번 오래 걸립니다.',
-    affects: ['{프로그램}의 첫 실행 속도', '인터넷이 없으면 그 기능을 못 씁니다', '직접 만든 파일·설정은 영향 없습니다'],
+    onDelete: '{프로그램이} 그 기능을 다시 쓸 때 인터넷에서 자동으로 받습니다.',
+    breaks: ['첫 실행이 느려짐 (수백 MB~수 GB 재다운로드)', '인터넷이 없으면 그 기능 정지'],
+    intact: ['직접 만든 파일·설정'],
   },
   {
     test: /(torch_cuda|torch_cpu|cudnn|cublas|cufft|curand|nvrtc|dnnl|onnxruntime|libtorch)/,
-    role: 'AI 계산 라이브러리(GPU 실행 파일)',
-    because: 'PyTorch·CUDA 같은 AI 계산 라이브러리 파일입니다',
+    role: 'AI 계산 라이브러리 (GPU 실행 파일)',
+    because: 'PyTorch·CUDA 라이브러리',
     verdict: 'ask',
-    onDelete: '{프로그램}이 실행되지 않습니다(불러오기 오류). 설치 명령을 다시 돌리면(pip install) 되돌아오지만, 수 GB를 다시 받아야 하고 몇 분에서 십몇 분 걸립니다.',
-    affects: ['{프로그램} 하나만', '직접 쓴 코드·설정은 그대로 남습니다', '윈도우와 다른 프로그램은 영향 없습니다'],
+    onDelete: '{프로그램이} 실행되지 않습니다. pip install로 되돌립니다 (수 GB·몇 분).',
+    breaks: ['{프로그램} 실행'],
+    intact: ['직접 쓴 코드·설정', '윈도우와 다른 프로그램'],
   },
   {
     test: /\.(onnx|safetensors|gguf|ckpt|pt|pth|tflite)$/,
     role: 'AI 모델 파일',
-    because: 'AI 모델 파일 형식입니다',
+    because: 'AI 모델 형식',
     verdict: 'ask',
-    onDelete: '{프로그램}의 AI 기능이 멈춥니다. 받아온 모델이면 다시 받을 수 있지만, 직접 학습시킨 것이면 되돌릴 수 없습니다.',
-    affects: ['{프로그램}의 AI 기능', '직접 학습시킨 모델이면 되돌릴 수 없습니다'],
+    onDelete: '{프로그램}의 AI 기능이 멈춥니다. 받아온 모델이면 다시 받을 수 있습니다.',
+    breaks: ['{프로그램}의 AI 기능', '직접 학습시킨 모델이면 못 되돌림'],
+    intact: ['다른 프로그램'],
   },
 
   /* 개발 산출물 — "다시 만들 수 있다"까지만 말하면 부족하다. 얼마나 걸리는지가 결정을 만든다. */
   {
     test: /\/(\.venv|venv)\/|\/site-packages\//,
-    role: '파이썬 가상환경에 설치된 라이브러리',
-    because: '가상환경(.venv) 폴더 안에 있습니다',
+    role: '파이썬 가상환경 라이브러리',
+    because: '가상환경(.venv) 안',
     verdict: 'ask',
-    onDelete: '{프로그램}이 실행되지 않습니다. 가상환경을 다시 만들면(pip install) 되돌아오고, 보통 몇 분에서 십몇 분 걸립니다.',
-    affects: ['{프로그램} 하나만', '직접 쓴 코드는 건드리지 않습니다', '다른 프로젝트의 가상환경은 따로라서 영향 없습니다'],
+    onDelete: '{프로그램이} 실행되지 않습니다. 가상환경을 다시 만들면 돌아옵니다 (몇 분).',
+    breaks: ['{프로그램} 실행'],
+    intact: ['직접 쓴 코드', '다른 프로젝트의 가상환경'],
   },
   {
     test: /\/node_modules\//,
-    role: '설치해 둔 라이브러리 폴더(node_modules)',
-    because: 'node_modules 폴더 안에 있습니다',
+    role: '설치해 둔 라이브러리 (node_modules)',
+    because: 'node_modules 안',
     verdict: 'ask',
-    onDelete: '{프로그램}을 다시 열 때 설치 명령을 한 번 돌려야 합니다(npm install, 보통 1~3분). 원본 코드는 그대로입니다.',
-    affects: ['{프로그램}을 다시 시작할 때의 대기 시간', '직접 쓴 코드·설정은 그대로 남습니다'],
+    onDelete: '{프로그램을} 다시 열 때 npm install을 한 번 돌려야 합니다 (1~3분).',
+    breaks: ['다시 시작할 때 1~3분'],
+    intact: ['직접 쓴 코드·설정'],
   },
   {
     test: /\/(dist|build|out|target|\.next|__pycache__)\//,
     role: '빌드 결과물',
-    because: '빌드 결과 폴더 안에 있습니다',
+    because: '빌드 결과 폴더',
     verdict: 'ask',
-    onDelete: '{프로그램}을 다시 빌드하면 그대로 만들어집니다. 원본 코드에서 나오는 것이라 잃는 건 빌드 시간뿐입니다.',
-    affects: ['다시 빌드하는 시간', '이미 배포한 것과 원본 코드는 영향 없습니다'],
+    onDelete: '다시 빌드하면 그대로 만들어집니다.',
+    breaks: ['다시 빌드하는 시간'],
+    intact: ['원본 코드', '이미 배포한 것'],
   },
   {
     test: /\.npm\/_cacache|\/pip\/cache|\.gradle\/caches|\.m2\/repository|\.cargo\/registry|\.pnpm-store|\.yarn\/cache/,
-    role: '설치 파일 보관소(패키지 캐시)',
-    because: '패키지 관리자가 다운로드를 모아두는 폴더입니다',
+    role: '설치 파일 보관소 (패키지 캐시)',
+    because: '패키지 관리자 캐시',
     verdict: 'safe',
-    onDelete: '다음에 설치할 때 인터넷에서 다시 받습니다. 프로젝트는 아무것도 깨지지 않고, 그때 설치가 조금 느려질 뿐입니다.',
-    affects: ['다음 설치가 조금 느려집니다', '지금 돌아가는 프로젝트는 영향 없습니다'],
+    onDelete: '다음에 설치할 때 인터넷에서 다시 받습니다.',
+    breaks: ['다음 설치가 조금 느려짐'],
+    intact: ['지금 돌아가는 프로젝트'],
   },
 
   /* 게임 — 캐시와 본체를 구분해야 한다. 둘의 결과가 완전히 다르다. */
   {
     test: /shader ?cache|\/dxcache\/|d3dscache|glcache|\/nv_cache\//,
     role: '그래픽 셰이더 캐시',
-    because: '그래픽카드가 미리 계산해둔 결과를 모아두는 폴더입니다',
+    because: '셰이더 캐시 폴더',
     verdict: 'safe',
-    onDelete: '{프로그램}을 다음에 켤 때 다시 만듭니다. 처음 몇 분간 화면이 살짝 끊길 수 있고, 그 뒤로는 같아집니다.',
-    affects: ['{프로그램}의 첫 실행 몇 분', '세이브·설정·진행 상황은 전혀 영향 없습니다'],
+    onDelete: '{프로그램을} 다음에 켤 때 다시 만듭니다.',
+    breaks: ['첫 실행 몇 분간 살짝 끊김'],
+    intact: ['세이브·설정·진행 상황'],
   },
   {
     test: /\.(pak|ucas|utoc|vpk|bsa|bnk|sga)$/,
     role: '게임 본체 데이터',
-    because: '게임이 쓰는 데이터 묶음 파일입니다',
+    because: '게임 데이터 묶음 파일',
     verdict: 'ask',
-    onDelete: '{프로그램}이 실행되지 않고, 런처가 파일 검사로 다시 받아야 합니다(보통 수 GB). 세이브는 따로 저장되므로 남습니다.',
-    affects: ['{프로그램}을 다시 받는 시간과 데이터 사용량', '세이브·설정은 남습니다'],
+    onDelete: '{프로그램이} 실행되지 않고, 런처가 파일 검사로 다시 받습니다 (수 GB).',
+    breaks: ['{프로그램} 실행', '다시 받는 시간·데이터'],
+    intact: ['세이브·설정'],
   },
 
   /* 흔한 부산물 — 이 아래는 "지워도 된다"가 정말 맞는 것들 */
   {
     test: /\/(cache|caches|gpucache|code cache|cachestorage|cache_data)\//,
-    role: '임시 저장본(캐시)',
-    because: '캐시 폴더 안에 있습니다',
+    role: '임시 저장본 (캐시)',
+    because: '캐시 폴더',
     verdict: 'safe',
-    onDelete: '{프로그램}이 필요할 때 다시 만듭니다. 처음 한 번 조금 느려지는 것 말고는 달라지는 게 없습니다.',
-    affects: ['{프로그램}의 첫 실행 속도', '로그인 상태·설정·만든 파일은 그대로입니다'],
+    onDelete: '{프로그램이} 필요할 때 다시 만듭니다.',
+    breaks: ['첫 실행이 조금 느려짐'],
+    intact: ['로그인 상태·설정·만든 파일'],
   },
   {
     test: /\.log(\.\d+)?$|\/logs?\//,
-    role: '동작 기록(로그)',
-    because: '로그 파일입니다',
+    role: '동작 기록 (로그)',
+    because: '로그 파일',
     verdict: 'safe',
-    onDelete: '{프로그램}은 그대로 동작합니다. 문제가 생겼을 때 원인을 찾는 기록이라, 지금 고칠 문제가 없다면 필요 없습니다.',
-    affects: ['지난 오류를 추적하기 어려워집니다', '프로그램 동작은 그대로입니다'],
+    onDelete: '{프로그램은} 그대로 동작합니다.',
+    breaks: ['지난 오류를 추적하기 어려워짐'],
+    intact: ['프로그램 동작 전부'],
   },
   {
     test: /\.(dmp|mdmp)$|\/(crashdumps?|crashreports?|minidump)\//,
-    role: '오류 보고 파일(크래시 덤프)',
-    because: '프로그램이 죽었을 때 남기는 기록입니다',
+    role: '오류 보고 파일 (크래시 덤프)',
+    because: '프로그램이 죽었을 때의 기록',
     verdict: 'safe',
-    onDelete: '{프로그램}에 아무 변화가 없습니다. 이미 지나간 오류의 기록이라 지우는 게 정상입니다.',
-    affects: ['아무것도 영향받지 않습니다'],
+    onDelete: '{프로그램에} 아무 변화가 없습니다.',
+    breaks: [],
+    intact: ['전부 — 이미 지나간 오류의 기록입니다'],
   },
   {
     test: /thumbcache|iconcache|\/thumbnails?\//,
     role: '미리보기 이미지 캐시',
-    because: '썸네일 저장 파일입니다',
+    because: '썸네일 저장 파일',
     verdict: 'safe',
-    onDelete: '폴더를 열 때 미리보기를 다시 만듭니다. 사진 원본과는 무관합니다.',
-    affects: ['폴더 미리보기가 처음 한 번 늦게 뜹니다', '사진·영상 원본은 영향 없습니다'],
+    onDelete: '폴더를 열 때 미리보기를 다시 만듭니다.',
+    breaks: ['미리보기가 처음 한 번 늦게 뜸'],
+    intact: ['사진·영상 원본'],
   },
   {
     test: /\/(temp|tmp)\//,
     role: '임시 파일',
-    because: '임시 폴더 안에 있습니다',
+    because: '임시 폴더',
     verdict: 'safe',
-    onDelete: '{프로그램}이 잠깐 쓰고 버리는 자리입니다. 지워도 동작이 달라지지 않습니다.',
-    affects: ['설치나 저장이 진행 중이라면 그 작업만 (그 경우 끝난 뒤에 정리하세요)'],
+    onDelete: '{프로그램이} 잠깐 쓰고 버리는 자리입니다.',
+    breaks: ['설치·저장이 진행 중이라면 그 작업'],
+    intact: ['그 밖의 전부'],
   },
   {
     test: /\/(update|updates|updater|pending|packages)\/.*\.(exe|msi|zip|nupkg|appx)$/,
     role: '내려받아 둔 업데이트 설치 파일',
-    because: '업데이트 폴더의 설치 파일입니다',
+    because: '업데이트 폴더의 설치 파일',
     verdict: 'safe',
-    onDelete: '{프로그램}은 이미 업데이트를 마쳤으니 그대로 동작합니다. 다음 업데이트는 새로 받습니다.',
-    affects: ['다음 업데이트를 다시 받아야 합니다', '지금 설치된 프로그램은 영향 없습니다'],
+    onDelete: '{프로그램은} 이미 업데이트를 마쳤으니 그대로 동작합니다.',
+    breaks: ['다음 업데이트를 다시 받아야 함'],
+    intact: ['설치된 프로그램'],
   },
 ]
 
@@ -431,14 +463,21 @@ function hasFinalConsonant(name: string): boolean {
 }
 
 /**
- * {프로그램} 자리에 이름을 넣고, 바로 뒤에 붙은 조사를 이름에 맞게 고친다.
+ * {프로그램} 자리에 이름을 넣고, 붙어 있는 조사를 이름에 맞게 고친다.
+ *
+ * 조사를 중괄호 안에 쓴 것(`{프로그램을}`)과 밖에 쓴 것(`{프로그램}을`)을 둘 다 받는다.
+ * 한쪽만 받으면 다른 쪽이 조용히 치환되지 않고 화면에 중괄호가 그대로 뜬다 —
+ * 실제로 그렇게 새어나갔다(테스트가 잡았다).
  * `{프로그램}의`·`{프로그램}에`처럼 안 변하는 조사는 건드리지 않는다.
  */
-const PLACEHOLDER = /\{프로그램\}([이가을를은는과와])?/g
+const PLACEHOLDER = /\{프로그램([이가을를은는과와])?\}([이가을를은는과와])?/g
 
 function fill(t: string, who: string): string {
   const i = hasFinalConsonant(who) ? 0 : 1
-  return t.replace(PLACEHOLDER, (_, josa?: string) => who + (josa ? JOSA[josa][i] : ''))
+  return t.replace(PLACEHOLDER, (_, inside?: string, outside?: string) => {
+    const josa = inside ?? outside
+    return who + (josa ? JOSA[josa][i] : '')
+  })
 }
 
 /**
@@ -468,17 +507,23 @@ export function ownerOf(path: string): Owner {
       programKind: prog?.kind ?? '',
       role: role.role,
       // 근거는 둘 다 말한다: 누구 것인지 본 이유 + 무슨 파일인지 본 이유
-      because: prog ? `${prog.because}. ${role.because}` : role.because,
+      because: prog ? `${prog.because} · ${role.because}` : role.because,
       verdict: role.verdict,
       verdictLabel: VERDICT_LABEL[role.verdict],
       onDelete: fill(role.onDelete, who),
-      affects: role.affects.map((a) => fill(a, who)),
+      breaks: role.breaks.map((a) => fill(a, who)),
+      intact: role.intact.map((a) => fill(a, who)),
       identified,
     }
   }
 
-  // 역할을 모를 때 — 종류 지식으로 답한다. 아는 척은 하지 않는다.
-  const k = kindOf(path)
+  /* 역할을 모를 때 — 종류 지식으로 답한다. 아는 척은 하지 않는다.
+   *
+   * ★ 확장자를 먼저 본다. kindOf는 출처(경로)를 우선하는데, 여기서는 "누구 것인지"를
+   *   위에서 이미 답했으므로 역할 자리에는 "무슨 파일인지"가 와야 한다. 안 갈랐더니
+   *   `AppData\MusicFactory\releases\video.mp4`(99MB)가 '프로그램이 저장한 데이터'로
+   *   떴다 — 동영상이라고 말해줘야 사용자가 판단할 수 있다. */
+  const k = kindByExt(path) ?? kindOf(path)
   const im = impactOf(k.key)
   const verdict: OwnerVerdict =
     im.level === 'none' ? 'safe' : im.level === 'low' ? 'ask' : 'keep'
@@ -486,11 +531,14 @@ export function ownerOf(path: string): Owner {
     program,
     programKind: prog?.kind ?? '',
     role: k.label,
-    because: prog ? `${prog.because}. ${k.why}` : k.why,
+    because: prog ? `${prog.because} · ${k.why}` : k.why,
     verdict,
     verdictLabel: VERDICT_LABEL[verdict],
-    onDelete: `${im.affects} ${im.regen}.`,
-    affects: [im.affects],
+    // ★ 같은 문장을 두 칸에 넣지 않는다. 전에는 onDelete와 affects가 둘 다
+    //   im.affects였고, 화면에 똑같은 줄이 '지우면'·'영향 범위'로 두 번 떴다.
+    onDelete: im.affects,
+    breaks: [],
+    intact: im.level === 'none' ? ['프로그램 동작 전부'] : [],
     identified,
   }
 }
@@ -504,5 +552,17 @@ export function ownerOf(path: string): Owner {
 export function ownerHeadline(o: Owner): string {
   if (!o.program) return `${o.role} — 어떤 프로그램 것인지는 확실하지 않습니다`
   const who = `${o.program}${o.programKind ? `(${o.programKind})` : ''}`
-  return o.identified ? `${who}의 ${o.role}` : `${who}의 ${o.role}로 보입니다`
+  return o.identified ? `${who}의 ${o.role}` : `${who}의 ${ro(o.role)} 보입니다`
+}
+
+/**
+ * '…로' / '…으로'를 고른다. 받침이 없으면 '로', ㄹ 받침도 '로'다
+ * ('파일로'가 맞고 '파일으로'는 틀리다). 그 밖의 받침은 '으로'.
+ * 실제로 "동영상로 보입니다"가 화면에 떴다.
+ */
+function ro(word: string): string {
+  const last = word.trim().slice(-1)
+  const c = last.charCodeAt(0)
+  const rieul = c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 === 8
+  return word + (!hasFinalConsonant(word) || rieul ? '로' : '으로')
 }

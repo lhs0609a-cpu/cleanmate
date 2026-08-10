@@ -82,16 +82,30 @@ const BY_EXT: { exts: string[]; kind: Kind }[] = [
 
 const UNKNOWN = K('other', '기타', '무슨 파일인지 저희도 모릅니다')
 
-/** 이 파일이 뭔지 사람 말로. 모르면 '기타' — 아는 척하지 않는다. */
-export function kindOf(path: string): Kind {
-  for (const r of BY_PATH) if (r.test.test(path)) return r.kind
-
+/**
+ * 확장자만 보고 판단한다. 못 알아보면 null.
+ *
+ * ★ 왜 따로 필요한가: kindOf는 출처(경로)를 먼저 본다. 묶어서 보여줄 때는 그게 맞다
+ *   — 같은 .mp4라도 OBS 녹화본과 카톡 영상은 다른 물건이니까.
+ *
+ *   그런데 파일 하나를 설명할 때는 반대가 된다. owners.ts가 "누구 것인지"를 이미
+ *   따로 답하기 때문에, 역할 자리에는 "무슨 파일인지"가 와야 한다. 그걸 안 갈라놨더니
+ *   `AppData\MusicFactory\releases\video.mp4`(99MB 동영상)가 화면에
+ *   '프로그램이 저장한 데이터'로 떴다 — 경로 규칙이 확장자를 이겨서다.
+ */
+export function kindByExt(path: string): Kind | null {
   const name = path.split(/[\\/]/).pop() ?? ''
   const dot = name.lastIndexOf('.')
   const ext = dot > 0 ? name.slice(dot).toLowerCase() : ''
-  if (ext) for (const r of BY_EXT) if (r.exts.includes(ext)) return r.kind
+  if (!ext) return null
+  for (const r of BY_EXT) if (r.exts.includes(ext)) return r.kind
+  return null
+}
 
-  return UNKNOWN
+/** 이 파일이 뭔지 사람 말로. 모르면 '기타' — 아는 척하지 않는다. */
+export function kindOf(path: string): Kind {
+  for (const r of BY_PATH) if (r.test.test(path)) return r.kind
+  return kindByExt(path) ?? UNKNOWN
 }
 
 export interface KindGroup {

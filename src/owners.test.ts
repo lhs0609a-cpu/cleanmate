@@ -34,11 +34,11 @@ test('★ 1.2GB짜리 dll이 어느 프로젝트 것인지 이름을 댄다', ()
   assert.equal(o.verdict, 'ask')
 })
 
-test('★ 영향 범위에 "영향받지 않는 것"이 함께 적힌다 — 안심의 근거다', () => {
+test('★ "깨지는 것"과 "그대로인 것"이 갈려 있다 — 안심의 근거를 따로 준다', () => {
   const o = ownerOf(TORCH)
-  assert.ok(o.affects.length >= 2)
-  assert.ok(o.affects.some((a) => /코드/.test(a)), '원본 코드가 남는다는 말이 있어야 한다')
-  assert.ok(o.affects.some((a) => /윈도우|다른 프로그램/.test(a)))
+  assert.ok(o.breaks.length >= 1, '무엇이 깨지는지가 있어야 한다')
+  assert.ok(o.intact.some((a) => /코드/.test(a)), '원본 코드가 남는다는 말이 있어야 한다')
+  assert.ok(o.intact.some((a) => /윈도우|다른 프로그램/.test(a)))
 })
 
 test('허깅페이스 모델 캐시는 "다시 받는다"까지 말한다', () => {
@@ -46,8 +46,8 @@ test('허깅페이스 모델 캐시는 "다시 받는다"까지 말한다', () =
   assert.equal(o.program, 'cthumb-sample')
   assert.match(o.role, /허깅페이스/)
   assert.equal(o.verdict, 'safe')
-  assert.match(o.onDelete, /다시 (내려)?받/)
-  assert.ok(o.affects.some((a) => /인터넷/.test(a)), '오프라인이면 못 쓴다는 사실을 숨기지 않는다')
+  assert.match(o.onDelete, /자동으로 받습니다/)
+  assert.ok(o.breaks.some((a) => /인터넷/.test(a)), '오프라인이면 못 쓴다는 사실을 숨기지 않는다')
 })
 
 test('한 줄 정체가 "프로그램의 역할" 꼴로 나온다', () => {
@@ -65,7 +65,7 @@ test('★ 배틀그라운드 셰이더 캐시: 이름을 대고, 세이브는 �
   assert.equal(o.verdict, 'safe')
   assert.match(o.role, /셰이더/)
   assert.match(o.onDelete, /배틀그라운드/)
-  assert.ok(o.affects.some((a) => /세이브/.test(a)), '진행 상황이 안전하다는 걸 말해야 결정이 된다')
+  assert.ok(o.intact.some((a) => /세이브/.test(a)), '진행 상황이 안전하다는 걸 말해야 결정이 된다')
 })
 
 test('★ 같은 게임의 세이브 폴더는 정반대 판정이 나온다', () => {
@@ -91,7 +91,7 @@ test('브라우저 캐시는 크롬 이름을 달고 나온다', () => {
   assert.equal(o.program, '크롬')
   assert.equal(o.verdict, 'safe')
   assert.match(o.onDelete, /크롬/)
-  assert.ok(o.affects.some((a) => /로그인|설정/.test(a)))
+  assert.ok(o.intact.some((a) => /로그인|설정/.test(a)))
 })
 
 test('설치된 앱 안의 node_modules는 앱 것으로 잡는다 — 프로젝트로 착각하지 않는다', () => {
@@ -135,6 +135,27 @@ test('역할을 모르는 파일은 종류 지식(kinds.ts)으로 답한다 — 
    구조적 보증 — 화면이 빈칸을 그리지 않게
    ──────────────────────────────────────────────────────────── */
 
+test('★ "지우면"과 "영향"이 같은 문장이면 안 된다 — 화면에 같은 줄이 두 번 떴다', () => {
+  // 실물 버그: 역할을 못 알아본 파일에서 onDelete와 영향 범위가 같은 문자열이었다.
+  for (const p of ['D:\\사진\\가족.jpg', 'C:\\Users\\me\\AppData\\Local\\X\\일반.dat',
+                   'D:\\받은것\\영화.mkv', 'C:\\문서\\계약서.pdf']) {
+    const o = ownerOf(p)
+    for (const a of [...o.breaks, ...o.intact]) {
+      assert.notEqual(a, o.onDelete, `${p}: '지우면'과 같은 문장이 영향 칸에 또 있다`)
+    }
+  }
+})
+
+test('★ AppData 안의 동영상은 "동영상"이라고 한다 — 위치가 확장자를 이기면 안 된다', () => {
+  // 실물: AppData\MusicFactory\releases\검수대기\video.mp4(99MB)가
+  //       '프로그램이 저장한 데이터'로 떴다. 누구 것인지는 이미 따로 답하므로
+  //       역할 자리에는 "무슨 파일인지"가 와야 한다.
+  const o = ownerOf('C:\\Users\\lhs06\\AppData\\Local\\MusicFactory\\releases\\검수대기\\video.mp4')
+  assert.match(o.role, /동영상/)
+  assert.equal(o.program, 'MusicFactory')
+  assert.match(ownerHeadline(o), /MusicFactory/)
+})
+
 test('★ 어떤 경로를 넣어도 다섯 칸이 다 채워진다', () => {
   const paths = [
     'C:\\x.dat',
@@ -148,12 +169,14 @@ test('★ 어떤 경로를 넣어도 다섯 칸이 다 채워진다', () => {
   for (const p of paths) {
     const o = ownerOf(p)
     assert.ok(o.role.length > 1, `${p}: 역할이 비었다`)
-    assert.ok(o.because.length > 5, `${p}: 근거가 비었다`)
+    // 근거는 '임시 폴더'처럼 짧은 조각이다(문장으로 쓰면 카드가 글 덩어리가 된다).
+    // 그래도 비어 있으면 안 된다 — 근거를 못 대는 판정은 판정이 아니다.
+    assert.ok(o.because.trim().length >= 3, `${p}: 근거가 비었다`)
     assert.ok(o.onDelete.length > 10, `${p}: 지우면 어떻게 되는지가 비었다`)
-    assert.ok(o.affects.length > 0, `${p}: 영향 범위가 비었다`)
     assert.ok(o.verdictLabel.length > 1, `${p}: 판정 문구가 비었다`)
     // {프로그램} 자리가 그대로 새어나가면 화면에 중괄호가 보인다.
-    assert.doesNotMatch(o.onDelete + o.affects.join(''), /\{프로그램/, `${p}: 치환이 안 됐다`)
+    assert.doesNotMatch(
+      [o.onDelete, ...o.breaks, ...o.intact].join(''), /\{프로그램/, `${p}: 치환이 안 됐다`)
   }
 })
 
@@ -191,6 +214,16 @@ test('숫자로 끝나는 프로젝트 이름도 읽는 소리대로 맞춘다',
   assert.match(six.onDelete, /proj-6을 다시 열 때/)
   const five = ownerOf('C:\\work\\proj-5\\node_modules\\a\\b.js')
   assert.match(five.onDelete, /proj-5를 다시 열 때/)
+})
+
+test('★ "…로/…으로 보입니다"를 받침에 맞게 쓴다', () => {
+  // 실물: "MusicFactory(프로그램)의 동영상로 보입니다"
+  const video = ownerOf('C:\\Users\\me\\AppData\\Local\\MusicFactory\\releases\\video.mp4')
+  assert.match(ownerHeadline(video), /동영상으로 보입니다$/)
+  // ㄹ 받침은 '으로'가 아니라 '로'다 — '파일로'가 맞고 '파일으로'는 틀리다
+  const conf = ownerOf('C:\\Users\\me\\AppData\\Roaming\\SomeApp\\config\\x.ini')
+  assert.match(conf.role, /설정 파일/)
+  assert.match(ownerHeadline(conf), /설정 파일로 보입니다$/)
 })
 
 test('추정한 이름을 확정처럼 말하지 않는다', () => {

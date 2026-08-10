@@ -542,7 +542,29 @@
   .of-h .bd-size{margin-left:auto;white-space:nowrap}
   .of-who{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
           font-weight:var(--w-em);color:var(--ink);margin-top:1px}
-  .of .bd-path{margin-top:var(--s-1)}
+
+  /* 세 줄이 기호로 구분된다 — 눈으로 훑어도 읽힌다.
+     →  지우면 무슨 일이 생기나
+     ✕  깨지는 것
+     ✓  그대로인 것 (안심의 근거. 이게 없으면 사용자는 최악을 가정한다)
+     기호를 고정폭으로 세워서 세 줄의 글머리가 한 줄로 맞게 한다. */
+  .of-l{display:flex;gap:var(--s-2);margin-top:3px;
+        font-size:var(--t-caption);line-height:var(--lh-caption);letter-spacing:var(--tr-caption)}
+  .of-l i{flex:none;width:12px;text-align:center;font-style:normal;font-weight:var(--w-num)}
+  .of-do{color:var(--ink-2)} .of-do i{color:var(--k)}
+  .of-bad{color:var(--ink-2)} .of-bad i{color:var(--lock)}
+  .of-ok{color:var(--ink-2)} .of-ok i{color:var(--safe)}
+
+  /* 묶음에 속한 파일들. 설명은 위에서 한 번 했으니 여기는 이름·크기·경로만. */
+  .of-files{margin-top:var(--s-2);border-top:1px solid var(--line);padding-top:var(--s-1)}
+  .of-f{display:flex;gap:var(--s-2);align-items:baseline;flex-wrap:wrap;margin-top:3px}
+  .of-fn{font-size:var(--t-caption);line-height:var(--lh-caption);letter-spacing:var(--tr-caption);color:var(--ink-2)}
+  .of-f .bd-size{margin-left:auto}
+  .of-f .bd-path{flex-basis:100%;margin-top:0}
+  /* 근거는 맨 아래, 가장 작게. 숨기지는 않는다 — 판단에 가장 덜 쓰이지만
+     "왜 그렇게 봤나"에 답할 수 없는 화면은 믿을 수 없는 화면이다. */
+  .of-why{margin-top:var(--s-2);color:var(--faint);
+          font-size:var(--t-micro);line-height:var(--lh-micro);letter-spacing:var(--tr-micro)}
 
   .bd-act{display:flex;align-items:center;gap:var(--s-3);flex-wrap:wrap;
           margin-top:var(--s-4);padding-top:var(--s-3);border-top:1px solid var(--line)}
