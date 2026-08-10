@@ -17,7 +17,7 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    Manager, WindowEvent,
+    Emitter, Manager, WindowEvent,
 };
 
 /// 창을 다시 꺼내 온다. 트레이 메뉴·두 번째 실행 둘 다 여기로 온다.
@@ -283,8 +283,21 @@ async fn run_uninstaller(
 /// ★ 엔진 사이드카 호출 — UI와 검증된 TS 엔진을 잇는 유일한 통로.
 /// 명령+인자를 주면 teraclean-engine.exe가 JSON을 돌려준다(engine-cli.ts 규약).
 /// 엔진 exe는 앱 exe 바로 옆에 있다(이노셋업이 함께 설치).
+///
+/// ★ stderr를 한 줄씩 읽어 창으로 넘긴다 — 진행률(%)과 남은 시간이 여기로 온다.
+///   전에는 `.output()`으로 프로세스가 끝날 때까지 통째로 기다렸다. 그래서 화면은
+///   경과 시간밖에 보여줄 수 없었고, 14만 개를 훑는 7분 동안 사용자는 반이나 왔는지
+///   멈춘 건지 알 수 없었다. 엔진은 진행 상황을 stderr에 NDJSON으로 흘리고
+///   (engine-cli.ts의 progress()), 여기서 `engine-progress` 이벤트로 중계한다.
+///   stdout은 그대로 결과 JSON 한 줄이다 — 규약은 바뀌지 않았다.
 #[tauri::command]
-async fn run_engine(command: String, args: Vec<String>) -> Result<serde_json::Value, String> {
+async fn run_engine(
+    app: tauri::AppHandle,
+    command: String,
+    args: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
     let exe_dir = std::env::current_exe()
         .map_err(|e| e.to_string())?
         .parent()
@@ -292,7 +305,7 @@ async fn run_engine(command: String, args: Vec<String>) -> Result<serde_json::Va
         .to_path_buf();
     let engine = exe_dir.join("teraclean-engine.exe");
 
-    let output = tokio::process::Command::new(&engine)
+    let mut child = tokio::process::Command::new(&engine)
         // ★ 콘솔 창을 만들지 않는다 (실물에서 보인 버그).
         //   엔진 exe는 node.exe를 복사해 만든 SEA다 → **콘솔 서브시스템** 프로그램이다.
         //   콘솔이 없는 GUI 프로세스(우리 앱)가 콘솔 프로그램을 띄우면 윈도우가
@@ -302,9 +315,33 @@ async fn run_engine(command: String, args: Vec<String>) -> Result<serde_json::Va
         .creation_flags(CREATE_NO_WINDOW)
         .arg(&command)
         .args(&args)
-        .output()
-        .await
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| format!("엔진을 실행하지 못했어요: {e}"))?;
+
+    // ★ stderr를 반드시 계속 읽어야 한다. 파이프에는 크기가 있어서, 안 읽으면
+    //   버퍼가 차는 순간 엔진이 write에서 멈춘다(교착). 진행 상황을 안 쓰는
+    //   명령에서도 이 루프는 돌아야 한다.
+    if let Some(err) = child.stderr.take() {
+        let app = app.clone();
+        // tokio::spawn이 아니라 Tauri의 런타임을 쓴다 — 이 커맨드가 어떤 실행기에서
+        // 돌든 핸들이 있다고 보장되는 쪽이다(tokio::spawn은 tokio 컨텍스트 밖에서 패닉).
+        tauri::async_runtime::spawn(async move {
+            let mut lines = BufReader::new(err).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                // JSON 한 줄만 진행 상황이다. 그 밖의 경고문은 조용히 지나간다.
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                    let _ = app.emit("engine-progress", v);
+                }
+            }
+        });
+    }
+
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| format!("엔진이 비정상 종료했어요: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     serde_json::from_str::<serde_json::Value>(&stdout)

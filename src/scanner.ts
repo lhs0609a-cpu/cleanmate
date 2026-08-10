@@ -84,6 +84,13 @@ export async function scan(root: string, opts: ScanOptions = {}): Promise<ScanRe
         skipped.push({ path: full, reason: (err as NodeJS.ErrnoException).code ?? 'stat 실패' })
       }
     }
+
+    // 폴더를 다 본 뒤에도 한 번 알린다.
+    //
+    // 위(순회 시작)에서만 알리면 파일 수가 한참 뒤처져 보인다. 순회는 깊이 우선이라
+    // 하위 폴더를 다 파고든 뒤에야 이 폴더의 파일이 세어지는데, 그 사이 화면의
+    // 숫자는 멈춰 있다 — 진행률은 오르는데 파일 수만 굳어 있으면 이상하게 보인다.
+    opts.onProgress?.(files.length, dir)
   }
 
   await walk(root, 0)

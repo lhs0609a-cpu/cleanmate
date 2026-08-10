@@ -59,6 +59,7 @@ import { defaultRoots } from './presets.ts'
 import { buildBreakdown } from './breakdown.ts'
 import { groupByKind, describeMix, kindOf } from './kinds.ts'
 import { ownerOf, ownerHeadline } from './owners.ts'
+import { computeProgress, type RootWeight } from './progress.ts'
 import { UNKNOWN_EXPLAIN } from './content/unknowns.ts'
 import { gatherFacts } from './probes/facts.ts'
 import { probeHiberfil } from './probes/hiberfil.ts'
@@ -186,16 +187,59 @@ function fail(message: string): never {
   process.exit(1)
 }
 
-/* ── 생활 정리 진행 기록 ───────────────────────────────────────
-   앱 데이터 폴더에 JSON 하나로 둔다. 서버에 안 올린다 — 이 앱에서 사용자의
-   무엇도 밖으로 나가지 않는다는 약속은 파일 분석에만 해당하는 게 아니다.
-   읽기 실패는 빈 상태로 넘어간다. 기록을 못 읽었다고 앱이 멈추면 안 된다. */
-function tidyFile(): string {
+/* ── 진행 상황 중계 ────────────────────────────────────────────
+   stdout은 결과 JSON 한 줄만 쓴다(규약). 그래서 진행 상황은 stderr로 흘린다 —
+   Rust(main.rs)가 한 줄씩 읽어 창으로 이벤트를 보내고, 화면이 그린다.
+
+   ★ 왜 필요했나: 엔진이 결과를 한 번에 돌려주는 구조라 화면은 경과 시간만
+     보여줄 수 있었다. 7분이 지나도 반이나 왔는지 알 수 없었다. */
+
+/** stderr에 한 줄. 실패해도 스캔을 멈추지 않는다 — 진행 표시가 본 작업을 막으면 안 된다. */
+function progress(data: unknown): void {
+  try {
+    process.stderr.write(JSON.stringify(data) + '\n')
+  } catch {
+    /* 파이프가 닫혔을 뿐이다. 스캔은 계속한다. */
+  }
+}
+
+/** 앱 데이터 폴더의 파일 하나. 서버에 안 올린다 — 무엇도 기기를 떠나지 않는다. */
+function appDataFile(name: string): string {
   const base =
     process.env.APPDATA ??
     process.env.XDG_DATA_HOME ??
     join(homedir(), '.local', 'share')
-  return join(base, 'TeraClean', 'tidy.json')
+  return join(base, 'TeraClean', name)
+}
+
+/* ── 폴더별 파일 수 기록 ───────────────────────────────────────
+   진행률(%)의 근거다. 폴더를 훑기 전에는 파일이 몇 개인지 알 수 없으니,
+   지난번 스캔의 개수를 총량으로 쓴다. 파일 수는 하루 만에 크게 변하지 않는다.
+   첫 스캔에는 이 기록이 없어서 폴더 개수로만 세고, 화면이 그렇다고 밝힌다. */
+
+async function readScanStats(): Promise<RootWeight[]> {
+  try {
+    const parsed = JSON.parse(await readFile(appDataFile('scan-stats.json'), 'utf8'))
+    return Array.isArray(parsed?.roots) ? (parsed.roots as RootWeight[]) : []
+  } catch {
+    return [] // 기록이 없으면 없는 대로 간다. 첫 스캔이 실패하면 안 된다.
+  }
+}
+
+async function writeScanStats(roots: RootWeight[]): Promise<void> {
+  try {
+    const file = appDataFile('scan-stats.json')
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, JSON.stringify({ roots }), 'utf8')
+  } catch {
+    /* 기록을 못 남겼다고 스캔 결과를 버릴 이유는 없다. 다음 스캔이 거칠어질 뿐이다. */
+  }
+}
+
+/* ── 생활 정리 진행 기록 ───────────────────────────────────────
+   읽기 실패는 빈 상태로 넘어간다. 기록을 못 읽었다고 앱이 멈추면 안 된다. */
+function tidyFile(): string {
+  return appDataFile('tidy.json')
 }
 
 async function readTidy(): Promise<TidyState> {
@@ -346,8 +390,33 @@ async function scanPlan(paths: string[]) {
   /** 어디를 봤는지도 돌려준다 — "어디까지 봤나"를 숨기면 신뢰가 안 생긴다. */
   const roots: { path: string; files: number; bytes: number }[] = []
 
-  for (const path of paths) {
-    const scanned = await scan(path)
+  /* 진행률의 근거 — 지난번 이 폴더들에 파일이 몇 개였나. 없으면 폴더 개수로 센다. */
+  const weights = await readScanStats()
+  const started = Date.now()
+  let doneFiles = 0
+  let lastEmit = 0
+
+  for (const [rootIndex, path] of paths.entries()) {
+    /**
+     * 훑는 도중에 진행 상황을 내보낸다.
+     *
+     * 0.25초에 한 번으로 눌러둔다. 폴더마다 부르면 초당 수백 줄이 나가고,
+     * 그걸 받아 그리는 화면이 스캔보다 느려진다 — 진행 표시가 본 작업을
+     * 느리게 만들면 안 된다.
+     */
+    const onProgress = (count: number, currentDir: string) => {
+      const now = Date.now()
+      if (now - lastEmit < 250) return
+      lastEmit = now
+      const view = computeProgress({
+        rootIndex, rootCount: paths.length, rootFiles: count, doneFiles,
+        elapsedMs: now - started, weights, paths,
+      })
+      progress({ t: 'scan', ...view, rootIndex, rootCount: paths.length, root: path, dir: currentDir })
+    }
+
+    const scanned = await scan(path, { onProgress })
+    doneFiles += scanned.files.length
     scannedFiles += scanned.files.length
     elapsedMs += scanned.elapsedMs
     roots.push({ path, files: scanned.files.length, bytes: scanned.totalBytes })
@@ -366,6 +435,13 @@ async function scanPlan(paths: string[]) {
       }
     }
   }
+
+  /* 다음 스캔의 진행률을 위해 이번 개수를 남긴다. 이번 스캔 결과에는 영향이 없다. */
+  await writeScanStats(roots.map((r) => ({ path: r.path, files: r.files })))
+
+  /* 분류·질문 계산이 남았다 — 파일이 14만 개면 이 구간도 몇 초 걸린다.
+     여기서 막대가 멈추면 "다 됐는데 왜 안 뜨나"가 된다. 그래서 마지막 단계를 알린다. */
+  progress({ t: 'plan', pct: 99, etaSec: null, basis: 'learned', files: scannedFiles })
 
   const report = runEngine(ambig)
 

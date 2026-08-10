@@ -12,6 +12,7 @@
 import { isSupported, pickDirectory, scanHandle } from './browser-scanner.ts'
 import { classifyOne, isAutoEligible } from '../../src/classify.ts'
 import { run as runEngine, fmtBytes } from '../../src/engine.ts'
+import { fmtDuration } from '../../src/progress.ts'
 import { compareVersions, verifyIntegrity, normalizeSha256 } from '../../src/updater.ts'
 import {
   ROUTINES,
@@ -32,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.9.6'
+const APP_VERSION = '0.9.7'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -436,25 +437,114 @@ function renderKept(kept: { meaning: string; bytes: number }[], lockBytes: numbe
 
 /* ── 스캔 실행 ─────────────────────────────────────────────── */
 
+/* ── 진행 상황 수신 ────────────────────────────────────────────
+   엔진이 stderr로 흘린 것을 Rust가 `engine-progress` 이벤트로 중계한다
+   (main.rs의 run_engine). 여기서는 마지막 값만 들고 있다가 1초에 한 번 그린다 —
+   초당 네 번 오는 걸 올 때마다 그리면 글자가 떨려서 오히려 읽기 어렵다. */
+
+interface ScanProgress {
+  t: 'scan' | 'plan'
+  /** null이면 진행률을 정말 모른다 — 그때는 무한 막대를 유지한다 */
+  pct: number | null
+  etaSec: number | null
+  basis: 'learned' | 'roots' | 'unknown'
+  files: number
+  rootIndex?: number
+  rootCount?: number
+  /** 지금 훑는 폴더의 경로. 화면에는 사람이 읽는 이름으로 바꿔 쓴다 */
+  root?: string
+}
+
+let lastProgress: ScanProgress | null = null
+
 /**
- * 오래 걸리는 작업 중에 '얼마나 지났는지'를 보여준다.
+ * 경로 → 사람이 읽는 폴더 이름('다운로드', '앱 데이터(로컬)').
+ * 엔진은 경로를 보내고 이름은 default-roots가 안다 — 한 번 받아 여기 담아둔다.
+ */
+const rootLabels = new Map<string, string>()
+
+function rootLabel(path?: string): string {
+  if (!path) return '훑는 중'
+  return rootLabels.get(path) ?? path.split(/[\\/]/).filter(Boolean).pop() ?? path
+}
+
+if (inTauri) {
+  TAURI.event.listen('engine-progress', (e: any) => {
+    const p = e?.payload
+    if (p && (p.t === 'scan' || p.t === 'plan')) lastProgress = p as ScanProgress
+  })
+}
+
+/**
+ * 오래 걸리는 작업 중에 '어디까지 왔고 얼마나 남았는지'를 보여준다.
  *
- * 엔진은 결과를 한 번에 돌려주기 때문에 진행률(%)을 만들 수 없다. 없는 진행률을
- * 지어내느니 경과 시간을 정직하게 보여준다 — 멈춘 게 아니라는 것만 알면 된다.
+ * ★ 전에는 경과 시간만 보여줬다. 코드 주석에도 "엔진이 결과를 한 번에 돌려주니
+ *   진행률을 만들 수 없다, 없는 걸 지어내느니 경과 시간을 보여준다"고 적혀 있었다.
+ *   정직했지만 7분이 지난 화면에서 사용자는 반이나 왔는지, 1분 남았는지
+ *   20분 남았는지, 멈춘 건 아닌지를 알 수 없었다. 그래서 엔진이 진행 상황을
+ *   흘려보내게 고쳤고(engine-cli.ts) 이제 진짜 숫자를 그린다.
+ *
+ * 진행 상황이 안 오면(구버전 엔진·진행을 안 내는 명령) 예전처럼 경과 시간만
+ * 보여주고 막대는 무한 막대로 둔다 — 없는 진행률을 지어내지 않는다는 원칙은 그대로다.
  */
 function startTicker(prefix: string): () => void {
   const started = Date.now()
-  ;($('prog') as HTMLElement).hidden = false
+  lastProgress = null
+  let shownPct = 0 // 뒤로 가지 않게 여기서 한 번 더 잠근다
+  const box = $('prog') as HTMLElement
+  const fill = box.querySelector('span') as HTMLElement
+  box.hidden = false
+  box.classList.remove('prog-known')
+  fill.style.width = ''
+
   const paint = () => {
-    const s = Math.round((Date.now() - started) / 1000)
-    const t = s < 60 ? `${s}초` : `${Math.floor(s / 60)}분 ${s % 60}초`
-    $('status').textContent = `${prefix} · ${t}`
+    const elapsed = fmtDuration((Date.now() - started) / 1000)
+    const p = lastProgress
+
+    if (!p) {
+      $('status').textContent = `${prefix} · ${elapsed}`
+      return
+    }
+
+    const parts: string[] = []
+    if (p.pct === null) {
+      // 진행률을 셀 근거가 없다(폴더 한 곳만 훑는 첫 스캔). 막대는 무한 막대로 두고
+      // 아는 것만 말한다 — 파일 수와 경과 시간도 여태 없던 정보다.
+      parts.push('진행률은 이번 스캔이 끝나면 알 수 있어요')
+    } else {
+      shownPct = Math.max(shownPct, p.pct)
+      // 결정된 진행률이 생긴 순간 무한 막대를 실제 막대로 바꾼다.
+      box.classList.add('prog-known')
+      fill.style.width = `${shownPct}%`
+      parts.push(`${shownPct}%`)
+    }
+    parts.push(`${p.files.toLocaleString()}개`)
+    parts.push(`경과 ${elapsed}`)
+    if (p.etaSec !== null) parts.push(`남은 시간 약 ${fmtDuration(p.etaSec)}`)
+    // 첫 스캔은 폴더 개수로만 세는 거라 거칠다. 그걸 숨기면 다음에 값이
+    // 확 달라 보여서 오히려 안 믿게 된다.
+    else if (p.basis === 'roots') parts.push('남은 시간은 이번 스캔이 끝나면 알 수 있어요')
+
+    /* ★ 머리말을 지금 보는 폴더로 바꾼다.
+       기다리는 동안 필요한 건 '어디를 볼 예정인지'가 아니라 '지금 어디를 보는지'다.
+       그리고 폴더 7곳 이름을 다 늘어놓은 채로 진행률·파일 수·남은 시간까지 붙이면
+       줄이 두 줄로 넘어가서 아무것도 안 읽힌다(실물에서 이미 넘쳤다). */
+    const head =
+      p.t === 'plan' ? '정리 계획을 세우는 중'
+      : p.rootCount && p.rootCount > 1
+        ? `${rootLabel(p.root)} 훑는 중 (${p.rootCount}곳 중 ${(p.rootIndex ?? 0) + 1})`
+        : p.root ? `${rootLabel(p.root)} 훑는 중` : prefix
+
+    $('status').textContent = `${head} · ${parts.join(' · ')}`
   }
   paint()
   const timer = setInterval(paint, 1000)
   return () => {
     clearInterval(timer)
-    ;($('prog') as HTMLElement).hidden = true
+    box.hidden = true
+    box.classList.remove('prog-known')
+    fill.style.width = ''
+    lastProgress = null
   }
 }
 
@@ -462,6 +552,8 @@ function startTicker(prefix: string): () => void {
 async function describeDefaultRoots(): Promise<string> {
   try {
     const d = await engine('default-roots')
+    // 이름을 담아둔다 — 진행 중에는 '지금 보는 폴더' 하나만 보여줄 때 쓴다.
+    for (const r of d.roots) if (r?.path && r?.label) rootLabels.set(r.path, r.label)
     const labels = d.roots.map((r: any) => r.label)
     return labels.length ? `${labels.join(' · ')} 훑는 중` : '훑는 중'
   } catch {

@@ -401,14 +401,18 @@
   @media(max-width:640px){.dash-txt .big,.dash-txt .cap{text-align:center}}
 
   /* ══ 진행 표시 ════════════════════════════════════════════════
-     진행률(%)을 지어내지 않는다. 스캔이 얼마나 남았는지 우리는 모른다 —
-     '돌고 있다'는 사실만 정직하게 보여주는 무한 막대를 쓴다. */
+     막대가 두 상태다. 진행률을 아직 모를 때(브라우저 데모·구버전 엔진)는
+     '돌고 있다'만 말하는 무한 막대, 알게 되면 실제 폭을 가진 막대.
+     지어낸 진행률을 그리지 않으면서도 아는 건 다 보여준다. */
   .prog{margin-top:var(--s-4)}
   .prog-bar{height:4px;border-radius:var(--r-full);background:var(--surface-3);overflow:hidden}
   .prog-bar span{display:block;height:100%;width:38%;border-radius:var(--r-full);
                  background:linear-gradient(90deg,var(--accent),var(--accent-2));
                  animation:slide 1.4s var(--ease) infinite}
   @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
+  /* 진행률을 알게 된 순간 무한 막대를 실제 막대로 바꾼다.
+     폭은 app.ts가 넣는다. transition을 걸어야 1초마다 툭툭 끊기지 않는다. */
+  .prog-known .prog-bar span{animation:none;transition:width .9s linear}
 
   /* ══ 토스트 ═══════════════════════════════════════════════════
      alert()는 창을 막고 OS 대화상자를 띄운다 — 앱이 아니라 스크립트처럼 보인다. */
@@ -735,8 +739,9 @@
         </div>
       </div>
 
-      <!-- 스캔 중에만 보이는 진행 표시. 진행률(%)을 지어내지 않고
-           '무엇을 하는 중인지 + 얼마나 지났는지'만 정직하게 보여준다. -->
+      <!-- 스캔 중에만 보이는 진행 표시. 엔진이 진행 상황을 흘려보내므로
+           진행률·남은 시간을 실제로 보여준다(app.ts의 startTicker).
+           진행 상황이 안 오면 경과 시간 + 무한 막대로 돌아간다. -->
       <div class="prog" id="prog" hidden><div class="prog-bar"><span></span></div></div>
       <div id="status"></div>
 
