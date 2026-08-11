@@ -16,6 +16,9 @@ import {
   judgeProgram,
   uninstallCommandFor,
   silentUninstallCommand,
+  uninstallerExePath,
+  looksLikeNsis,
+  detectSilentUninstall,
   needsElevation,
   isStillInstalled,
   rot13,
@@ -316,6 +319,91 @@ test('★확인할 레지스트리 경로가 없으면 무인 제거를 제안�
       quietUninstallString: '"C:\\X\\unins000.exe" /SILENT',
     }),
     null
+  )
+})
+
+/* ────────────────────────────────────────────────────────────
+   NSIS — 세 번째 근거. 추측이 아니라 **파일을 열어본 확인**이다.
+
+   실물에서 나온 문제: iP4U VPN은 QuietUninstallString이 없어서 마법사로 갔고,
+   그 마법사는 requireAdministrator라 창조차 안 떴다. 사용자에겐 "아무 일도 안 남"이었다.
+   NSIS 서명을 직접 확인하고 규격 스위치 `/S`를 쓰면 앱 안에서 끝난다.
+   ──────────────────────────────────────────────────────────── */
+
+test('제거 명령에서 실행 파일 경로만 뽑는다 — 따옴표가 있든 없든', () => {
+  assert.equal(uninstallerExePath('"C:\\iP4U\\iP4U-VPN\\uninstall.exe"'), 'C:\\iP4U\\iP4U-VPN\\uninstall.exe')
+  assert.equal(uninstallerExePath('"C:\\Program Files\\X\\unins000.exe" /SILENT'), 'C:\\Program Files\\X\\unins000.exe')
+  assert.equal(uninstallerExePath('C:\\X\\uninst.exe /S'), 'C:\\X\\uninst.exe')
+  assert.equal(uninstallerExePath(undefined), null)
+  assert.equal(uninstallerExePath('rundll32 setupapi,InstallHinfSection'), null, 'exe가 아니면 손대지 않는다')
+})
+
+test('NSIS 판별은 이름이 아니라 파일 안의 서명으로 한다', () => {
+  assert.equal(looksLikeNsis(Buffer.from('....NullsoftInst....', 'latin1')), true)
+  // 이름에 uninstall이 들어간다고 NSIS인 게 아니다
+  assert.equal(looksLikeNsis(Buffer.from('MZ.. Inno Setup uninstall ..', 'latin1')), false)
+})
+
+test('★NSIS 언인스톨러는 앱 안에서 끝낸다 — 파일을 열어 확인한 뒤에만', async () => {
+  const { mkdtemp, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join: j } = await import('node:path')
+  const dir = await mkdtemp(j(tmpdir(), 'tc-nsis-'))
+
+  const nsis = j(dir, 'uninstall.exe')
+  await writeFile(nsis, Buffer.from('MZ' + 'x'.repeat(100) + 'NullsoftInst' + 'y'.repeat(50), 'latin1'))
+  assert.equal(
+    await detectSilentUninstall({
+      key: '{X}', keyPath: KEY_PATH, name: 'X', estimatedBytes: 0,
+      uninstallString: `"${nsis}"`,
+    }),
+    `"${nsis}" /S`
+  )
+
+  // NSIS가 아니면 예전 그대로 — 마법사로 간다. 스위치를 지어내지 않는다.
+  const other = j(dir, 'setup.exe')
+  await writeFile(other, Buffer.from('MZ' + 'z'.repeat(200), 'latin1'))
+  assert.equal(
+    await detectSilentUninstall({
+      key: '{X}', keyPath: KEY_PATH, name: 'X', estimatedBytes: 0,
+      uninstallString: `"${other}"`,
+    }),
+    null
+  )
+
+  // 파일이 아예 없으면 모른다고 말한다 — 없는 파일에 명령을 만들어 붙이지 않는다.
+  assert.equal(
+    await detectSilentUninstall({
+      key: '{X}', keyPath: KEY_PATH, name: 'X', estimatedBytes: 0,
+      uninstallString: `"${j(dir, '없는파일.exe')}"`,
+    }),
+    null
+  )
+})
+
+test('★NSIS라도 확인할 레지스트리 경로가 없으면 무인 제거를 제안하지 않는다', async () => {
+  const { mkdtemp, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join: j } = await import('node:path')
+  const dir = await mkdtemp(j(tmpdir(), 'tc-nsis2-'))
+  const nsis = j(dir, 'uninstall.exe')
+  await writeFile(nsis, Buffer.from('NullsoftInst', 'latin1'))
+
+  assert.equal(
+    await detectSilentUninstall({ key: '{X}', name: 'X', estimatedBytes: 0, uninstallString: `"${nsis}"` }),
+    null,
+    '끝났는지 물어볼 데가 없으면 "제거됐어요"라고 말할 근거도 없다'
+  )
+})
+
+test('제조사가 등록한 무인 명령이 있으면 파일을 열어보지도 않는다', async () => {
+  assert.equal(
+    await detectSilentUninstall({
+      key: '{X}', keyPath: KEY_PATH, name: 'X', estimatedBytes: 0,
+      uninstallString: '"C:\\없는\\경로\\unins000.exe"',
+      quietUninstallString: '"C:\\없는\\경로\\unins000.exe" /SILENT',
+    }),
+    '"C:\\없는\\경로\\unins000.exe" /SILENT'
   )
 })
 

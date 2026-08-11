@@ -19,7 +19,7 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { readdir, stat } from 'node:fs/promises'
+import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
 
@@ -570,4 +570,68 @@ export function silentUninstallCommand(p: InstalledProgram): string | null {
   if (m) return `"${m[1]}" /X{${m[2]}} /qn /norestart`
 
   return null
+}
+
+/**
+ * 원시 제거 명령에서 **실행 파일 경로만** 뽑는다.
+ * (셸 층의 split_command_line과 같은 규칙 — src-tauri/src/main.rs)
+ *
+ * `"C:\X\uninstall.exe" /foo` 처럼 따옴표가 있으면 그 안이, 없으면 첫 `.exe`까지가 경로다.
+ * msiexec처럼 PATH에서 찾는 명령은 대상이 아니다(그건 MSI 규격 경로로 이미 처리된다).
+ */
+export function uninstallerExePath(raw: string | undefined): string | null {
+  const s = raw?.trim()
+  if (!s) return null
+  const quoted = s.match(/^"([^"]+\.exe)"/i)
+  if (quoted) return quoted[1]
+  const bare = s.match(/^(.+?\.exe)(?=$|\s)/i)
+  return bare ? bare[1] : null
+}
+
+/**
+ * 이 실행 파일이 **NSIS 언인스톨러인가**를 파일에서 직접 확인한다.
+ *
+ * NSIS로 만든 실행 파일에는 자체 헤더 서명 `NullsoftInst`가 박혀 있다.
+ * 이름이나 제조사로 넘겨짚는 게 아니라, 지우려는 그 파일을 열어보고 판단한다.
+ */
+export function looksLikeNsis(bin: Buffer): boolean {
+  return bin.includes('NullsoftInst', 0, 'latin1')
+}
+
+/**
+ * 앱 안에서 끝낼 제거 명령 — 레지스트리만으로 모자랄 때 **파일까지 확인한다.**
+ *
+ * ── 왜 NSIS를 세 번째로 넣나 ──────────────────────────────────
+ * silentUninstallCommand의 원칙은 "추측한 스위치를 던지지 않는다"였고 그건 그대로다.
+ * 여기서 하는 건 추측이 아니라 **확인**이다:
+ *   1. 지우려는 언인스톨러 파일을 열어 NSIS 서명을 직접 본다. 이름으로 넘겨짚지 않는다.
+ *   2. `/S`는 우리가 지어낸 게 아니라 NSIS가 문서에 적어둔 무인 실행 스위치다.
+ *      런타임이 처리하므로 설치 스크립트가 뭘 하든 인자로 오해되지 않는다.
+ * msiexec `/qn`을 쓰는 근거와 같은 성질이다 — 규격이지 관행이 아니다.
+ *
+ * ── 그래도 안 바뀌는 것 ──────────────────────────────────────
+ * 끝났다고 우리가 판단하지 않는다. 무인 제거 뒤에도 화면은 레지스트리에 다시 물어보고,
+ * 안 사라졌으면 "제거 창"으로 돌아간다(web/src/app.ts uninstallOne). 그래서 `/S`가
+ * 안 먹히는 소수의 경우에도 잘못된 "제거됐어요"는 나오지 않는다.
+ *
+ * 파일을 못 읽거나 NSIS가 아니면 null — 예전처럼 제조사 마법사로 간다.
+ */
+export async function detectSilentUninstall(p: InstalledProgram): Promise<string | null> {
+  const declared = silentUninstallCommand(p)
+  if (declared) return declared
+
+  // 확인할 레지스트리 경로가 없으면 끝났는지 물어볼 데가 없다 — 무인 제거를 제안하지 않는다.
+  if (!p.keyPath) return null
+
+  const exe = uninstallerExePath(p.uninstallString)
+  if (!exe) return null
+  try {
+    const st = await stat(exe)
+    // 언인스톨러는 작다. 수십 MB짜리를 통째로 올려 읽을 일은 없다.
+    if (!st.isFile() || st.size > 32 * 1024 * 1024) return null
+    if (!looksLikeNsis(await readFile(exe))) return null
+  } catch {
+    return null // 파일이 없거나 못 읽으면 모른다고 말한다
+  }
+  return `"${exe}" /S`
 }

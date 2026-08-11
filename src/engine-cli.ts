@@ -93,7 +93,7 @@ import {
   type TidyState,
 } from './content/tidy.ts'
 import {
-  probePrograms, silentUninstallCommand, uninstallCommandFor, needsElevation, isStillInstalled,
+  probePrograms, detectSilentUninstall, uninstallCommandFor, needsElevation, isStillInstalled,
 } from './probes/programs.ts'
 import {
   isRelocatable,
@@ -1023,7 +1023,7 @@ async function main() {
         out({
           totalScanned: r.totalScanned,
           suggestibleBytes: r.suggestibleBytes,
-          suggestions: r.suggestions.map((s) => ({
+          suggestions: await Promise.all(r.suggestions.map(async (s) => ({
             key: s.key,
             keyPath: s.keyPath,
             name: s.name,
@@ -1035,11 +1035,14 @@ async function main() {
             reason: s.verdict.reason,
             uninstallString: uninstallCommandFor(s),
             // 있으면 앱 안에서 끝난다. 없으면 화면이 "마법사가 열린다"고 말해야 한다.
-            silentUninstall: silentUninstallCommand(s),
+            // ★ 레지스트리에 QuietUninstallString이 없어도 포기하지 않는다 —
+            //   언인스톨러 파일을 열어 NSIS인지 확인하고, 맞으면 규격 스위치를 쓴다.
+            //   (detectSilentUninstall 머리말 — 추측이 아니라 확인이다)
+            silentUninstall: await detectSilentUninstall(s),
             // 컴퓨터 전체에 설치된 것 — 승격해서 실행해야 UAC가 정상적으로 뜬다.
             needsAdmin: needsElevation(s),
             installLocation: s.installLocation,
-          })),
+          }))),
           // 안 건드린 것도 보여준다 — "무엇을 제외했는지"가 신뢰의 근거다.
           excluded: r.excluded.slice(0, 60),
           excludedCount: r.excluded.length,

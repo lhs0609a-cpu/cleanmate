@@ -224,6 +224,25 @@ if ([string]::IsNullOrWhiteSpace($a)) {
 exit $p.ExitCode
 "#;
 
+/// 마법사를 **승격해서** 띄우는 조각. 위와 다른 점 두 가지가 전부다:
+///   · `-Wait`가 없다 — 마법사는 사용자가 붙잡고 있는 창이라 우리가 기다릴 게 아니다.
+///   · 창을 숨기지 않는다 — 숨기면 사용자가 진행할 창 자체가 안 보인다.
+/// 승격을 거절하면 Start-Process가 던지고(ErrorActionPreference=Stop) 파워셸이
+/// 0이 아닌 코드로 끝난다 → 부르는 쪽이 "안 열렸다"를 알 수 있다.
+const ELEVATE_SHOW_SCRIPT: &str = r#"
+$ErrorActionPreference = 'Stop'
+$a = $env:TC_ARGS
+if ([string]::IsNullOrWhiteSpace($a)) {
+  Start-Process -FilePath $env:TC_EXE -Verb RunAs | Out-Null
+} else {
+  Start-Process -FilePath $env:TC_EXE -ArgumentList $a -Verb RunAs | Out-Null
+}
+"#;
+
+/// CreateProcess가 "이건 관리자로 띄워야 한다"고 거절할 때의 오류 코드.
+/// (winerror.h ERROR_ELEVATION_REQUIRED)
+const ERROR_ELEVATION_REQUIRED: i32 = 740;
+
 #[tauri::command]
 async fn run_uninstaller(
     command: String,
@@ -248,8 +267,32 @@ async fn run_uninstaller(
         if !rest.is_empty() {
             c.raw_arg(&rest);
         }
-        c.spawn()
+        match c.spawn() {
+            Ok(_) => return Ok(UninstallOutcome { waited: false, code: None }),
+            // ★ 실물에서 터진 버그: 언인스톨러 상당수가 매니페스트에
+            //   requireAdministrator를 달고 있다(실측: iP4U VPN). 그런 exe는
+            //   CreateProcess로는 **UAC를 띄우지도 않고** 740으로 그냥 실패한다.
+            //   사용자 눈에는 "제거 창 열기를 눌렀는데 아무 창도 안 뜸"이었다.
+            //   여기서 포기하지 않고 승격해서 다시 띄운다 — 그러면 UAC가 정상적으로 뜬다.
+            //   (무인 제거 쪽에서 needsAdmin으로 미리 승격하는 것과 같은 이유.
+            //    다만 여기선 OS가 740으로 알려줄 때만 올린다 — 괜히 UAC를 띄우지 않는다.)
+            Err(e) if e.raw_os_error() == Some(ERROR_ELEVATION_REQUIRED) => {}
+            Err(e) => return Err(format!("제거 프로그램을 실행하지 못했어요: {e}")),
+        }
+
+        let mut c = StdCommand::new("powershell.exe");
+        c.args(["-NoProfile", "-NonInteractive", "-Command", ELEVATE_SHOW_SCRIPT])
+            .env("TC_EXE", &exe)
+            .env("TC_ARGS", &rest)
+            .creation_flags(CREATE_NO_WINDOW);
+        // UAC 창이 떠 있는 동안은 여기서 멈춰 있다 — 메인 스레드를 막지 않는다.
+        let status = tokio::task::spawn_blocking(move || c.status())
+            .await
+            .map_err(|e| format!("제거 창을 기다리지 못했어요: {e}"))?
             .map_err(|e| format!("제거 프로그램을 실행하지 못했어요: {e}"))?;
+        if !status.success() {
+            return Err("관리자 확인이 필요한 제거 프로그램인데 확인이 취소됐어요 — 다시 눌러 '예'를 선택해 주세요".into());
+        }
         return Ok(UninstallOutcome { waited: false, code: None });
     }
 

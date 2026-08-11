@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.9.9'
+const APP_VERSION = '0.9.10'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -47,6 +47,21 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 // ── 실행 환경 감지 ──
 const TAURI = (window as any).__TAURI__
 const inTauri = !!TAURI
+
+/**
+ * 오류를 사람이 읽을 문장으로 바꾼다.
+ *
+ * ★ 왜 필요한가 (실물에서 터진 버그): Tauri의 invoke는 실패할 때 Error가 아니라
+ *   **문자열**을 던진다 — Rust가 `Err(String)`을 돌려주기 때문이다. 그래서
+ *   `(err as Error).message`가 undefined가 되고, 화면에는 원인 대신
+ *   "제거 창을 열지 못했어요: undefined"만 남았다. 정작 Rust는 이유를
+ *   또박또박 적어 보냈는데 그게 통째로 버려지고 있었다.
+ */
+function errText(err: unknown): string {
+  if (typeof err === 'string') return err
+  const m = (err as any)?.message
+  return typeof m === 'string' && m ? m : String(err)
+}
 
 /** 엔진 사이드카 호출 (데스크톱 전용). JSON {ok,data|error} 규약. */
 async function engine(command: string, args: string[] = []): Promise<any> {
@@ -1316,7 +1331,9 @@ async function uninstallOne(p: any, btn: HTMLButtonElement) {
       btn.textContent = '제거 창을 열었어요'
       say('그 창에서 제거를 마치면 목록을 새로 고쳐 주세요.')
     } catch (err) {
-      toast('제거 창을 열지 못했어요: ' + (err as Error).message, 'bad')
+      // 이유를 말풍선에만 띄우면 몇 초 뒤 사라진다. 항목 밑에도 남긴다.
+      say('열지 못했어요 — ' + errText(err))
+      toast('제거 창을 열지 못했어요: ' + errText(err), 'bad')
     }
     return
   }
@@ -1338,8 +1355,8 @@ async function uninstallOne(p: any, btn: HTMLButtonElement) {
   } catch (err) {
     btn.disabled = false
     btn.textContent = '제거하기'
-    say('시작하지 못했어요: ' + (err as Error).message)
-    toast('제거를 시작하지 못했어요: ' + (err as Error).message, 'bad')
+    say('시작하지 못했어요: ' + errText(err))
+    toast('제거를 시작하지 못했어요: ' + errText(err), 'bad')
     return
   }
 
@@ -1664,7 +1681,7 @@ async function checkUpdate(manual = false) {
         // Rust가 자기 계산값과 자기를 비교하는 셈이라 재검증이 의미를 잃는다.
         await TAURI.core.invoke('apply_update', { installerPath: got.path, expectedSha256: expected })
       } catch (err) {
-        progress.textContent = '업데이트에 실패했어요: ' + (err as Error).message
+        progress.textContent = '업데이트에 실패했어요: ' + errText(err)
         ;($('um-now') as HTMLButtonElement).disabled = false
         ;($('um-later') as HTMLButtonElement).disabled = false
       }
