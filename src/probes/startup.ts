@@ -262,21 +262,48 @@ foreach ($f in $folders) {
   }
 }
 
-# 로그온 예약작업은 개수만 센다. 대부분 시스템 소유라 우리 권한으로 못 건드린다.
-$logon = @(Get-ScheduledTask | Where-Object {
+$out = [PSCustomObject]@{ entries = @($entries) } | ConvertTo-Json -Depth 4 -Compress
+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($out))
+`
+
+/**
+ * 로그온 예약작업 개수 — **목록과 따로 센다.**
+ *
+ * ★ 왜 떼어냈나 (실측): 이 한 줄이 목록 전체를 인질로 잡고 있었다.
+ *   Get-ScheduledTask는 작업마다 트리거를 CIM으로 따로 가져오는데, 이 PC에서
+ *   찬 상태로 **146초**, 데운 상태로도 7초가 걸렸다. 레지스트리를 읽는 나머지는
+ *   전부 합쳐 1초도 안 된다. 그런데 같은 스크립트에 묶여 있어서, 화면은 각주 한 줄
+ *   때문에 목록을 2분 넘게 못 보여줬다. 끄기를 누를 때마다 그 2분을 다시 기다렸다.
+ *
+ *   개수는 각주다. 각주가 본문을 막으면 안 된다. 그래서 별도 명령으로 빼고,
+ *   화면은 목록을 먼저 그린 뒤 이 값이 오면 채운다.
+ */
+const LOGON_TASKS = `
+$ErrorActionPreference = 'SilentlyContinue'
+@(Get-ScheduledTask | Where-Object {
   $_.State -ne 'Disabled' -and $_.Triggers.CimClass.CimClassName -contains 'MSFT_TaskLogonTrigger'
 }).Count
-
-$out = [PSCustomObject]@{ entries = @($entries); logonTaskCount = $logon } | ConvertTo-Json -Depth 4 -Compress
-[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($out))
 `
 
 export interface StartupReport {
   entries: (StartupEntry & { verdict: StartupVerdict })[]
-  /** 우리가 못 건드리는 영역도 숨기지 않는다 */
-  logonTaskCount: number
   enabledCount: number
   suggestibleCount: number
+}
+
+/**
+ * 우리가 못 건드리는 영역도 숨기지 않는다 — 로그온 예약작업이 몇 개인지는 알려준다.
+ * 다만 세는 데 몇 초에서 몇 분이 걸려서(LOGON_TASKS 머리말) 목록과 따로 부른다.
+ */
+export async function countLogonTasks(): Promise<number> {
+  if (process.platform !== 'win32') return 0
+  const { stdout } = await exec(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-Command', LOGON_TASKS],
+    { windowsHide: true }
+  )
+  const n = parseInt(stdout.trim(), 10)
+  return Number.isFinite(n) && n >= 0 ? n : 0
 }
 
 export async function probeStartup(): Promise<StartupReport> {
@@ -307,7 +334,6 @@ export async function probeStartup(): Promise<StartupReport> {
 
   return {
     entries,
-    logonTaskCount: raw.logonTaskCount ?? 0,
     enabledCount: entries.filter((e) => e.enabled).length,
     suggestibleCount: entries.filter((e) => e.verdict.suggestible).length,
   }

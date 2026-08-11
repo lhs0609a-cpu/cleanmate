@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.9.10'
+const APP_VERSION = '0.9.11'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -1178,14 +1178,36 @@ function renderReferral(plan: any, askedByUser = false) {
    여기만 '삭제'가 아니라 '끄기'다. 되돌리기가 즉시라 격리를 안 거친다.
    대신 자동으로 꺼주는 항목은 하나도 없다 — 아침에 켰는데 카톡이 없으면
    그건 편의가 아니라 사고다. */
-async function loadStartup() {
+/** 예약작업 개수는 세는 데 오래 걸린다 — 한 번 받으면 세션 동안 다시 안 센다. */
+let logonTaskCount: number | null = null
+
+/**
+ * @param quiet 화면을 지우지 않고 다시 읽는다.
+ *   끄기를 누른 뒤에 쓴다. 전에는 여기서도 목록을 통째로 지우고 "읽는 중…"으로
+ *   되돌렸는데, 그러면 스위치 하나 내릴 때마다 화면이 처음으로 돌아가고
+ *   펼쳐둔 목록도 접혔다. 읽는 동안 이전 목록을 그대로 두는 게 맞다.
+ */
+async function loadStartup(quiet = false) {
   const host = $('startup-body')
-  host.innerHTML = `<div class="empty">시작프로그램을 읽는 중…</div>`
+  if (!quiet) host.innerHTML = `<div class="empty">시작프로그램을 읽는 중…</div>`
   try {
     const d = await engine('startup')
     const entries: any[] = d.entries
 
-    const row = (e: any, i: number) => {
+    /**
+     * ★ 버튼이 가리키는 번호는 **entries 기준**이어야 한다.
+     *
+     *   전에는 row(e, i)로 map의 두 번째 인자를 그대로 썼다. 그런데 아래에서
+     *   suggest/others/off 세 묶음으로 걸러 각각 map을 돌리므로, i는 그 묶음 안에서
+     *   0부터 다시 세어진다. 그래서 버튼이 **엉뚱한 항목을 껐다** — 제안 목록의
+     *   첫 항목을 눌렀는데 전체 목록의 첫 항목이 꺼지는 식이다.
+     *   실측에서 사용자가 누르지 않은 두 개(GVF-Node·AdPT-Agent)가 꺼졌다.
+     *
+     *   시작프로그램은 되돌리기가 즉시라 복구는 쉽지만, "내가 안 누른 게 꺼졌다"는
+     *   이 앱이 절대 하면 안 되는 일이다. 그래서 번호를 짐작하지 않고 원본에서 찾는다.
+     */
+    const row = (e: any) => {
+      const i = entries.indexOf(e)
       const v = e.verdict
       const tone = v.zone === 'LOCKED' ? 'var(--lock)' : v.suggestible ? 'var(--amb)' : 'var(--muted)'
       const btn = !e.canToggle
@@ -1226,9 +1248,9 @@ async function loadStartup() {
       ${off.length ? `<details style="margin-top:10px">
         <summary class="t-small" style="cursor:pointer;color:var(--muted)">꺼둔 ${off.length}개 (되돌릴 수 있어요)</summary>
         <div>${off.map(row).join('')}</div></details>` : ''}
-      ${d.logonTaskCount ? `<p class="note" style="margin-top:14px">
-        이 밖에 <b>예약작업 ${d.logonTaskCount}개</b>가 더 있어요. 대부분 윈도우가 만든 거라
-        여기서는 개수만 알려드립니다.</p>` : ''}
+      <p class="note" id="startup-tasks" style="margin-top:14px;${logonTaskCount ? '' : 'display:none'}">${
+        logonTaskCount ? logonTaskNote(logonTaskCount) : ''
+      }</p>
       <p class="note" style="margin-top:10px">몇 초 빨라지는지는 윈도우가 안 알려줘요.
         그래서 <b>“○초 단축” 같은 숫자를 지어내지 않습니다.</b> 작업관리자에서도 똑같이 보이고, 거기서도 되돌릴 수 있어요.</p>`
 
@@ -1236,19 +1258,55 @@ async function loadStartup() {
       btn.addEventListener('click', async () => {
         const e = entries[+btn.dataset.toggle!]
         btn.disabled = true
+        // 무엇을 건드리는지 버튼에 그대로 쓴다 — 엉뚱한 걸 껐던 적이 있다(row 머리말).
+        btn.textContent = e.enabled ? `“${e.name}” 끄는 중…` : `“${e.name}” 켜는 중…`
         try {
           await engine('startup-set', [e.id, e.enabled ? 'off' : 'on'])
+          toast(`“${e.name}”을(를) ${e.enabled ? '껐어요' : '다시 켰어요'}`, 'good')
           startupLoaded = false
-          loadStartup() // 실제 상태를 다시 읽는다 — 화면만 바꾸지 않는다
+          // 실제 상태를 다시 읽는다 — 화면만 바꾸지 않는다.
+          // 다만 읽는 동안 목록을 지우지는 않는다(quiet).
+          await loadStartup(true)
         } catch (err) {
-          toast('바꾸지 못했어요: ' + (err as Error).message, 'bad')
+          toast('바꾸지 못했어요: ' + errText(err), 'bad')
           btn.disabled = false
+          btn.textContent = e.enabled ? '끄기' : '다시 켜기'
         }
       })
     })
+
+    // 각주는 목록을 그린 뒤에 채운다 — 세는 데 오래 걸려서 본문을 막으면 안 된다.
+    fillLogonTaskNote()
   } catch (err) {
-    host.innerHTML = `<div class="note">시작프로그램을 읽지 못했어요: ${esc((err as Error).message)}</div>`
+    host.innerHTML = `<div class="note">시작프로그램을 읽지 못했어요: ${esc(errText(err))}</div>`
   }
+}
+
+const logonTaskNote = (n: number) =>
+  `이 밖에 <b>예약작업 ${n}개</b>가 더 있어요. 대부분 윈도우가 만든 거라 여기서는 개수만 알려드립니다.`
+
+/**
+ * 로그온 예약작업 개수를 뒤늦게 채운다. 못 세면 각주를 그냥 안 보여준다 — 지어내지 않는다.
+ *
+ * ★ 한 번에 하나만 돈다. 세는 데 몇 분이 걸릴 수 있어서, 끄기를 여러 번 누르는 동안
+ *   같은 조회가 겹쳐 쌓이면 파워셸이 몇 개씩 붙어 있게 된다.
+ */
+let logonTaskPending: Promise<any> | null = null
+
+async function fillLogonTaskNote() {
+  if (logonTaskCount !== null) return
+  try {
+    logonTaskPending ??= engine('startup-tasks')
+    const t = await logonTaskPending
+    logonTaskCount = t.logonTaskCount ?? 0
+  } catch {
+    logonTaskPending = null // 다음에 화면을 열 때 다시 시도한다
+    return
+  }
+  const el = document.getElementById('startup-tasks')
+  if (!el || !logonTaskCount) return
+  el.innerHTML = logonTaskNote(logonTaskCount)
+  el.style.display = ''
 }
 
 /* ── 오래 안 쓴 프로그램 ──────────────────────────────────────

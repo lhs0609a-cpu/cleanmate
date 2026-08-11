@@ -24,6 +24,7 @@
  *   answer-plan    <unknown> [path...]        그 질문에 걸린 항목 미리보기
  *   answer-apply   <unknown> <outcome> [path...] 답변 실행(정리는 격리로)
  *   startup                          시작프로그램 목록 + 판정
+ *   startup-tasks                    로그온 예약작업 개수 (느려서 목록과 분리)
  *   startup-set    <id> <on|off>     시작프로그램 켜기/끄기 (되돌릴 수 있음)
  *   empty-recycle-bin                휴지통 비우기(윈도우 공식 명령, 되돌리기 없음)
  *   open-cleanmgr                    윈도우 디스크 정리 도구 띄우기
@@ -65,7 +66,7 @@ import { UNKNOWN_EXPLAIN } from './content/unknowns.ts'
 import { gatherFacts } from './probes/facts.ts'
 import { probeHiberfil } from './probes/hiberfil.ts'
 import { gatherReclaimFacts, probeRecycleBin, probeUpdateCache } from './probes/reclaim.ts'
-import { probeStartup, setStartupEnabled } from './probes/startup.ts'
+import { probeStartup, countLogonTasks, setStartupEnabled } from './probes/startup.ts'
 import {
   planFolderTidy,
   applyFolderTidy,
@@ -790,6 +791,14 @@ async function main() {
       }
       case 'startup': {
         out(await probeStartup())
+        break
+      }
+      /**
+       * 로그온 예약작업 개수 — 각주 한 줄이지만 세는 데 몇 초~몇 분이 걸린다.
+       * 목록과 같은 명령에 묶어두면 각주가 본문을 막는다(probes/startup.ts LOGON_TASKS 머리말).
+       */
+      case 'startup-tasks': {
+        out({ logonTaskCount: await countLogonTasks() })
         break
       }
       /* ── 생활 정리 ─────────────────────────────────────────────
