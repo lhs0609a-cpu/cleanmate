@@ -23,6 +23,7 @@
  *   probe                            숨은 공간(hiberfil·휴지통·업데이트 캐시)
  *   answer-plan    <unknown> [path...]        그 질문에 걸린 항목 미리보기
  *   answer-apply   <unknown> <outcome> [path...] 답변 실행(정리는 격리로)
+ *   quarantine-paths <path...>       고른 파일만 격리 (묶음이 아니라 낱개)
  *   startup                          시작프로그램 목록 + 판정
  *   startup-tasks                    로그온 예약작업 개수 (느려서 목록과 분리)
  *   startup-set    <id> <on|off>     시작프로그램 켜기/끄기 (되돌릴 수 있음)
@@ -108,7 +109,7 @@ import {
   type RelocateItem,
 } from './relocate.ts'
 import { stampMtime } from './quarantine.ts'
-import type { Classified, Outcome } from './types.ts'
+import type { Classified, FileEntry, Outcome } from './types.ts'
 
 /** 이보다 작은 파일은 옮겨봐야 체감이 없다 — 목록만 길어진다. */
 const RELOCATE_MIN_BYTES = 100 * 1024 * 1024 // 100MB
@@ -124,6 +125,26 @@ const RELOCATE_MIN_BYTES = 100 * 1024 * 1024 // 100MB
 function withOwner<T extends { path: string }>(x: T) {
   const owner = ownerOf(x.path)
   return { ...x, kind: kindOf(x.path).label, owner, headline: ownerHeadline(owner) }
+}
+
+/**
+ * stat 결과 하나를 스캐너와 **같은 모양의** FileEntry로 만든다.
+ *
+ * 낱개 경로를 다시 분류할 때 쓴다(quarantine-paths). 여기서 모양이 어긋나면
+ * 같은 파일을 스캔 경로와 낱개 경로가 다르게 판정하게 된다 — 그러면
+ * "목록에선 지워도 된다더니 고르니까 거절한다"가 나온다.
+ * 그래서 scanner.ts의 생성부와 한 글자씩 맞춘다.
+ */
+function fileEntryOf(path: string, st: import('node:fs').Stats): FileEntry {
+  const name = path.slice(Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/')) + 1)
+  return {
+    path,
+    size: st.size,
+    mtime: st.mtime,
+    atime: st.atime,
+    ext: name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : '',
+    ageDays: Math.floor((Date.now() - st.mtime.getTime()) / 86_400_000),
+  }
 }
 
 /**
@@ -456,7 +477,9 @@ async function scanPlan(paths: string[]) {
     const mine = ambig
       .filter((c) => c.verdict.unknown === q.unknown)
       .map((c) => ({ path: c.path, size: c.size, ageDays: c.ageDays }))
-    const b = buildBreakdown(mine)
+    // ★ 예시를 40개까지 싣는다(기본 8). 8개는 "이런 것들입니다"엔 충분하지만,
+    //   '하나씩 골라 지우기'에는 턱없다 — 고를 게 8개뿐이면 고른다고 할 수 없다.
+    const b = buildBreakdown(mine, 40)
     const kinds = groupByKind(mine)
     return {
       ...q,
@@ -786,6 +809,68 @@ async function main() {
           quarantinedCount: q.quarantined.length,
           bytesAfterGrace: q.bytes,
           failed: q.failed,
+        })
+        break
+      }
+      /**
+       * 고른 파일만 격리한다 — **묶음이 아니라 낱개.**
+       *
+       * ── 왜 필요했나 ────────────────────────────────────────────
+       * 여태 실행 단위는 항상 '묶음 전체'였다(answer-apply는 unknown 하나에 걸린
+       * 걸 전부 격리한다). 그런데 화면은 파일을 낱개로 보여준다. 그래서 사용자는
+       * 낱개로 판단하는데 버튼은 전부-아니면-전무만 준다 —
+       * **판단의 해상도와 실행의 해상도가 안 맞았다.**
+       * 격리함에는 개별 되돌리기가 처음부터 있었는데(restore <id>), 지우는 쪽엔
+       * 낱개 경로가 엔진에조차 없었다. 그 비대칭을 여기서 없앤다.
+       *
+       * ── 밖에서 온 경로를 그냥 믿지 않는다 ──────────────────────
+       * 이건 파일을 지우는 명령이라 경로를 받는 것 자체가 위험 통로다. 그래서
+       * 받은 경로마다 **지금 다시 분류한다.** 화면이 뭐라고 했든, 잠금(존 C)이면
+       * 거절한다. 화면의 판단을 엔진이 재확인 없이 집행하지 않는다.
+       * (같은 이유·같은 방식 — probes/programs.ts의 isStillInstalled)
+       */
+      case 'quarantine-paths': {
+        const paths = args.filter(Boolean)
+        if (!paths.length) fail('격리할 파일 경로가 필요합니다.')
+
+        const requests = []
+        const refused: { path: string; reason: string }[] = []
+        for (const p of paths) {
+          let st
+          try {
+            st = await stat(p)
+          } catch {
+            refused.push({ path: p, reason: '파일을 찾지 못했어요' })
+            continue
+          }
+          if (!st.isFile()) {
+            refused.push({ path: p, reason: '파일이 아니에요 — 폴더는 낱개로 다루지 않습니다' })
+            continue
+          }
+          const c = classifyOne(fileEntryOf(p, st))
+          if (c.verdict.zone === 'LOCKED') {
+            // 화면이 보여준 적 없는 경로가 들어왔거나, 그 사이 판단이 바뀐 것이다.
+            refused.push({ path: p, reason: `잠근 항목이라 건드리지 않았어요 (${c.verdict.meaning})` })
+            continue
+          }
+          requests.push({
+            path: p,
+            reason: `목록에서 직접 고르신 것 — ${c.verdict.meaning}`,
+            zone: c.verdict.zone,
+            expect: { size: st.size, mtimeMs: stampMtime(st.mtimeMs) },
+          })
+        }
+
+        if (!requests.length) {
+          out({ quarantinedCount: 0, bytesAfterGrace: 0, failed: [], refused })
+          break
+        }
+        const q = await quarantine(requests)
+        out({
+          quarantinedCount: q.quarantined.length,
+          bytesAfterGrace: q.bytes,
+          failed: q.failed,
+          refused,
         })
         break
       }

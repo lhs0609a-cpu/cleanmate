@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.9.11'
+const APP_VERSION = '0.9.12'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -53,7 +53,7 @@ const inTauri = !!TAURI
  *
  * ★ 왜 필요한가 (실물에서 터진 버그): Tauri의 invoke는 실패할 때 Error가 아니라
  *   **문자열**을 던진다 — Rust가 `Err(String)`을 돌려주기 때문이다. 그래서
- *   `(err as Error).message`가 undefined가 되고, 화면에는 원인 대신
+ *   `errText(err)`가 undefined가 되고, 화면에는 원인 대신
  *   "제거 창을 열지 못했어요: undefined"만 남았다. 정작 Rust는 이유를
  *   또박또박 적어 보냈는데 그게 통째로 버려지고 있었다.
  */
@@ -397,6 +397,7 @@ function evidenceHtml(ev: any): string {
 
 
 function renderQuestions(questions: Question[]) {
+  lastQuestions = questions // 낱개 목록이 근거를 다시 찾는다(renderPicker)
   const qEl = $('questions')
   if (!questions.length) {
     qEl.innerHTML = `<div class="note">물어볼 만한 묶음이 없어요. 애매한 항목이 적거나 잘게 흩어져 있습니다.</div>`
@@ -443,6 +444,24 @@ async function answerAction(host: HTMLElement, unknown: string, outcome: string)
   }
   // 보존을 뜻하는 답은 실행할 게 없다. 버튼을 만들지 않는다.
   if (outcome === 'KEEP') return
+
+  /**
+   * ★ "하나씩 볼게요" — 여기가 정반대로 동작하고 있었다.
+   *
+   *   이 답은 위 두 분기 어디에도 안 걸려서 그대로 흘러내려갔고, 결과적으로
+   *   **"140,613개 · 18.1GB 격리로 정리하기"** 라는 일괄 버튼이 떴다.
+   *   "하나씩 보겠다"고 고른 사람에게 전부 지우기 버튼을 내민 셈이다.
+   *   게다가 눌러도 안 됐다 — 엔진은 이 답을 'review'로 해석해 아무것도 안 하고
+   *   돌려주는데(engine.ts actionFor), 화면은 r.quarantinedCount를 읽어서
+   *   undefined.toLocaleString()으로 터졌다. 있어서도 안 되고 눌러도 에러였다.
+   *
+   *   이제 이 답은 약속한 것을 한다: 목록을 펴고 낱개로 고르게 한다.
+   */
+  if (outcome === 'REVIEW_ONE_BY_ONE') {
+    renderPicker(host, unknown)
+    return
+  }
+
   if (outcome === 'MOVE') {
     host.innerHTML = `<div class="t-small" style="margin-top:10px;color:var(--ink-2)">
       옮기기는 대상 드라이브가 필요해요.
@@ -476,14 +495,123 @@ async function answerAction(host: HTMLElement, unknown: string, outcome: string)
         quarLoaded = false
         refreshDisk(true)
       } catch (err) {
-        toast('정리하지 못했어요: ' + (err as Error).message, 'bad')
+        toast('정리하지 못했어요: ' + errText(err), 'bad')
         b.disabled = false
         b.textContent = '격리로 정리하기'
       }
     })
   } catch (err) {
-    host.innerHTML = `<div class="note" style="margin-top:10px">확인하지 못했어요: ${esc((err as Error).message)}</div>`
+    host.innerHTML = `<div class="note" style="margin-top:10px">확인하지 못했어요: ${esc(errText(err))}</div>`
   }
+}
+
+/* ── 낱개로 고르기 ────────────────────────────────────────────
+   이 앱의 실행 단위는 여태 '묶음 전체'였다. 그런데 화면은 파일을 낱개로
+   보여준다 — 판단은 낱개로 시키고 실행은 전부-아니면-전무만 준 셈이다.
+   격리함엔 개별 되돌리기가 처음부터 있었는데(restore <id>) 지우는 쪽만 없었다. */
+
+/** 마지막으로 그린 질문들 — 낱개 목록이 근거(samples)를 다시 찾는 데 쓴다. */
+let lastQuestions: any[] = []
+
+/** 지금 고른 경로. 화면을 다시 그려도 선택이 살아 있어야 한다. */
+const picked = new Set<string>()
+
+/**
+ * 낱개 선택 목록을 그린다.
+ *
+ * ★ 기본은 **아무것도 선택 안 됨**이다. 전부 체크해두고 "빼세요"로 시작하면
+ *   그건 다시 일괄 삭제고, 사용자가 실수로 누르면 되돌릴 일이 커진다.
+ *   고른 것만 지운다 — 고르는 건 사용자 몫이다.
+ */
+function renderPicker(host: HTMLElement, unknown: string) {
+  const q = lastQuestions.find((x) => x.unknown === unknown)
+  const samples: any[] = q?.evidence?.samples ?? []
+  picked.clear()
+
+  if (!samples.length) {
+    host.innerHTML = `<div class="note" style="margin-top:10px">
+      낱개로 보여드릴 목록을 못 받았어요. 다시 검사하면 목록이 함께 옵니다.</div>`
+    return
+  }
+
+  host.innerHTML = `
+    <div class="pick" style="margin-top:10px">
+      <div class="pick-head">
+        <span>지울 것만 골라주세요 — 고른 것만 정리합니다</span>
+        <button class="opt" data-pick-all="1">큰 것 10개 고르기</button>
+      </div>
+      <div class="pick-list">${samples.map((s, i) => `
+        <label class="pick-row">
+          <input type="checkbox" data-pick="${i}">
+          <span class="pick-name">${esc(baseName(s.path))}</span>
+          <span class="pick-size">${fmtBytes(s.size)}</span>
+          <span class="bd-path">${esc(s.path)}</span>
+        </label>`).join('')}
+      </div>
+      <div class="pick-foot">
+        <button class="btn" data-pick-go="1" disabled>고른 것 정리하기</button>
+        <span class="t-caption" data-pick-sum="1">아직 고르신 게 없어요</span>
+      </div>
+      <div class="t-caption" style="color:var(--muted);margin-top:6px">
+        큰 것부터 ${samples.length}개까지 보여드려요. 지우지 않고 30일 보관 — 언제든 되돌립니다.</div>
+    </div>`
+
+  const goBtn = host.querySelector<HTMLButtonElement>('[data-pick-go]')!
+  const sumEl = host.querySelector<HTMLElement>('[data-pick-sum]')!
+
+  const sync = () => {
+    const bytes = samples.filter((s) => picked.has(s.path)).reduce((n, s) => n + s.size, 0)
+    goBtn.disabled = picked.size === 0
+    goBtn.textContent = picked.size ? `고른 ${picked.size}개 정리하기` : '고른 것 정리하기'
+    sumEl.textContent = picked.size ? `${picked.size}개 · ${fmtBytes(bytes)}` : '아직 고르신 게 없어요'
+  }
+
+  host.querySelectorAll<HTMLInputElement>('[data-pick]').forEach((box) => {
+    box.addEventListener('change', () => {
+      const s = samples[+box.dataset.pick!]
+      if (box.checked) picked.add(s.path)
+      else picked.delete(s.path)
+      sync()
+    })
+  })
+
+  host.querySelector<HTMLButtonElement>('[data-pick-all]')!.addEventListener('click', () => {
+    // 목록은 이미 큰 것부터다. 상위 10개만 눌러준다 — 전체 선택 버튼은 두지 않는다.
+    host.querySelectorAll<HTMLInputElement>('[data-pick]').forEach((box, i) => {
+      if (i >= 10) return
+      box.checked = true
+      picked.add(samples[i].path)
+    })
+    sync()
+  })
+
+  goBtn.addEventListener('click', async () => {
+    const paths = samples.filter((s) => picked.has(s.path)).map((s) => s.path)
+    const bytes = samples.filter((s) => picked.has(s.path)).reduce((n, s) => n + s.size, 0)
+    if (!confirm(`고르신 ${paths.length}개(${fmtBytes(bytes)})를 정리할까요?\n\n지우지 않고 격리함에 30일 보관합니다. 언제든 되돌릴 수 있어요.`)) return
+
+    goBtn.disabled = true
+    goBtn.textContent = '정리 중…'
+    try {
+      const r = await engine('quarantine-paths', paths)
+      // 거절당한 게 있으면 숨기지 않는다 — 왜 안 됐는지가 신뢰의 근거다.
+      const refused = (r.refused ?? []) as { path: string; reason: string }[]
+      host.innerHTML = `<div class="pick-done">
+        <div class="pick-done-h">${r.quarantinedCount.toLocaleString()}개를 격리함으로 옮겼어요</div>
+        <div class="t-caption">30일 안에 되돌릴 수 있습니다.</div>
+        ${r.failed?.length ? `<div class="t-caption">${r.failed.length}개는 사용 중이라 건너뛰었어요.</div>` : ''}
+        ${refused.length ? `<div class="t-caption">${refused.length}개는 안 건드렸어요 — ${esc(refused[0].reason)}</div>` : ''}
+      </div>`
+      mountPurgeNow(host, r.bytesAfterGrace ?? bytes)
+      toast(`${r.quarantinedCount.toLocaleString()}개를 격리했어요.`, 'good')
+      quarLoaded = false
+      refreshDisk(true)
+    } catch (err) {
+      toast('정리하지 못했어요: ' + errText(err), 'bad')
+      goBtn.disabled = false
+      goBtn.textContent = `고른 ${paths.length}개 정리하기`
+    }
+  })
 }
 
 function renderKept(kept: { meaning: string; bytes: number }[], lockBytes: number) {
@@ -660,7 +788,7 @@ async function runScan(pickFolder = false) {
     renderReport(report)
     $('results').scrollIntoView({ behavior: 'smooth', block: 'start' })
   } catch (err) {
-    $('status').textContent = `문제가 있었어요: ${(err as Error).message}`
+    $('status').textContent = `문제가 있었어요: ${errText(err)}`
   } finally {
     stopTicker?.()
     ;($('oneclick') as HTMLButtonElement).disabled = false
@@ -709,7 +837,7 @@ $('apply-btn').addEventListener('click', async () => {
     quarLoaded = false // 격리함 새로고침 필요
     refreshDisk(true)
   } catch (err) {
-    $('apply-note').textContent = `정리 실패: ${(err as Error).message}`
+    $('apply-note').textContent = `정리 실패: ${errText(err)}`
     btn.disabled = false; btn.textContent = '다시 시도'
   }
 })
@@ -752,7 +880,7 @@ function mountPurgeNow(host: HTMLElement, bytes: number) {
     } catch (err) {
       b.disabled = false
       b.textContent = '지금 비우기'
-      toast('비우지 못했어요: ' + (err as Error).message, 'bad')
+      toast('비우지 못했어요: ' + errText(err), 'bad')
     }
   })
 }
@@ -769,7 +897,7 @@ async function loadHidden() {
       .join('<hr style="border:0;border-top:1px solid var(--line);margin:22px 0">')
     wireAssists(card, data.findings)
   } catch (err) {
-    card.innerHTML = `<div class="note">숨은 공간을 확인하지 못했어요: ${esc((err as Error).message)}</div>`
+    card.innerHTML = `<div class="note">숨은 공간을 확인하지 못했어요: ${esc(errText(err))}</div>`
   }
 }
 
@@ -823,7 +951,7 @@ function wireAssists(host: HTMLElement, findings: any[]) {
           : '열었어요'
         if (a.command === 'empty-recycle-bin') { hiddenLoaded = false; loadHidden() }
       } catch (err) {
-        toast('실행하지 못했어요: ' + (err as Error).message, 'bad')
+        toast('실행하지 못했어요: ' + errText(err), 'bad')
         btn.disabled = false
         btn.textContent = before
       }
@@ -897,12 +1025,12 @@ async function photosFlow(host: HTMLElement) {
               ${r.failed.length ? `${r.failed.length}장은 사용 중이라 건너뛰었습니다.` : ''}</div>
           </div>`
         } catch (err) {
-          host.innerHTML = `<div class="note" style="margin-top:10px">정리하지 못했어요: ${esc((err as Error).message)}</div>`
+          host.innerHTML = `<div class="note" style="margin-top:10px">정리하지 못했어요: ${esc(errText(err))}</div>`
         }
       })
     })
   } catch (err) {
-    host.innerHTML = `<div class="note" style="margin-top:10px">확인하지 못했어요: ${esc((err as Error).message)}</div>`
+    host.innerHTML = `<div class="note" style="margin-top:10px">확인하지 못했어요: ${esc(errText(err))}</div>`
   }
 }
 
@@ -958,11 +1086,11 @@ async function tidyFolderFlow(target: string, host: HTMLElement) {
           ub.textContent = `${back.restoredCount.toLocaleString()}개를 원래 자리로 되돌렸어요`
         })
       } catch (err) {
-        host.innerHTML = `<div class="note" style="margin-top:10px">옮기지 못했어요: ${esc((err as Error).message)}</div>`
+        host.innerHTML = `<div class="note" style="margin-top:10px">옮기지 못했어요: ${esc(errText(err))}</div>`
       }
     })
   } catch (err) {
-    host.innerHTML = `<div class="note" style="margin-top:10px">확인하지 못했어요: ${esc((err as Error).message)}</div>`
+    host.innerHTML = `<div class="note" style="margin-top:10px">확인하지 못했어요: ${esc(errText(err))}</div>`
   }
 }
 
@@ -1353,7 +1481,7 @@ async function loadPrograms() {
       btn.addEventListener('click', () => uninstallOne(d.suggestions[+btn.dataset.uninstall!], btn))
     })
   } catch (err) {
-    host.innerHTML = `<div class="note">프로그램 목록을 읽지 못했어요: ${esc((err as Error).message)}</div>`
+    host.innerHTML = `<div class="note">프로그램 목록을 읽지 못했어요: ${esc(errText(err))}</div>`
   }
 }
 
@@ -1529,12 +1657,12 @@ async function planMove(src: string, dest: string) {
           (r.failed.length ? ` ${r.failed.length}개는 건너뛰었습니다.` : ''))
         loadMove()
       } catch (err) {
-        toast('옮기지 못했어요: ' + (err as Error).message, 'bad')
+        toast('옮기지 못했어요: ' + errText(err), 'bad')
         btn.disabled = false
       }
     })
   } catch (err) {
-    host.innerHTML = prev + `<div class="note">계획을 세우지 못했어요: ${esc((err as Error).message)}</div>`
+    host.innerHTML = prev + `<div class="note">계획을 세우지 못했어요: ${esc(errText(err))}</div>`
   }
 }
 
@@ -1605,17 +1733,29 @@ async function loadQuar() {
           }
           loadQuar() // 목록을 다시 읽는다 — 화면만 지우지 않는다
         } catch (err) {
-          toast('되돌리지 못했어요: ' + (err as Error).message, 'bad')
+          toast('되돌리지 못했어요: ' + errText(err), 'bad')
           btn.disabled = false
           btn.textContent = '되돌리기'
         }
       })
     })
 
-    document.getElementById('restore-all')?.addEventListener('click', async () => {
-      const r = await engine('restore', ['--all'])
-      toast(`${r.restoredCount.toLocaleString()}개를 되돌렸어요.`)
-      loadQuar()
+    document.getElementById('restore-all')?.addEventListener('click', async (ev) => {
+      // ★ 여기만 try/catch가 빠져 있었다. 실패하면 unhandled rejection으로 흘러
+      //   화면엔 아무 일도 안 일어난 것처럼 보였다 — 개별 되돌리기엔 있는데
+      //   '전부'에만 없었다. 되돌리기가 조용히 실패하는 건 격리함의 존재 이유를 깬다.
+      const b = ev.currentTarget as HTMLButtonElement
+      b.disabled = true
+      b.textContent = '되돌리는 중…'
+      try {
+        const r = await engine('restore', ['--all'])
+        toast(`${r.restoredCount.toLocaleString()}개를 되돌렸어요.`)
+        loadQuar()
+      } catch (err) {
+        toast('되돌리지 못했어요: ' + errText(err), 'bad')
+        b.disabled = false
+        b.textContent = '전부 되돌리기'
+      }
     })
 
     // 유예를 안 기다리고 지금 비운다. 되돌릴 수 없으므로 숫자와 함께 한 번 더 확인받는다.
@@ -1632,11 +1772,11 @@ async function loadQuar() {
       } catch (err) {
         b.disabled = false
         b.textContent = '지금 비우기'
-        toast('비우지 못했어요: ' + (err as Error).message, 'bad')
+        toast('비우지 못했어요: ' + errText(err), 'bad')
       }
     })
   } catch (err) {
-    host.innerHTML = `<div class="card"><div class="note">격리함을 읽지 못했어요: ${esc((err as Error).message)}</div></div>`
+    host.innerHTML = `<div class="card"><div class="note">격리함을 읽지 못했어요: ${esc(errText(err))}</div></div>`
   }
 }
 

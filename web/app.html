@@ -68,17 +68,17 @@
        원칙 하나: **작은 글자는 자간을 벌리고, 큰 글자는 좁힌다.**
        작은 글자를 좁히면 뭉치고, 큰 글자를 안 좁히면 헐거워 보인다.
        줄간격도 같은 방향이다 — 커질수록 촘촘하게. */
-    --t-micro:11px;  --lh-micro:1.45;  --tr-micro:.014em;   /* 눈썹·배지 */
-    --t-caption:12px;--lh-caption:1.6; --tr-caption:.004em; /* 캡션·보조 */
-    --t-small:13px;  --lh-small:1.68;  --tr-small:-.002em;  /* 본문 작은 것 */
-    --t-body:14px;   --lh-body:1.72;   --tr-body:-.006em;   /* 읽는 본문 */
-    --t-lead:15px;   --lh-lead:1.7;    --tr-lead:-.01em;    /* 리드 문장 */
-    --t-title:17px;  --lh-title:1.45;  --tr-title:-.018em;  /* 소제목·질문 */
-    --t-h2:20px;     --lh-h2:1.34;     --tr-h2:-.026em;     /* 섹션 제목 */
-    --t-h1:25px;     --lh-h1:1.24;     --tr-h1:-.032em;     /* 큰 숫자 */
-    --t-num:32px;    --lh-num:1.14;    --tr-num:-.038em;    /* 지켜드린 양 */
-    --t-display:42px;--lh-display:1.06;--tr-display:-.042em;/* 대시보드 큰 숫자 */
-    --t-hero:60px;   --lh-hero:1.0;    --tr-hero:-.046em;   /* 주인공 숫자 */
+    --t-micro:12px;  --lh-micro:1.42;  --tr-micro:.010em;   /* 눈썹·배지 */
+    --t-caption:14px;--lh-caption:1.55;--tr-caption:.002em; /* 캡션·보조 */
+    --t-small:15px;  --lh-small:1.62;  --tr-small:-.004em;  /* 본문 작은 것 */
+    --t-body:16px;   --lh-body:1.66;   --tr-body:-.008em;   /* 읽는 본문 */
+    --t-lead:17px;   --lh-lead:1.62;   --tr-lead:-.012em;   /* 리드 문장 */
+    --t-title:19px;  --lh-title:1.42;  --tr-title:-.020em;  /* 소제목·질문 */
+    --t-h2:23px;     --lh-h2:1.30;     --tr-h2:-.028em;     /* 섹션 제목 */
+    --t-h1:28px;     --lh-h1:1.22;     --tr-h1:-.034em;     /* 큰 숫자 */
+    --t-num:36px;    --lh-num:1.12;    --tr-num:-.040em;    /* 지켜드린 양 */
+    --t-display:46px;--lh-display:1.05;--tr-display:-.044em;/* 대시보드 큰 숫자 */
+    --t-hero:64px;   --lh-hero:1.0;    --tr-hero:-.048em;   /* 주인공 숫자 */
 
     /* ── 굵기 ──────────────────────────────────────────────────
        가변축이라 100단위에 갇히지 않는다. 다섯 단계로 고정하고 이 밖은 안 쓴다.
@@ -96,6 +96,11 @@
     /* 여백 — 8의 배수(작은 곳만 4) */
     --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:24px;
     --s-6:32px; --s-7:40px; --s-8:56px;
+
+    /* ★ 카드 안쪽 여백만 따로 둔다.
+       글자를 키우면 같은 여백이 상대적으로 좁아 보인다 — 글자만 키우고 여백을
+       그대로 두면 화면이 더 답답해진다. 24는 14px 본문에 맞춘 값이었다. */
+    --pad-card:28px;
 
     /* ── 색: 중립 ──────────────────────────────────────────────
        순백·순회색을 쓰지 않는다. 청록을 아주 조금 섞어야 브랜드와 붙는다. */
@@ -214,7 +219,7 @@
 
   /* ── 카드 ───────────────────────────────────────────────────── */
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
-        padding:var(--s-5);box-shadow:var(--sh-1)}
+        padding:var(--pad-card);box-shadow:var(--sh-1)}
   .card.pad{padding:var(--s-6)}
 
   /* ── 홈 히어로 ────────────────────────────────────────────────
@@ -525,8 +530,41 @@
   .bd-file:first-of-type{border-top:0}
   .bd-name{font-weight:var(--w-em);color:var(--ink-2);margin-right:var(--s-2)}
   .bd-size{color:var(--muted)}
-  .bd-path{display:block;color:var(--faint);font-family:var(--font-mono);
-           font-size:var(--t-micro);line-height:var(--lh-micro);letter-spacing:var(--tr-micro);word-break:break-all;margin-top:1px}
+  /* ★ 경로는 램프에서 한 단 올린다(micro→caption).
+     화면의 절반이 경로인데 가장 작은 단으로 깔려 있었다. 고정폭이라 같은 px에서도
+     한글 옆에서 커 보이지만, 여기 적힌 건 "이게 어디 있는 무엇인가"라서
+     판단에 직접 쓰인다 — 장식이 아니다. 읽히는 쪽을 택한다. */
+  .bd-path{display:block;color:var(--muted);font-family:var(--font-mono);
+           font-size:var(--t-caption);line-height:var(--lh-caption);letter-spacing:var(--tr-caption);word-break:break-all;margin-top:2px}
+
+  /* ── 낱개로 고르기 ──────────────────────────────────────────
+     체크박스를 크게 둔다(18px). 여기서 잘못 누르면 지울 게 달라지는데,
+     기본 체크박스는 13px이라 경로 옆에서 거의 안 보인다. */
+  .pick{border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface-2);
+        padding:var(--s-3)}
+  .pick-head{display:flex;align-items:center;gap:var(--s-2);flex-wrap:wrap;
+             font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
+             font-weight:var(--w-em);color:var(--ink-2);margin-bottom:var(--s-2)}
+  .pick-head button{margin-left:auto}
+  .pick-list{max-height:340px;overflow-y:auto;border:1px solid var(--line);
+             border-radius:var(--r-sm);background:var(--surface)}
+  .pick-row{display:grid;grid-template-columns:auto 1fr auto;gap:var(--s-2) var(--s-3);
+            align-items:center;padding:var(--s-2) var(--s-3);border-top:1px solid var(--line);cursor:pointer}
+  .pick-row:first-child{border-top:0}
+  .pick-row:hover{background:var(--surface-2)}
+  .pick-row input{width:18px;height:18px;accent-color:var(--accent);margin:0;cursor:pointer}
+  .pick-name{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
+             font-weight:var(--w-em);color:var(--ink);word-break:break-all}
+  .pick-size{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
+             color:var(--muted);white-space:nowrap}
+  .pick-row .bd-path{grid-column:2/-1;margin-top:0}
+  .pick-foot{display:flex;align-items:center;gap:var(--s-3);flex-wrap:wrap;margin-top:var(--s-3)}
+  .pick-foot span{color:var(--muted)}
+  .pick-done{border:1px solid var(--line);border-left:3px solid var(--safe);border-radius:var(--r-sm);
+             padding:var(--s-3);margin-top:var(--s-3);background:var(--surface)}
+  .pick-done-h{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
+               font-weight:var(--w-head);color:var(--safe)}
+  .pick-done .t-caption{color:var(--muted);display:block;margin-top:2px}
 
   /* 파일 한 개 = 카드 하나.
      이름표만 달던 한 줄에서 "누구 것 / 지우면 / 영향 범위"까지 펴는 자리다.
