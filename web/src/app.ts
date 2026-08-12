@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.9.13'
+const APP_VERSION = '0.9.14'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -396,6 +396,50 @@ function evidenceHtml(ev: any): string {
 }
 
 
+/* ── 결론부터 ──────────────────────────────────────────────────
+   ★ 왜 접게 됐나 (앞의 판단을 뒤집는다)
+
+   전에는 근거를 한 줄도 접지 않았다. 그때 적어둔 이유는 이랬다 —
+   "접어두면 아무도 안 펴고, 안 펴면 없는 것과 같다."
+   맞는 말이었지만 반쪽이었다. **전부 펼쳤더니 아무도 안 읽었다.**
+
+   실측 화면 하나에 질문 하나가 이만큼을 실었다: 질문 + 왜 묻나 + 구성비 +
+   나이 + 종류마다 3줄(왜 봤나/지우면/다시 생기나) + 지워도 되나 + 되돌리나 +
+   폴더 목록 + 파일마다 또 4줄. 답변 버튼은 세 화면쯤 스크롤해야 나왔다.
+   게다가 **643KB짜리 종류가 10.7GB짜리와 똑같은 크기의 카드**를 받았다 —
+   전체의 0.006%인데 읽는 부담은 같았다.
+
+   그래서 '접기 대 펼치기'가 아니라 **덜 보여주기**로 간다. 결정에 필요한 건
+   두 줄이다: 이게 대체로 무엇인가, 지우면 무엇이 달라지나. 나머지는 접는다.
+   접은 칸에는 무엇이 들었는지 개수까지 적어둔다 — 접힌 걸 모르면 없는 것과
+   같다는 옛 지적은 여전히 옳으니까. */
+
+/**
+ * 결정에 필요한 두 줄. 판단은 이미 엔진이 했고 여기선 고르기만 한다.
+ *   1) 이게 대체로 무엇인가 (ev.mix — "대부분 …입니다(100%)")
+ *   2) 지우면 무엇이 달라지나 (가장 큰 종류의 영향)
+ * 둘 다 없으면 아무것도 안 그린다 — 빈 칸을 만들어 자리만 먹지 않는다.
+ */
+function gistHtml(ev: any): string {
+  if (!ev) return ''
+  // 가장 큰 종류 하나만 본다. 꼬리는 결정을 안 바꾼다.
+  const top = [...(ev.kinds ?? [])].sort((a: any, b: any) => b.bytes - a.bytes)[0]
+  const affects = top?.impact?.affects
+  const lines = [ev.mix, affects].filter(Boolean) as string[]
+  if (!lines.length) return ''
+  return `<div class="q-gist">${lines.map((s) => `<div>${esc(s)}</div>`).join('')}</div>`
+}
+
+/** 접은 칸에 뭐가 들었는지 — 개수를 적어야 펴볼 마음이 든다. */
+function moreLabel(ev: any): string {
+  if (!ev) return ''
+  const bits: string[] = []
+  if (ev.kinds?.length) bits.push(`종류 ${ev.kinds.length}`)
+  if (ev.folders?.length) bits.push(`폴더 ${ev.folders.length}곳`)
+  if (ev.samples?.length) bits.push(`큰 파일 ${ev.samples.length}개`)
+  return bits.length ? ` (${bits.join(' · ')})` : ''
+}
+
 function renderQuestions(questions: Question[]) {
   lastQuestions = questions // 낱개 목록이 근거를 다시 찾는다(renderPicker)
   const qEl = $('questions')
@@ -405,16 +449,22 @@ function renderQuestions(questions: Question[]) {
   }
   qEl.innerHTML = questions.map((q, i) => `
     <div class="q" data-qi="${i}">
-      <div class="q-n">질문 ${i + 1}</div>
+      <div class="q-head">
+        <span class="q-n">질문 ${i + 1}</span>
+        <span class="q-stake">${fmtBytes(q.stakeBytes)} · ${q.stakeCount.toLocaleString()}개</span>
+      </div>
       <div class="q-text">${esc(q.text)}</div>
-      <div class="q-why">왜 묻나: ${esc(q.rationale)}</div>
-      ${evidenceHtml((q as any).evidence)}
+      ${gistHtml((q as any).evidence)}
       <div class="opts">${q.options.map((o) => `<button class="opt${o.outcome === 'KEEP' ? ' keep' : ''}"
         data-outcome="${o.outcome}" data-unknown="${esc(q.unknown)}"
         data-preview="${esc(o.preview)}">${esc(o.label)}</button>`).join('')}</div>
       <div class="q-answered" hidden></div>
       <div class="q-act" data-act="${i}" data-count="${q.stakeCount}" data-bytes="${q.stakeBytes}"></div>
-      <div class="q-stake">걸린 용량: ${fmtBytes(q.stakeBytes)} · ${q.stakeCount.toLocaleString()}개</div>
+      <details class="q-more">
+        <summary>근거 자세히${moreLabel((q as any).evidence)}</summary>
+        <div class="q-why">왜 묻나: ${esc(q.rationale)}</div>
+        ${evidenceHtml((q as any).evidence)}
+      </details>
     </div>`).join('')
   qEl.querySelectorAll<HTMLButtonElement>('.opt').forEach((btn) => btn.addEventListener('click', () => {
     const q = btn.closest('.q')!

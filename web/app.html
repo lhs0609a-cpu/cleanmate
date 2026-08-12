@@ -311,6 +311,32 @@
   .q-text{font-size:var(--t-title);font-weight:var(--w-em);margin:6px 0 8px;line-height:var(--lh-title);
           letter-spacing:var(--tr-title);font-family:var(--font-display)}
   .q-why{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);color:var(--muted);margin-bottom:var(--s-3)}
+
+  /* 눈썹 한 줄 — 질문 번호와 걸린 용량을 양끝에. 전에는 용량이 카드 맨 아래에
+     있어서, 정작 판단에 제일 중요한 숫자를 답한 뒤에야 봤다. */
+  .q-head{display:flex;align-items:baseline;gap:var(--s-2)}
+  .q-head .q-stake{margin-left:auto;margin-top:0;font-size:var(--t-small);
+                   font-weight:var(--w-num);color:var(--amb);white-space:nowrap}
+
+  /* ★ 결론 두 줄. 이 카드에서 실제로 읽히길 바라는 유일한 부분이라
+     본문 크기로 두고 여백으로 띄운다 — 나머지는 접혀 있다. */
+  .q-gist{margin:var(--s-3) 0;padding:var(--s-3);border-radius:var(--r-sm);
+          background:var(--surface-2);
+          font-size:var(--t-body);line-height:var(--lh-body);letter-spacing:var(--tr-body);
+          color:var(--ink)}
+  .q-gist div + div{margin-top:var(--s-1);color:var(--ink-2)}
+
+  /* 접은 칸 — 접힌 티가 나야 편다. 삼각형과 개수를 함께 보여준다. */
+  .q-more{margin-top:var(--s-4);border-top:1px solid var(--line);padding-top:var(--s-3)}
+  .q-more > summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;
+                    font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
+                    font-weight:var(--w-ui);color:var(--accent)}
+  .q-more > summary::-webkit-details-marker{display:none}
+  .q-more > summary::before{content:"▸";transition:transform var(--fast) var(--ease)}
+  .q-more[open] > summary::before{transform:rotate(90deg)}
+  .q-more > summary:hover{text-decoration:underline}
+  .q-more[open] > summary{margin-bottom:var(--s-3)}
+
   .opts{display:flex;flex-wrap:wrap;gap:var(--s-2)}
   .opt{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);font-weight:var(--w-em);padding:9px 16px;border:1px solid var(--line-2);
        background:var(--surface);color:var(--ink-2);border-radius:var(--r-full);cursor:pointer;
