@@ -295,6 +295,75 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
+/* ────────────────────────────────────────────────────────────
+   자동 목록 — "폴더를 고르세요"를 없앤다
+
+   ★ 왜: 이 화면은 여태 '옮길 폴더 고르기'부터 시작했다. 그런데 어느 폴더에
+     큰 게 들어 있는지 아는 사람이면 애초에 이 기능이 필요 없다. 용량이 부족한
+     사람은 어디를 봐야 할지 몰라서 부족한 거다.
+     (같은 이유로 스캔 쪽은 이미 기본 목록을 쓴다 — presets.ts 머리말)
+   ──────────────────────────────────────────────────────────── */
+
+/**
+ * 옮길 것을 찾아볼 곳.
+ *
+ * ★ 스캔 기본 목록(presets.defaultRoots)과 **일부러 다르다.** 거기엔 AppData가
+ *   들어 있는데, 앱 데이터는 지워도 되는 캐시일지언정 **옮기면 앱이 깨진다.**
+ *   파일이 살아 있어도 프로그램이 그 경로를 못 찾으면 똑같이 고장이다.
+ *   그래서 여기는 사람이 만든 큰 덩어리가 사는 곳만 본다.
+ */
+export function relocateRoots(env: { platform: NodeJS.Platform; home: string }): { label: string; path: string }[] {
+  const j = (...p: string[]) => p.join(env.platform === 'win32' ? '\\' : '/')
+  return [
+    { label: '다운로드', path: j(env.home, 'Downloads') },
+    { label: '동영상', path: j(env.home, 'Videos') },
+    { label: '사진', path: j(env.home, 'Pictures') },
+    { label: '문서', path: j(env.home, 'Documents') },
+    { label: '바탕화면', path: j(env.home, 'Desktop') },
+    { label: '음악', path: j(env.home, 'Music') },
+  ]
+}
+
+export interface DriveInfo {
+  root: string
+  total: number
+  free: number
+  /** 윈도우가 깔린 드라이브 — 여기로 옮기면 용량이 안 는다 */
+  isSystem: boolean
+}
+
+/**
+ * 붙어 있는 드라이브를 훑는다. 대상으로 고를 수 있게 남은 공간과 함께 준다.
+ *
+ * 드라이브 목록을 얻자고 wmic·PowerShell을 부르지 않는다(의존성 0 원칙).
+ * A–Z를 statfs로 두들겨 보면 붙어 있는 것만 답한다 — 없는 letter는 즉시 실패한다.
+ */
+export async function listDrives(): Promise<DriveInfo[]> {
+  if (process.platform !== 'win32') return []
+  const system = (process.env.SystemDrive ?? 'C:').toUpperCase()
+  const letters = 'CDEFGHIJKLMNOPQRSTUVWXYZAB'.split('')
+  const found: DriveInfo[] = []
+  await Promise.all(
+    letters.map(async (L) => {
+      const root = `${L}:\\`
+      try {
+        const fs = await statfs(root)
+        const total = Number(fs.blocks) * Number(fs.bsize)
+        if (!total) return
+        found.push({
+          root,
+          total,
+          free: Number(fs.bavail) * Number(fs.bsize),
+          isSystem: `${L}:` === system,
+        })
+      } catch {
+        /* 그 letter엔 드라이브가 없다 */
+      }
+    })
+  )
+  return found.sort((a, b) => a.root.localeCompare(b.root))
+}
+
 /** 경로 표시용 — UI에서 긴 경로를 줄여 보여줄 때. */
 export function shortenPath(path: string, keep = 3): string {
   const parts = path.split(/[\\/]/).filter(Boolean)

@@ -29,6 +29,7 @@
  *   startup-set    <id> <on|off>     시작프로그램 켜기/끄기 (되돌릴 수 있음)
  *   empty-recycle-bin                휴지통 비우기(윈도우 공식 명령, 되돌리기 없음)
  *   open-cleanmgr                    윈도우 디스크 정리 도구 띄우기
+ *   relocate-scan                    옮길 만한 것 자동 탐색 + 대상 드라이브 목록
  *   relocate-plan  <path> <destRoot> 다른 드라이브로 옮길 계획(미리보기)
  *   relocate-apply <path> <destRoot> 실제 이동
  *   relocate-list  <destRoot>        옮긴 목록
@@ -104,6 +105,8 @@ import {
   readRelocateLedger,
   undoRelocate,
   movedFolderOn,
+  relocateRoots,
+  listDrives,
   freeSpaceOn,
   hasEnoughSpace,
   type RelocateItem,
@@ -239,6 +242,97 @@ function appDataFile(name: string): string {
    진행률(%)의 근거다. 폴더를 훑기 전에는 파일이 몇 개인지 알 수 없으니,
    지난번 스캔의 개수를 총량으로 쓴다. 파일 수는 하루 만에 크게 변하지 않는다.
    첫 스캔에는 이 기록이 없어서 폴더 개수로만 세고, 화면이 그렇다고 밝힌다. */
+
+/* ── 정리 계획 캐시 ────────────────────────────────────────────
+   ★ 왜 필요한가 (실물에서 잰 것): "지금 정리하기"를 누르면 **방금 끝낸 스캔을
+     처음부터 다시** 돌렸다. 이 PC 기준 14만 개에 7분이다. 화면은 이미 "10.1GB
+     정리 가능"이라고 숫자까지 보여준 뒤인데, 누르면 그 7분을 다시 기다렸다.
+
+     그런데 scanPlan은 그 7분 동안 모든 파일을 분류하면서 isAutoEligible까지
+     이미 계산한다. 즉 지울 목록은 **이미 만들어졌다가 버려지고 있었다.**
+     버리지 말고 적어두면 두 번째 스캔이 통째로 사라진다.
+
+   ★ 그래도 다시 확인한다: 캐시는 '무엇을 지울지'의 후보일 뿐이고, 실제 격리는
+     파일마다 크기·수정일을 대조한 뒤에만 한다(quarantine의 expect).
+     캐시가 낡았으면 그 파일들이 조용히 건너뛰어질 뿐, 엉뚱한 게 지워지지 않는다.
+
+   ★ 사유 문자열은 사전으로 접는다. 9만 개 항목이 같은 문장 수십 개를 나눠 쓰므로
+     그대로 적으면 파일이 수십 MB가 된다. 규칙 수만큼만 적고 번호로 가리킨다. */
+
+const PLAN_CACHE_VERSION = 1
+/** 이보다 오래된 계획은 안 쓴다. 오래 묵은 목록으로 지우기 시작하면 안 된다. */
+const PLAN_CACHE_MAX_AGE_MS = 60 * 60 * 1000
+
+interface CachedPlan {
+  version: number
+  createdAt: number
+  roots: string[]
+  /** [meaning, reason] 쌍 — 항목이 번호로 가리킨다 */
+  kinds: [string, string][]
+  /** [path, size, mtimeMs, kindIndex] */
+  items: [string, number, number, number][]
+}
+
+async function writePlanCache(roots: string[], items: SweepItem[]): Promise<void> {
+  const kindIds = new Map<string, number>()
+  const kinds: [string, string][] = []
+  const rows: CachedPlan['items'] = items.map((i) => {
+    const key = i.meaning + ' ' + i.reason
+    let id = kindIds.get(key)
+    if (id === undefined) {
+      id = kinds.length
+      kinds.push([i.meaning, i.reason])
+      kindIds.set(key, id)
+    }
+    return [i.path, i.size, i.mtimeMs, id]
+  })
+  const payload: CachedPlan = {
+    version: PLAN_CACHE_VERSION,
+    createdAt: Date.now(),
+    roots,
+    kinds,
+    items: rows,
+  }
+  try {
+    const file = appDataFile('sweep-plan.json')
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, JSON.stringify(payload), 'utf8')
+  } catch {
+    /* 캐시를 못 써도 정리는 된다 — 그때는 예전처럼 다시 훑을 뿐이다. */
+  }
+}
+
+/** 같은 폴더들에 대한 신선한 계획이 있으면 돌려준다. 없으면 null. */
+async function readPlanCache(roots: string[]): Promise<SweepItem[] | null> {
+  try {
+    const raw = JSON.parse(await readFile(appDataFile('sweep-plan.json'), 'utf8')) as CachedPlan
+    if (raw.version !== PLAN_CACHE_VERSION) return null
+    if (Date.now() - raw.createdAt > PLAN_CACHE_MAX_AGE_MS) return null
+    // 훑은 폴더가 다르면 남의 계획이다. 순서까지 같아야 한다고 하진 않는다.
+    const a = [...raw.roots].sort().join('|')
+    const b = [...roots].sort().join('|')
+    if (a !== b) return null
+    return raw.items.map(([path, size, mtimeMs, k]) => ({
+      path,
+      size,
+      mtimeMs,
+      meaning: raw.kinds[k]?.[0] ?? '캐시·임시 파일',
+      reason: raw.kinds[k]?.[1] ?? '규칙 DB가 확증한 자동 정리 대상',
+    }))
+  } catch {
+    return null
+  }
+}
+
+/** 다 쓴 계획은 지운다. 이미 지운 파일 목록을 들고 있어봐야 혼란만 만든다. */
+async function removePlanCache(): Promise<void> {
+  try {
+    const { unlink } = await import('node:fs/promises')
+    await unlink(appDataFile('sweep-plan.json'))
+  } catch {
+    /* 없으면 없는 대로 */
+  }
+}
 
 async function readScanStats(): Promise<RootWeight[]> {
   try {
@@ -409,6 +503,8 @@ async function scanPlan(paths: string[]) {
   let autoB = 0, autoC = 0, inferB = 0
   let scannedFiles = 0, elapsedMs = 0
   const ambig: Classified[] = []
+  /** 자동 정리 대상 — 그대로 캐시해서 '지금 정리하기'가 재스캔 없이 쓴다. */
+  const autoItems: SweepItem[] = []
   const keptMap = new Map<string, number>()
   /** 어디를 봤는지도 돌려준다 — "어디까지 봤나"를 숨기면 신뢰가 안 생긴다. */
   const roots: { path: string; files: number; bytes: number }[] = []
@@ -454,13 +550,26 @@ async function scanPlan(paths: string[]) {
         ambB += f.size; ambC++; ambig.push(c)
       } else {
         safeB += f.size; safeC++
-        if (isAutoEligible(c)) { autoB += f.size; autoC++ } else inferB += f.size
+        if (isAutoEligible(c)) {
+          autoB += f.size; autoC++
+          // ★ 여기서 만든 목록을 버리지 않는다. 이게 곧 '지금 정리하기'가 지울
+          //   목록이고, 버리면 그때 가서 똑같은 스캔을 처음부터 다시 해야 한다.
+          autoItems.push({
+            path: f.path,
+            size: f.size,
+            meaning: c.verdict.meaning,
+            reason: c.verdict.reason,
+            mtimeMs: stampMtime(f.mtime.getTime()),
+          })
+        } else inferB += f.size
       }
     }
   }
 
   /* 다음 스캔의 진행률을 위해 이번 개수를 남긴다. 이번 스캔 결과에는 영향이 없다. */
   await writeScanStats(roots.map((r) => ({ path: r.path, files: r.files })))
+  /* 지울 목록을 적어둔다 — '지금 정리하기'가 이걸 쓰면 재스캔이 통째로 사라진다. */
+  await writePlanCache(paths, autoItems)
 
   /* 분류·질문 계산이 남았다 — 파일이 14만 개면 이 구간도 몇 초 걸린다.
      여기서 막대가 멈추면 "다 됐는데 왜 안 뜨나"가 된다. 그래서 마지막 단계를 알린다. */
@@ -584,17 +693,73 @@ async function main() {
         const rest = args.filter((a) => !a.startsWith('--'))
         const paths = rest.length ? rest : (await presentDefaultRoots()).map((r) => r.path)
         if (!paths.length) fail('정리할 폴더를 찾지 못했습니다.')
-        let quarantinedCount = 0, purgedCount = 0, bytesAfterGrace = 0
-        const failed: { path: string; reason: string }[] = []
-        for (const path of paths) {
-          const plan = await planSweep(path)
-          const result = await applySweep(plan, { purge: !keep })
-          quarantinedCount += result.quarantinedCount
-          purgedCount += result.purgedCount
-          bytesAfterGrace += result.bytesAfterGrace
-          for (const f of result.failed) failed.push(f)
+
+        /**
+         * ★ 방금 만든 계획이 있으면 다시 훑지 않는다.
+         *
+         *   전에는 여기서 폴더마다 planSweep()을 불렀고, 그건 곧 전체 재스캔이다
+         *   (이 PC 기준 7분). 화면은 이미 "10.1GB 정리 가능"을 보여준 뒤인데
+         *   누르면 그 7분을 다시 기다리게 했다. 그 목록은 스캔할 때 이미
+         *   만들어졌다 — 이제 적어두고(writePlanCache) 여기서 꺼내 쓴다.
+         *
+         *   캐시가 없거나 낡았으면 예전처럼 훑는다. 다만 이번엔 말을 하면서 훑는다.
+         */
+        let items = await readPlanCache(paths)
+        if (items) {
+          progress({ t: 'sweep-plan', cached: true, total: items.length })
+        } else {
+          items = []
+          const started = Date.now()
+          let lastEmit = 0
+          const weights = await readScanStats()
+          let doneFiles = 0
+          for (const [rootIndex, path] of paths.entries()) {
+            const onProgress = (count: number, currentDir: string) => {
+              const now = Date.now()
+              if (now - lastEmit < 250) return
+              lastEmit = now
+              const view = computeProgress({
+                rootIndex, rootCount: paths.length, rootFiles: count, doneFiles,
+                elapsedMs: now - started, weights, paths,
+              })
+              progress({ t: 'scan', ...view, rootIndex, rootCount: paths.length, root: path, dir: currentDir })
+            }
+            const plan = await planSweep(path, { onProgress })
+            doneFiles += plan.scannedFiles
+            // 펼치지 않고 하나씩 — 캐시 목록은 십수만 개가 될 수 있다
+            for (const it of plan.items) items.push(it)
+          }
         }
-        out({ quarantinedCount, purgedCount, purged: !keep, bytesAfterGrace, failed })
+
+        /* 지우는 동안에도 말한다 — 여기가 통째로 조용했다. */
+        const total = items.length
+        const startedApply = Date.now()
+        const result = await applySweep(
+          { items, bytes: items.reduce((s, i) => s + i.size, 0), scannedFiles: 0, elapsedMs: 0,
+            skipped: { locked: { count: 0, bytes: 0 }, needsAsking: { count: 0, bytes: 0 }, inferredNotAuto: { count: 0, bytes: 0 } } },
+          {
+            purge: !keep,
+            onProgress: (done, all, bytes) => {
+              const elapsed = Date.now() - startedApply
+              // 남은 시간은 지금까지의 속도로만 잰다 — 지어내지 않는다.
+              const etaSec = done > 0 ? Math.round(((elapsed / done) * (all - done)) / 1000) : null
+              progress({ t: 'sweep', done, total: all, bytes, etaSec, pct: all ? Math.round((done / all) * 100) : 100 })
+            },
+          }
+        )
+
+        // 계획을 다 썼으면 지운다. 이미 지운 파일 목록을 들고 있어봐야
+        // 다음에 "이건 왜 안 지워지지"만 만든다.
+        await removePlanCache()
+
+        out({
+          quarantinedCount: result.quarantinedCount,
+          purgedCount: result.purgedCount,
+          purged: !keep,
+          bytesAfterGrace: result.bytesAfterGrace,
+          failed: result.failed,
+          planned: total,
+        })
         break
       }
       case 'quar-list': {
@@ -1053,6 +1218,61 @@ async function main() {
         const drive = process.env.SystemDrive ?? 'C:'
         spawn('cleanmgr.exe', ['/d', drive], { detached: true, stdio: 'ignore', windowsHide: false }).unref()
         out({ opened: true, drive })
+        break
+      }
+      /**
+       * 옮길 만한 것을 **알아서** 찾는다 — 폴더를 고르라고 하지 않는다.
+       *
+       * 어느 폴더에 큰 게 있는지 아는 사람이면 이 기능이 필요 없다.
+       * 그래서 사람이 만든 큰 덩어리가 사는 곳(relocateRoots)을 훑어
+       * 옮겨도 되는 것만 폴더별로 묶어 준다. 대상 드라이브도 함께 나열한다.
+       */
+      case 'relocate-scan': {
+        const roots = relocateRoots({ platform: process.platform, home: homedir() })
+        const groups: {
+          label: string; path: string; count: number; bytes: number
+          items: { path: string; size: number; meaning: string }[]
+        }[] = []
+        let totalBytes = 0
+        let totalCount = 0
+        let refusedCount = 0
+
+        for (const [i, r] of roots.entries()) {
+          progress({ t: 'relocate-scan', rootIndex: i, rootCount: roots.length, root: r.path, label: r.label })
+          let candidates
+          try {
+            candidates = await relocateCandidates(r.path)
+          } catch {
+            continue // 그 폴더가 없거나 못 읽으면 건너뛴다 — 나머지로 계속 간다
+          }
+          refusedCount += candidates.refused.length
+          if (!candidates.items.length) continue
+
+          candidates.items.sort((a, b) => b.size - a.size)
+          const bytes = candidates.items.reduce((s, it) => s + it.size, 0)
+          totalBytes += bytes
+          totalCount += candidates.items.length
+          groups.push({
+            label: r.label,
+            path: r.path,
+            count: candidates.items.length,
+            bytes,
+            items: candidates.items.slice(0, 30).map((it) => ({
+              path: it.path, size: it.size, meaning: it.meaning,
+            })),
+          })
+        }
+
+        groups.sort((a, b) => b.bytes - a.bytes)
+        out({
+          roots: roots.map((r) => r.label),
+          groups,
+          totalCount,
+          totalBytes,
+          refusedCount,
+          minBytes: RELOCATE_MIN_BYTES,
+          drives: await listDrives(),
+        })
         break
       }
       case 'relocate-plan': {

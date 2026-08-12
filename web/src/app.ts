@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.9.12'
+const APP_VERSION = '0.9.13'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -644,7 +644,24 @@ interface ScanProgress {
   root?: string
 }
 
+/**
+ * 지우는 동안의 진행 상황. 스캔과 형태가 달라서 따로 둔다 —
+ * 스캔은 '파일 몇 개를 봤나'고, 이쪽은 '몇 개를 처리했고 얼마나 비었나'다.
+ */
+interface SweepProgress {
+  t: 'sweep' | 'sweep-plan'
+  /** sweep-plan: 계획을 다시 훑지 않고 캐시에서 꺼냈다 */
+  cached?: boolean
+  done?: number
+  total?: number
+  /** 지금까지 실제로 비운 용량 */
+  bytes?: number
+  pct?: number
+  etaSec?: number | null
+}
+
 let lastProgress: ScanProgress | null = null
+let lastSweep: SweepProgress | null = null
 
 /**
  * 경로 → 사람이 읽는 폴더 이름('다운로드', '앱 데이터(로컬)').
@@ -661,6 +678,7 @@ if (inTauri) {
   TAURI.event.listen('engine-progress', (e: any) => {
     const p = e?.payload
     if (p && (p.t === 'scan' || p.t === 'plan')) lastProgress = p as ScanProgress
+    else if (p && (p.t === 'sweep' || p.t === 'sweep-plan')) lastSweep = p as SweepProgress
   })
 }
 
@@ -815,6 +833,7 @@ $('apply-btn').addEventListener('click', async () => {
   }
   const btn = $('apply-btn') as HTMLButtonElement
   btn.disabled = true; btn.textContent = '지우는 중...'
+  const stopSweepTicker = startSweepTicker()
   try {
     // 경로가 없으면(기본 스캔) 엔진이 같은 기본 목록을 다시 씁니다 — 방금 본 그 범위.
     const res = await engine('apply-sweep', scannedPath ? [scannedPath] : [])
@@ -839,8 +858,57 @@ $('apply-btn').addEventListener('click', async () => {
   } catch (err) {
     $('apply-note').textContent = `정리 실패: ${errText(err)}`
     btn.disabled = false; btn.textContent = '다시 시도'
+  } finally {
+    stopSweepTicker()
   }
 })
+
+/**
+ * 지우는 동안 무슨 일이 벌어지는지 말한다 — 여기가 통째로 조용했다.
+ *
+ * ★ 전에는 버튼이 "지우는 중…"으로 바뀌는 게 전부였다. 그 뒤로 몇 분이 흘러도
+ *   몇 개 중 몇 개인지, 얼마나 남았는지, 애초에 도는 중인지 알 방법이 없었다.
+ *   게다가 그 몇 분의 대부분은 **방금 끝낸 스캔을 다시 하는 시간**이었다.
+ *   이제 계획을 캐시에서 꺼내 쓰므로(engine-cli의 writePlanCache) 그 구간이
+ *   통째로 사라졌고, 남은 진짜 작업만 숫자로 보여준다.
+ *
+ * 진행 상황이 안 오면(구버전 엔진) 예전처럼 경과 시간만 보여준다 —
+ * 없는 진행률을 지어내지 않는다는 원칙은 그대로다.
+ */
+function startSweepTicker(): () => void {
+  const started = Date.now()
+  lastSweep = null
+  let shownPct = 0
+  const note = $('apply-note')
+
+  const paint = () => {
+    const elapsed = fmtDuration((Date.now() - started) / 1000)
+    const s = lastSweep
+
+    if (!s) {
+      note.textContent = `지울 목록을 확인하는 중 · 경과 ${elapsed}`
+      return
+    }
+    if (s.t === 'sweep-plan') {
+      note.textContent = s.cached
+        ? `방금 만든 계획을 그대로 씁니다 — ${(s.total ?? 0).toLocaleString()}개 · 다시 훑지 않아요`
+        : `지울 목록을 다시 만드는 중 · 경과 ${elapsed}`
+      return
+    }
+
+    shownPct = Math.max(shownPct, s.pct ?? 0)
+    const parts = [`${shownPct}%`]
+    if (s.total) parts.push(`${(s.done ?? 0).toLocaleString()} / ${s.total.toLocaleString()}개`)
+    if (s.bytes) parts.push(`${fmtBytes(s.bytes)} 비움`)
+    parts.push(`경과 ${elapsed}`)
+    if (s.etaSec !== null && s.etaSec !== undefined) parts.push(`남은 시간 약 ${fmtDuration(s.etaSec)}`)
+    note.textContent = `지우는 중 · ${parts.join(' · ')}`
+  }
+
+  paint()
+  const timer = setInterval(paint, 500)
+  return () => { clearInterval(timer); lastSweep = null }
+}
 
 /**
  * "지금 비우기" 버튼을 붙인다 — 유예 30일을 안 기다리고 즉시 용량을 확보한다.
@@ -1591,48 +1659,126 @@ function excludedBlock(d: any): string {
 /* ── 다른 드라이브로 옮기기 ──────────────────────────────────── */
 let moveDest: string | null = null
 
+/**
+ * ★ 폴더를 고르라고 하지 않는다.
+ *
+ * 이 화면은 여태 '옮길 폴더 고르기'부터 시작했다. 그런데 어느 폴더에 큰 게
+ * 들어 있는지 아는 사람이면 이 기능이 필요 없다 — 용량이 부족한 사람은
+ * 어디를 봐야 할지 몰라서 부족한 거다. 그래서 알아서 찾아 보여준다.
+ * (같은 이유로 스캔은 이미 기본 목록을 쓴다 — presets.ts 머리말)
+ *
+ * 대상 드라이브는 **자동으로 안 고른다.** 여유 공간만 보고 고르면 클라우드
+ * 동기화 마운트(구글 드라이브 G:는 여유 2048GB로 보고한다)를 집을 수 있고,
+ * 그러면 옮긴 게 통째로 업로드된다. 목록만 주고 고르는 건 사용자가 한다.
+ */
 async function loadMove() {
   const host = $('move-body')
-  host.innerHTML = `<div class="card"><div class="empty">옮길 폴더와 대상 드라이브를 고르면 계획을 보여드려요.</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-      <button class="opt" id="mv-src">옮길 폴더 고르기</button>
-      <button class="opt" id="mv-dst">대상 드라이브 고르기</button>
-    </div>
-    <div id="mv-status" class="t-small" style="color:var(--muted);margin-top:10px"></div></div>`
+  host.innerHTML = `<div class="card"><div class="empty">옮겨도 되는 것을 찾는 중…</div></div>`
 
-  let src: string | null = null
-  const status = () => {
-    $('mv-status').textContent =
-      `${src ? '옮길 폴더: ' + src : '옮길 폴더를 고르세요'} · ${moveDest ? '대상: ' + moveDest : '대상 드라이브를 고르세요'}`
+  let d: any
+  try {
+    d = await engine('relocate-scan')
+  } catch (err) {
+    host.innerHTML = `<div class="card"><div class="note">찾지 못했어요: ${esc(errText(err))}</div></div>`
+    return
   }
-  status()
 
-  const pick = async () => (await TAURI.dialog.open({ directory: true })) as string | null
+  if (!d.totalCount) {
+    host.innerHTML = `<div class="card"><div class="empty">
+      <b>옮길 만한 큰 파일이 없어요</b>
+      <span>${fmtBytes(d.minBytes)}보다 큰 것만 찾습니다 — 작은 걸 옮겨봐야 체감이 없어서요.
+      ${d.refusedCount ? ` 안전을 위해 제외한 항목이 ${d.refusedCount.toLocaleString()}개 있습니다.` : ''}</span>
+    </div></div>`
+    return
+  }
 
-  $('mv-src').addEventListener('click', async () => {
-    src = await pick(); status(); if (src && moveDest) planMove(src, moveDest)
+  // 대상 후보 — 시스템 드라이브는 뺀다(같은 드라이브로 옮기면 용량이 안 는다).
+  const dests = (d.drives ?? []).filter((v: any) => !v.isSystem)
+
+  host.innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <h2 class="t-h2" style="font-weight:var(--w-num)">옮길 수 있는 것 ${d.totalCount.toLocaleString()}개 · ${fmtBytes(d.totalBytes)}</h2>
+      </div>
+      <div class="t-small" style="color:var(--muted);margin-top:4px">
+        ${esc((d.roots ?? []).join(' · '))}에서 ${fmtBytes(d.minBytes)}보다 큰 것만 찾았어요.
+        프로그램 폴더·앱 설정·동기화 폴더는 옮기면 깨지므로 아예 빼놓습니다.
+      </div>
+
+      <div class="mv-dests">
+        <div class="mv-dests-h">어느 드라이브로 옮길까요</div>
+        ${dests.length ? dests.map((v: any) => `
+          <label class="mv-dest">
+            <input type="radio" name="mv-dest" value="${esc(v.root)}">
+            <span class="mv-dest-n">${esc(v.root)}</span>
+            <span class="mv-dest-f">여유 ${fmtBytes(v.free)} / ${fmtBytes(v.total)}</span>
+          </label>`).join('')
+        : `<div class="t-small" style="color:var(--muted)">다른 드라이브가 안 보여요. 외장하드를 꽂으면 여기 나옵니다.</div>`}
+        <div class="t-caption" style="color:var(--muted);margin-top:6px">
+          클라우드 동기화 폴더(구글 드라이브·원드라이브)를 고르면 옮긴 파일이 통째로 업로드됩니다 — 확인하고 골라주세요.
+        </div>
+      </div>
+
+      <div id="mv-groups">${d.groups.map((g: any) => `
+        <div class="mv-g">
+          <div class="mv-g-h">
+            <span class="mv-g-n">${esc(g.label)}</span>
+            <span class="mv-g-v">${g.count.toLocaleString()}개 · ${fmtBytes(g.bytes)}</span>
+          </div>
+          <div class="row-path">${esc(g.path)}</div>
+          <div class="mv-g-files">${g.items.slice(0, 5).map((it: any) => `
+            <div class="mv-f">
+              <span class="mv-f-n">${esc(baseName(it.path))}</span>
+              <span class="mv-f-s">${fmtBytes(it.size)}</span>
+            </div>`).join('')}
+            ${g.count > 5 ? `<div class="t-caption" style="color:var(--muted)">…외 ${(g.count - 5).toLocaleString()}개</div>` : ''}
+          </div>
+          <button class="opt" data-mv-plan="${esc(g.path)}" disabled>이 폴더 옮기기</button>
+        </div>`).join('')}</div>
+
+      <div id="mv-plan"></div>
+    </div>`
+
+  const planButtons = host.querySelectorAll<HTMLButtonElement>('[data-mv-plan]')
+  const syncDest = () => {
+    planButtons.forEach((b) => { b.disabled = !moveDest })
+  }
+  host.querySelectorAll<HTMLInputElement>('input[name="mv-dest"]').forEach((r) => {
+    if (moveDest && r.value === moveDest) r.checked = true
+    r.addEventListener('change', () => { moveDest = r.value; syncDest() })
   })
-  $('mv-dst').addEventListener('click', async () => {
-    moveDest = await pick(); status(); if (src && moveDest) planMove(src, moveDest)
+  syncDest()
+
+  planButtons.forEach((b) => {
+    b.addEventListener('click', () => {
+      if (!moveDest) return
+      planMove(b.dataset.mvPlan!, moveDest)
+    })
   })
 }
 
+/**
+ * @param src 옮길 폴더. 화면이 자동으로 찾아준 것 중 하나다(loadMove).
+ *
+ * ★ 결과를 전용 칸(#mv-plan)에만 그린다. 전에는 host 전체를 다시 그렸는데,
+ *   그러면 위쪽 드라이브 선택지와 폴더 버튼에 걸어둔 리스너가 통째로 날아가서
+ *   한 번 계획을 본 뒤에는 다른 폴더를 못 골랐다.
+ */
 async function planMove(src: string, dest: string) {
-  const host = $('move-body')
-  const prev = host.innerHTML
-  host.innerHTML = prev + `<div class="empty">옮길 수 있는 것을 찾는 중…</div>`
+  const slot = document.getElementById('mv-plan') ?? $('move-body')
+  slot.innerHTML = `<div class="empty">옮길 수 있는 것을 찾는 중…</div>`
   try {
     const d = await engine('relocate-plan', [src, dest])
     if (!d.destination.ok) {
-      host.innerHTML = prev + `<div class="note">${esc(d.destination.reason)}</div>`
+      slot.innerHTML = `<div class="note">${esc(d.destination.reason)}</div>`
       return
     }
     if (!d.count) {
-      host.innerHTML = prev + `<div class="empty">옮길 만한 파일(100MB 이상)이 없어요.${
+      slot.innerHTML = `<div class="empty">여기엔 옮길 만한 파일이 없어요.${
         d.refusedCount ? ` 안전을 위해 제외한 항목이 ${d.refusedCount}개 있습니다.` : ''}</div>`
       return
     }
-    host.innerHTML = prev + `<div class="card" style="margin-top:12px">
+    slot.innerHTML = `<div class="card" style="margin-top:12px">
       <div style="display:flex;align-items:baseline;gap:10px">
         <h2 class="t-title" style="font-weight:var(--w-num)">${d.count.toLocaleString()}개 · ${fmtBytes(d.bytes)}</h2>
         <span class="t-small" style="margin-left:auto;color:var(--muted)">→ ${esc(d.destFolder)}</span>
@@ -1650,19 +1796,22 @@ async function planMove(src: string, dest: string) {
 
     $('mv-apply').addEventListener('click', async () => {
       const btn = $('mv-apply') as HTMLButtonElement
+      if (!confirm(`${d.count.toLocaleString()}개(${fmtBytes(d.bytes)})를 ${dest}로 옮길까요?\n\n지우지 않습니다. 옮긴 기록이 파일 옆에 남아 언제든 되돌릴 수 있어요.`)) return
       btn.disabled = true; btn.textContent = '옮기는 중…'
       try {
         const r = await engine('relocate-apply', [src, dest])
         toast(`${r.movedCount.toLocaleString()}개(${fmtBytes(r.movedBytes)})를 옮겼어요.` +
           (r.failed.length ? ` ${r.failed.length}개는 건너뛰었습니다.` : ''))
+        refreshDisk(true)
         loadMove()
       } catch (err) {
         toast('옮기지 못했어요: ' + errText(err), 'bad')
         btn.disabled = false
+        btn.textContent = `${fmtBytes(d.bytes)} 옮기기`
       }
     })
   } catch (err) {
-    host.innerHTML = prev + `<div class="note">계획을 세우지 못했어요: ${esc(errText(err))}</div>`
+    slot.innerHTML = `<div class="note">계획을 세우지 못했어요: ${esc(errText(err))}</div>`
   }
 }
 

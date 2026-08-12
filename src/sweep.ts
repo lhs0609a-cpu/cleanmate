@@ -67,8 +67,11 @@ export interface SweepPlan {
  * 계획만 세운다. 아무것도 건드리지 않는다.
  * 삭제 프로그램의 기본 동작은 '미리보기'다 (기획서 11.1).
  */
-export async function planSweep(root: string): Promise<SweepPlan> {
-  const scanned = await scan(root)
+export async function planSweep(
+  root: string,
+  opts: { onProgress?: (count: number, currentDir: string) => void } = {}
+): Promise<SweepPlan> {
+  const scanned = await scan(root, opts.onProgress ? { onProgress: opts.onProgress } : {})
 
   const items: SweepItem[] = []
   let bytes = 0
@@ -148,6 +151,11 @@ export interface SweepOptions {
    * 안 열어두면 통합 테스트가 진짜 드라이브 루트(C:\.teraclean)에 쓰게 된다.
    */
   rootFor?: (originalPath: string) => string
+  /**
+   * 얼마나 처리했나. 묶음 하나가 끝날 때마다 부른다.
+   * 화면이 "몇 개 중 몇 개 · 얼마나 비었나"를 그리는 근거다.
+   */
+  onProgress?: (done: number, total: number, bytes: number) => void
 }
 
 /**
@@ -165,30 +173,49 @@ export async function applySweep(plan: SweepPlan, opts: SweepOptions = {}): Prom
   }))
 
   const qOpts = opts.rootFor ? { rootFor: opts.rootFor } : {}
-  const r = await quarantine(requests, qOpts)
-  if (!opts.purge) {
-    return {
-      quarantinedCount: r.quarantined.length,
-      bytesAfterGrace: r.bytes,
-      purged: false,
-      purgedCount: 0,
-      failed: r.failed,
+  const failed: SweepResult['failed'] = []
+  let quarantinedCount = 0
+  let purgedCount = 0
+  let bytes = 0
+
+  /**
+   * ★ 통째로 한 번에 처리하지 않고 나눠서 돈다. 두 가지 때문이다.
+   *
+   *   1) 진행 상황을 말할 수 있다. 전에는 quarantine()에 9만 개를 통째로 넘기고
+   *      끝날 때까지 아무 말도 못 했다 — 화면엔 "지우는 중…"만 몇 분간 떠 있었고,
+   *      사용자는 도는 중인지 멈춘 건지 알 수 없었다.
+   *   2) 용량이 진행하면서 빈다. 격리와 삭제를 끝까지 미뤘다가 몰아서 하면
+   *      중간에 끊겼을 때 '옮기기만 하고 안 지운' 것들이 격리함에 쌓인다.
+   *      묶음마다 격리→삭제를 끝내면 그 묶음만큼은 이미 확보돼 있다.
+   */
+  const CHUNK = 500
+  for (let i = 0; i < requests.length; i += CHUNK) {
+    const r = await quarantine(requests.slice(i, i + CHUNK), qOpts)
+    quarantinedCount += r.quarantined.length
+    // push(...arr)로 펼치지 않는다 — 배열이 크면 인자 개수 한계로 터진다
+    // (12만 개부터. breakdown.test.ts의 '배열을 함수 인자로 펼치지 않는다' 참고)
+    for (const f of r.failed) failed.push(f)
+
+    if (opts.purge) {
+      // ★ 방금 격리한 것만 지운다. purgeNow는 격리함을 통째로 비워서,
+      //   며칠 전 "정리해도 돼요"라고 답해 맡겨둔 것까지 함께 없앤다.
+      const p = await purgeEntries(r.quarantined, qOpts)
+      purgedCount += p.purged.length
+      bytes += p.bytes
+      // 옮기긴 했는데 못 지운 것 — 조용히 성공으로 보고하지 않는다.
+      for (const f of p.failed) failed.push({ path: f.entry.originalPath, reason: f.reason })
+    } else {
+      bytes += r.bytes
     }
+
+    opts.onProgress?.(Math.min(i + CHUNK, requests.length), requests.length, bytes)
   }
 
-  // ★ 방금 격리한 것만 지운다. purgeNow는 격리함을 통째로 비워서,
-  //   며칠 전 "정리해도 돼요"라고 답해 맡겨둔 것까지 함께 없앤다.
-  const p = await purgeEntries(r.quarantined, qOpts)
-  const failed = [
-    ...r.failed,
-    // 옮기긴 했는데 못 지운 것 — 조용히 성공으로 보고하지 않는다.
-    ...p.failed.map((f) => ({ path: f.entry.originalPath, reason: f.reason })),
-  ]
   return {
-    quarantinedCount: r.quarantined.length,
-    bytesAfterGrace: p.bytes,
-    purged: true,
-    purgedCount: p.purged.length,
+    quarantinedCount,
+    bytesAfterGrace: bytes,
+    purged: !!opts.purge,
+    purgedCount,
     failed,
   }
 }

@@ -566,6 +566,32 @@
                font-weight:var(--w-head);color:var(--safe)}
   .pick-done .t-caption{color:var(--muted);display:block;margin-top:2px}
 
+  /* ── 드라이브 옮기기 ────────────────────────────────────────── */
+  .mv-dests{margin-top:var(--s-4);padding:var(--s-3);border:1px solid var(--line);
+            border-radius:var(--r-md);background:var(--surface-2)}
+  .mv-dests-h{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
+              font-weight:var(--w-head);color:var(--ink-2);margin-bottom:var(--s-2)}
+  .mv-dest{display:flex;align-items:center;gap:var(--s-3);padding:var(--s-2) var(--s-3);
+           border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);
+           margin-bottom:var(--s-1);cursor:pointer}
+  .mv-dest:hover{border-color:var(--accent-line)}
+  .mv-dest input{width:18px;height:18px;accent-color:var(--accent);margin:0;cursor:pointer}
+  .mv-dest-n{font-family:var(--font-mono);font-size:var(--t-small);line-height:var(--lh-small);
+             font-weight:var(--w-em);color:var(--ink)}
+  .mv-dest-f{margin-left:auto;font-size:var(--t-caption);line-height:var(--lh-caption);
+             letter-spacing:var(--tr-caption);color:var(--muted);white-space:nowrap}
+  .mv-g{margin-top:var(--s-4);padding-top:var(--s-3);border-top:1px solid var(--line)}
+  .mv-g-h{display:flex;align-items:baseline;gap:var(--s-2);flex-wrap:wrap}
+  .mv-g-n{font-size:var(--t-title);line-height:var(--lh-title);letter-spacing:var(--tr-title);
+          font-weight:var(--w-head);color:var(--ink)}
+  .mv-g-v{margin-left:auto;font-size:var(--t-small);line-height:var(--lh-small);
+          letter-spacing:var(--tr-small);font-weight:var(--w-em);color:var(--accent)}
+  .mv-g-files{margin:var(--s-2) 0}
+  .mv-f{display:flex;gap:var(--s-3);align-items:baseline;padding:2px 0;
+        font-size:var(--t-caption);line-height:var(--lh-caption);letter-spacing:var(--tr-caption)}
+  .mv-f-n{color:var(--ink-2);word-break:break-all}
+  .mv-f-s{margin-left:auto;color:var(--muted);white-space:nowrap}
+
   /* 파일 한 개 = 카드 하나.
      이름표만 달던 한 줄에서 "누구 것 / 지우면 / 영향 범위"까지 펴는 자리다.
      왼쪽 색띠가 판정을 말한다 — 초록은 지워도 되는 것, 빨강은 두는 것.
