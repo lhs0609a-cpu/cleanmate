@@ -44,7 +44,16 @@ const NOT_DUPLICATES = [
   { test: /[\\/]windows[\\/]/i, why: '윈도우 시스템' },
   { test: /[\\/]program files( \(x86\))?[\\/]/i, why: '설치된 프로그램' },
   { test: /[\\/]programdata[\\/]/i, why: '프로그램 공용 데이터' },
-  { test: /[\\/]appdata[\\/]/i, why: '프로그램이 저장한 데이터' },
+  /**
+   * ★ 모델 파일은 이 규칙을 건너뛴다(modelOk).
+   *
+   *   AppData를 통째로 빼는 건 "프로그램마다 같은 부품을 갖고 있는 게 정상"이라서다.
+   *   그런데 실측에서 이런 게 나왔다 — 같은 AI 모델 6.46GB가 **6벌**, 그중 3벌이
+   *   AppData 안이었다. 이건 부품이 아니라 **인터넷에서 받아온 큰 자료**고,
+   *   여러 벌 있는 게 정상이 아니다(32.3GB 낭비).
+   *   받아온 자료는 프로그램이 어디 있든 한 벌이면 충분하다.
+   */
+  { test: /[\\/]appdata[\\/]/i, why: '프로그램이 저장한 자료', modelOk: true },
   { test: /[\\/]node_modules[\\/]/i, why: '프로그램마다 같은 부품을 갖고 있는 게 정상입니다' },
   { test: /[\\/](\.venv|venv|site-packages|__pycache__)[\\/]/i, why: '프로그램 부품 상자' },
   { test: /[\\/]\.git[\\/]/i, why: '변경 기록을 담아두는 폴더 안' },
@@ -58,6 +67,24 @@ const NOT_DUPLICATES = [
 /** 확장자가 이거면 '여러 벌 있는 게 정상'인 축이다(라이브러리·부분 파일 등). */
 const NOT_DUP_EXT = new Set(['.dll', '.pyd', '.lib', '.so', '.dylib', '.sys', '.node', '.pdb', '.part', '.crdownload', '.tmp'])
 
+/**
+ * 인터넷에서 받아온 큰 자료인가 — AI 모델 같은 것.
+ *
+ * 이런 파일은 프로그램이 몇 벌 깔려 있든 **한 벌이면 충분하다.** 게다가 하나에
+ * 수 GB라, 중복 하나가 사진 수천 장 값이다. 확장자로 알아보고, 확장자가 없는
+ * 것(ollama가 받아둔 것들)은 자리로 알아본다.
+ */
+const MODEL_EXTS = new Set(['.safetensors', '.ckpt', '.gguf', '.pt', '.pth', '.onnx', '.tflite', '.h5', '.msgpack'])
+const MODEL_DIRS = /[\\/](models?|checkpoints?|blobs|unet|vae|loras?|clip|diffusion_models|\.ollama|huggingface)[\\/]/i
+
+export function isModelFile(path: string): boolean {
+  const name = path.slice(Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/')) + 1)
+  const dot = name.lastIndexOf('.')
+  if (dot > 0 && MODEL_EXTS.has(name.slice(dot).toLowerCase())) return true
+  // 확장자가 없고 자리가 모델 폴더면 모델로 본다 (ollama의 blobs 같은 것)
+  return dot <= 0 && MODEL_DIRS.test(path)
+}
+
 export interface DupCheck {
   ok: boolean
   reason?: string
@@ -65,8 +92,11 @@ export interface DupCheck {
 
 /** 이 파일을 중복 후보로 볼 수 있나. 모르면 뺀다. */
 export function isDupeCandidate(path: string): DupCheck {
+  const model = isModelFile(path)
   for (const rule of NOT_DUPLICATES) {
-    if (rule.test.test(path)) return { ok: false, reason: rule.why }
+    if (!rule.test.test(path)) continue
+    if (model && (rule as { modelOk?: boolean }).modelOk) continue
+    return { ok: false, reason: rule.why }
   }
   if (NOT_DUP_EXT.has(extname(path).toLowerCase())) {
     return { ok: false, reason: '프로그램이 불러 쓰는 파일이라 여러 벌 있는 게 정상입니다' }
@@ -167,6 +197,119 @@ export async function hashAndGroup(candidates: DupFile[]): Promise<Omit<DupScanR
     candidates: candidates.length,
     hashed: hashed.length,
   }
+}
+
+/* ────────────────────────────────────────────────────────────
+   왜 이렇게 됐나 — 원인까지 말해준다
+
+   ★ 중복을 지워주는 것만으로는 반쪽이다. 실측에서 나온 상황은 "같은 모델이
+     6벌"이었는데, 그 원인은 **같은 프로그램이 6곳에 설치돼 있어서**였다.
+     원인을 모르면 정리해도 다음 달에 똑같이 쌓인다. 그리고 사용자가 정말
+     내려야 할 결정은 "사본을 지울까"가 아니라 "설치본을 정리할까"다.
+   ──────────────────────────────────────────────────────────── */
+
+export interface InstallCause {
+  /** 여러 곳에 있는 프로그램 이름 (경로에서 그대로 읽은 것) */
+  name: string
+  /** 그게 설치된 자리들 */
+  roots: string[]
+  /** 이 원인 때문에 낭비된 용량 */
+  wastedBytes: number
+}
+
+/** 경로들의 뒤에서부터 같은 조각을 센다. 같은 구조가 여러 곳에 복사된 흔적이다. */
+export function commonSuffix(paths: string[]): string[] {
+  const parts = paths.map((p) => p.split(/[\\/]/).filter(Boolean))
+  const out: string[] = []
+  // 스프레드로 최솟값을 구하지 않는다 — 배열 길이만큼 인자를 만드는 자리를
+  // 만들지 않는다는 규칙(breakdown.ts 머리말). 여기선 짧지만 예외를 안 만든다.
+  let shortest = Infinity
+  for (const p of parts) if (p.length < shortest) shortest = p.length
+  for (let i = 1; i <= shortest; i++) {
+    const seg = parts[0][parts[0].length - i]
+    if (!parts.every((p) => p[p.length - i].toLowerCase() === seg.toLowerCase())) break
+    out.unshift(seg)
+  }
+  return out
+}
+
+/**
+ * 폴더 이름에 드러나는 프로그램 — 이름을 지어내지 않고 경로에서 읽는다.
+ *
+ * ★ 왜 이름 표가 필요한가: 같은 프로그램인데 폴더 이름이 제각각이다.
+ *   실측에서 ComfyUI가 이렇게 흩어져 있었다 —
+ *     GVF-ComfyUI · ComfyUI_windows_portable · @stockfactory\...\ComfyUI_windows_portable
+ *   경로 조각만 비교하면 이 셋이 남남으로 보인다. 그러면 "같은 프로그램이
+ *   여러 벌"이라는, 사용자가 진짜 알아야 할 사실을 못 말한다.
+ */
+const PROGRAM_FAMILY: [RegExp, string][] = [
+  [/comfyui/i, 'ComfyUI'],
+  [/stable[-_ ]?diffusion|automatic1111|a1111|sd[-_ ]?webui/i, 'Stable Diffusion 웹UI'],
+  [/fooocus/i, 'Fooocus'],
+  [/invokeai/i, 'InvokeAI'],
+  [/ollama/i, 'Ollama'],
+  [/lm[-_ ]?studio/i, 'LM Studio'],
+  [/text[-_ ]?generation[-_ ]?webui|oobabooga/i, '텍스트 생성 웹UI'],
+]
+
+/** 경로에서 프로그램과 그 설치 자리를 읽는다. 못 알아보면 null. */
+export function familyRootOf(path: string): { name: string; root: string } | null {
+  const segs = path.split(/[\\/]/).filter(Boolean)
+  for (let i = segs.length - 1; i >= 0; i--) {
+    for (const [re, name] of PROGRAM_FAMILY) {
+      if (re.test(segs[i])) return { name, root: segs.slice(0, i + 1).join('\\') }
+    }
+  }
+  return null
+}
+
+/**
+ * 중복 묶음들에서 "같은 프로그램이 여러 곳에 있다"를 찾아낸다.
+ *
+ * 두 가지로 읽는다:
+ *   ① 폴더 이름이 아는 프로그램이면 그걸로 묶는다 (ComfyUI가 4곳)
+ *   ② 모르는 프로그램이면 경로 뒤쪽의 같은 구조로 묶는다
+ *      (`…\X\models\checkpoints\파일`이 여러 곳 → X가 곧 그 프로그램)
+ */
+export function findInstallCauses(groups: DupGroup[], top = 3): InstallCause[] {
+  const map = new Map<string, InstallCause>()
+  const put = (key: string, name: string, roots: string[], bytes: number) => {
+    const c = map.get(key) ?? { name, roots: [], wastedBytes: 0 }
+    for (const r of roots) if (r && !c.roots.includes(r)) c.roots.push(r)
+    c.wastedBytes += bytes
+    map.set(key, c)
+  }
+
+  for (const g of groups) {
+    const paths = [g.keeper.path, ...g.copies.map((c) => c.path)]
+
+    // ① 아는 프로그램 이름이 경로에 있나
+    const fams = paths.map(familyRootOf).filter(Boolean) as { name: string; root: string }[]
+    const byName = new Map<string, string[]>()
+    for (const f of fams) byName.set(f.name, [...(byName.get(f.name) ?? []), f.root])
+    let matched = false
+    for (const [name, roots] of byName) {
+      const uniq = [...new Set(roots)]
+      if (uniq.length < 2) continue
+      put(name.toLowerCase(), name, uniq, g.wastedBytes)
+      matched = true
+    }
+    if (matched) continue
+
+    // ② 모르는 프로그램 — 뒤에서부터 같은 구조를 본다
+    const suffix = commonSuffix(paths)
+    if (suffix.length < 2) continue // 파일 이름만 같은 것 — 구조가 겹친 게 아니다
+    const cut = (p: string) => {
+      const segs = p.split(/[\\/]/).filter(Boolean)
+      return segs.slice(0, segs.length - suffix.length).join('\\')
+    }
+    put(suffix[0].toLowerCase(), suffix[0], paths.map(cut), g.wastedBytes)
+  }
+
+  return [...map.values()]
+    .filter((c) => c.roots.length >= 2)
+    .sort((a, b) => b.wastedBytes - a.wastedBytes)
+    .slice(0, top)
 }
 
 /** 걸러내고 → 해시로 확정한다. 엔진이 쓰는 통로는 이것 하나다. */

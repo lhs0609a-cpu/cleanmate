@@ -38,7 +38,11 @@
  *   relocate-folder-plan  <destRoot> <folder> 폴더째 옮기고 바로가기 남기기(미리보기)
  *   relocate-folder-apply <destRoot> <folder> 폴더째 이동 + 원래 자리에 정션
  *   drives                           붙어 있는 드라이브와 남은 공간 (파일은 안 봄)
- *   dupes-scan     [path...]         같은 파일이 여러 벌 있는 것 (크기→내용 해시)
+ *   dupes-scan     [path...]         같은 파일이 여러 벌 있는 것 (크기→내용 대조)
+ *   model-roots                      AI 모델이 사는 폴더 자동 탐색
+ *   dupes-link     <남길 것> <사본...>  사본 자리를 하드링크로 — 지우지 않고 합친다
+ *   merge-list                       합쳐둔 것 목록
+ *   merge-undo     <id|--all>        합친 것을 다시 따로 떼기(용량을 도로 씀)
  *   backup-check   <path...>         이 파일들이 클라우드에도 있나 (하루 캐시)
  *   relocate-list  <destRoot>        옮긴 목록
  *   relocate-undo  <destRoot> <id|--all>  이동 되돌리기
@@ -130,7 +134,16 @@ import {
   type RelocateItem,
 } from './relocate.ts'
 import { stampMtime } from './quarantine.ts'
-import { findDuplicates, DUP_MIN_BYTES } from './dupes.ts'
+import { findDuplicates, findInstallCauses, isModelFile, DUP_MIN_BYTES } from './dupes.ts'
+import {
+  mergeIntoLink,
+  mergeBlockReason,
+  appendMergeLedger,
+  readMergeLedger,
+  splitLink,
+  linkStillAlive,
+  type MergeEntry,
+} from './link.ts'
 import {
   foldIntoUnits,
   folderCandidates,
@@ -229,6 +242,62 @@ async function relocateCandidates(path: string): Promise<{ items: RelocateItem[]
     })
   }
   return { items, refused }
+}
+
+/* ────────────────────────────────────────────────────────────
+   AI 모델이 사는 자리 찾기
+
+   폴더 이름으로 알아본다. 깊이는 2단계까지만 — 여기서 전체를 훑으면
+   "찾는 데 몇 분"이 되고, 그러면 찾아주는 값어치가 없다.
+   ──────────────────────────────────────────────────────────── */
+
+/** 이 이름이 들어간 폴더는 AI 모델을 담고 있을 가능성이 높다. */
+const MODEL_FOLDER = /comfyui|stable[-_ ]?diffusion|automatic1111|forge|fooocus|invokeai|webui|ollama|lm[-_ ]?studio|koboldcpp|text[-_ ]?generation|huggingface|^ai$|^models$/i
+
+/**
+ * 이름은 걸렸지만 모델이 사는 자리가 아닌 것들.
+ * 실측에서 걸린 것: `node_modules\@huggingface`(그냥 부품), `Programs\Ollama`(프로그램
+ * 본체), `Microsoft\Office\AI`(오피스 기능). 이런 걸 목록에 올리면 사용자는
+ * "왜 이게 뜨지?"부터 묻게 되고, 그 순간 나머지 결과도 못 믿는다.
+ */
+const NOT_MODEL_ROOT = /[\\/]node_modules[\\/]|[\\/]appdata[\\/]local[\\/]programs[\\/]|[\\/]microsoft[\\/]/i
+
+async function findModelRoots(): Promise<{ label: string; path: string }[]> {
+  const { readdir } = await import('node:fs/promises')
+  const home = homedir()
+  const found: { label: string; path: string }[] = []
+  const add = (p: string) => {
+    if (!found.some((f) => f.path.toLowerCase() === p.toLowerCase())) {
+      found.push({ label: p.split(/[\\/]/).filter(Boolean).slice(-1)[0] ?? p, path: p })
+    }
+  }
+
+  /** dir 아래를 depth 단계까지 보며 이름이 걸리는 폴더를 모은다. */
+  async function look(dir: string, depth: number): Promise<void> {
+    if (depth <= 0) return
+    let entries
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue
+      const full = join(dir, e.name)
+      if (NOT_MODEL_ROOT.test(full + '\\')) continue
+      if (MODEL_FOLDER.test(e.name)) {
+        add(full)
+        continue // 걸린 폴더 안은 더 안 판다 — 그 안이 통째로 대상이다
+      }
+      await look(full, depth - 1)
+    }
+  }
+
+  // 드라이브 뿌리(C:\AI 같은 것), 홈, 그리고 프로그램이 자기 자료를 넣는 자리.
+  for (const d of await listDrives()) await look(d.root, 2)
+  await look(home, 2)
+  for (const p of [join(home, 'AppData', 'Local'), join(home, 'AppData', 'Roaming')]) await look(p, 3)
+  return found
 }
 
 /**
@@ -1688,12 +1757,24 @@ async function main() {
           groupCount: r.groups.length,
           minBytes: DUP_MIN_BYTES,
           roots: roots.map((x) => x.label),
+          /* ★ 원인까지 같이 준다. "사본을 지울까요"보다 "이 프로그램이 6곳에
+             깔려 있어요"가 사용자가 실제로 내려야 할 결정에 가깝다. */
+          causes: findInstallCauses(r.groups),
           // 화면에 다 그릴 수 없으니 낭비가 큰 것부터. 개수는 위에서 따로 말한다.
           groups: r.groups.slice(0, 60).map((g) => ({
             keeper: { path: g.keeper.path, name: g.keeper.name, size: g.keeper.size },
             keeperReason: g.keeperReason,
-            copies: g.copies.map((c) => ({ path: c.path, name: c.name, size: c.size })),
+            copies: g.copies.map((c) => ({
+              path: c.path,
+              name: c.name,
+              size: c.size,
+              /* 합칠 수 있는지는 사본마다 다르다(드라이브가 다르면 못 합친다).
+                 버튼에 적힌 숫자가 거짓말하지 않으려면 여기서 갈라둬야 한다. */
+              mergeBlocked: mergeBlockReason(g.keeper.path, c.path),
+            })),
             wastedBytes: g.wastedBytes,
+            // 받아온 자료(AI 모델 등)는 지우기보다 합치기가 맞는 답이다.
+            isModel: isModelFile(g.keeper.path),
           })),
         })
         break
@@ -1799,6 +1880,89 @@ async function main() {
         }
         if (!r.ok) fail(r.reason ?? '옮기지 못했어요')
         out({ folder, movedTo: r.movedTo, linked: r.linked, files: r.copiedFiles, bytes: r.copiedBytes })
+        break
+      }
+      /**
+       * AI 모델이 사는 자리를 찾아준다 — "폴더를 고르세요"를 없애기 위해.
+       *
+       * ★ 왜 필요했나: 같은 모델 6.46GB가 6벌 있는 걸 찾아내려면 그 6곳을 훑어야
+       *   하는데, 기본으로 훑는 곳은 다운로드·영상·사진뿐이라 하나도 안 걸렸다.
+       *   그렇다고 "폴더를 고르세요"로 시작하면, 어디 있는지 아는 사람만 쓸 수 있다.
+       *   그 사람은 이 기능이 필요 없다.
+       */
+      case 'model-roots': {
+        out({ roots: await findModelRoots() })
+        break
+      }
+      /**
+       * 사본 자리를 원본의 하드링크로 바꾼다 — **지우지 않고** 중복을 없앤다.
+       *   dupes-link <남길 파일> <합칠 사본...>
+       *
+       * 6벌이 전부 필요한 경우(같은 모델을 6개 프로그램이 각자 씀)의 답이다.
+       * 경로는 6개 다 살아 있고 디스크는 한 벌만 쓴다.
+       */
+      case 'dupes-link': {
+        const keeper = args[0]
+        const copies = args.slice(1).filter(Boolean)
+        if (!keeper || !copies.length) fail('남길 파일과 합칠 사본이 필요합니다.')
+
+        const dir = appDataFile('') // 장부는 앱 데이터 폴더에 둔다
+        const merged: MergeEntry[] = []
+        const failed: { path: string; reason: string }[] = []
+        let bytes = 0
+
+        for (const copy of copies) {
+          const r = await mergeIntoLink(keeper, copy)
+          if (!r.ok) {
+            failed.push({ path: copy, reason: r.reason ?? '합치지 못했어요' })
+            continue
+          }
+          if (r.already) continue // 이미 같은 실물이었다 — 조용히 넘어간다
+          const entry: MergeEntry = {
+            id: randomUUID(),
+            keeper,
+            linked: copy,
+            size: r.bytes,
+            mergedAt: Date.now(),
+          }
+          await appendMergeLedger(dir, entry)
+          merged.push(entry)
+          bytes += r.bytes
+        }
+        out({ mergedCount: merged.length, bytes, failed })
+        break
+      }
+      /** 합쳐둔 것 목록 — 되돌리기(따로 떼기) 화면이 쓴다. */
+      case 'merge-list': {
+        const dir = appDataFile('')
+        const entries = await readMergeLedger(dir)
+        const items = []
+        for (const e of entries) items.push({ ...e, alive: await linkStillAlive(e) })
+        out({
+          items: items.filter((i) => i.alive).slice(0, 200),
+          count: items.filter((i) => i.alive).length,
+          bytes: items.filter((i) => i.alive).reduce((s, i) => s + i.size, 0),
+        })
+        break
+      }
+      /**
+       * 합친 것을 다시 따로 떼어놓는다.
+       * ★ '되돌리기'가 아니라 '따로 떼기'다 — 되돌리면 그만큼 용량을 도로 쓴다.
+       *   이름을 정확히 불러야 사용자가 놀라지 않는다.
+       */
+      case 'merge-undo': {
+        if (!args[0]) fail('따로 뗄 id(또는 --all)가 필요합니다.')
+        const dir = appDataFile('')
+        const entries = await readMergeLedger(dir)
+        const wanted = args[0] === '--all' ? entries : entries.filter((e) => e.id.startsWith(args[0]))
+        const done = []
+        const failed: { path: string; reason: string }[] = []
+        for (const e of wanted) {
+          const r = await splitLink(e)
+          if (r.ok) done.push(e)
+          else failed.push({ path: e.linked, reason: r.reason ?? '따로 떼지 못했어요' })
+        }
+        out({ splitCount: done.length, bytes: done.reduce((s, e) => s + e.size, 0), failed })
         break
       }
       /** 붙어 있는 드라이브만 훑는다 — 파일은 안 본다(이동 화면의 전체 스캔과 분리). */

@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.11.0'
+const APP_VERSION = '0.12.0'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -2116,18 +2116,71 @@ function excludedBlock(d: any): string {
      느려지고, 스캔을 안 한 사람은 영영 못 본다. 그래서 자기 시간을 갖는다. */
 const dupPicked = new Set<string>()
 
+/** 이번에 훑을 폴더. 비어 있으면 기본(사람이 만든 자료가 사는 곳)만 본다. */
+let dupRoots: string[] = []
+
+/**
+ * AI 모델처럼 **여러 프로그램이 같은 파일을 각자 갖고 있는** 경우.
+ *
+ * ★ 실측: 같은 모델 6.46GB가 6벌(32.3GB 낭비). 여기서 5벌을 지우면 프로그램
+ *   5개가 깨진다 — 6벌 다 진짜고 6벌 다 필요하다. 그래서 이 화면의 기본 답은
+ *   '지우기'가 아니라 '하나로 합치기'다.
+ */
+function dupRootsHtml(roots: { label: string; path: string }[]): string {
+  if (!roots.length) return ''
+  return `
+    <div class="mv-dests" style="margin-top:12px">
+      <div class="mv-dests-h">AI 모델이 있을 만한 폴더를 찾았어요 — 볼 곳을 골라주세요</div>
+      <div class="t-caption" style="color:var(--muted);margin-bottom:6px">
+        기본으로는 다운로드·영상·사진 같은 자료 폴더만 봅니다. 아래 폴더는 따로 골라야 봐요.
+      </div>
+      ${roots.map((r, i) => `
+        <label class="pick-row" style="grid-template-columns:auto 1fr">
+          <input type="checkbox" data-dup-root="${i}" ${i < 6 ? 'checked' : ''}>
+          <span class="pick-name">${esc(r.label)}</span>
+          <span class="bd-path">${esc(r.path)}</span>
+        </label>`).join('')}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn" data-dup-scan="1">고른 폴더에서 같은 파일 찾기</button>
+        <button class="opt" data-dup-add="1">다른 폴더 추가…</button>
+      </div>
+    </div>`
+}
+
+/** "왜 이렇게 됐나" — 사본을 지우는 것보다 이게 진짜 결정이다. */
+function dupCauseHtml(causes: any[]): string {
+  if (!causes?.length) return ''
+  return causes.map((c) => `
+    <div class="unit" style="border-left-color:var(--lock)">
+      <div class="unit-h">
+        <span class="unit-name">${esc(c.name)}이(가) ${c.roots.length}곳에 있어요</span>
+        <span class="unit-amt">${fmtBytes(c.wastedBytes)} 낭비</span>
+      </div>
+      <div class="unit-l">같은 프로그램이 여러 곳에 깔려 있어서 자료도 그만큼 여러 벌입니다.</div>
+      ${c.roots.map((r: string) => `<div class="bd-path">${esc(r)}</div>`).join('')}
+      <div class="unit-l"><i>→</i>사본을 정리해도 프로그램이 그대로면 다시 쌓여요. 안 쓰는 설치본이 있으면 그걸 지우시는 게 근본 해결입니다.</div>
+    </div>`).join('')
+}
+
 async function loadDupes() {
   const host = $('dupes-body')
-  host.innerHTML = `<div class="card"><div class="empty">같은 파일을 찾는 중… (내용을 읽어 확인하느라 조금 걸려요)</div></div>`
+  host.innerHTML = `<div class="card"><div class="empty">같은 파일을 찾는 중… (안을 직접 펼쳐 확인하느라 조금 걸려요)</div></div>`
   dupPicked.clear()
   try {
-    const d = await engine('dupes-scan')
+    const [d, mr] = await Promise.all([
+      engine('dupes-scan', dupRoots),
+      // 모델 폴더 탐색은 폴더 이름만 보는 가벼운 작업이라 같이 돌린다.
+      engine('model-roots').catch(() => ({ roots: [] })),
+    ])
+    const modelRoots: { label: string; path: string }[] = mr.roots ?? []
 
     if (!d.groupCount) {
       host.innerHTML = `<div class="note" style="margin-top:12px">
         <b>같은 파일이 없어요</b>
         <span>${d.scanned.toLocaleString()}개를 봤고, 그중 ${fmtBytes(d.minBytes)}가 넘는 ${d.candidates.toLocaleString()}개를 자세히 확인했습니다.</span>
-      </div>`
+      </div>
+      ${dupRootsHtml(modelRoots)}`
+      wireDupRoots(host, modelRoots)
       return
     }
 
@@ -2143,18 +2196,22 @@ async function loadDupes() {
           ${d.excluded ? `프로그램 부품 폴더 안의 ${d.excluded.toLocaleString()}개는 여러 벌 있는 게 정상이라 아예 안 봤어요.` : ''}
         </div>
         <div class="t-caption" style="color:var(--muted);margin-top:6px">
-          파일 앞뒤를 직접 펼쳐 보고 크기까지 같을 때만 같은 파일로 봅니다. 그래도 원본은 남기고 사본만 격리해요(30일 되돌리기).
+          파일 앞뒤를 직접 펼쳐 보고 크기까지 같을 때만 같은 파일로 봅니다. 그래도 원본은 남기고 사본만 보관함으로 보내요(30일 되돌리기).
         </div>
       </div>
+
+      ${dupCauseHtml(d.causes)}
+      ${dupRootsHtml(modelRoots)}
 
       <div class="pick" style="margin-top:12px">
         <div class="pick-head">
           <span>치울 사본만 골라주세요 — 원본은 건드리지 않습니다</span>
           <button class="opt" data-dup-all="1">사본 전부 고르기 (${allCopies.length.toLocaleString()}개 · ${fmtBytes(allBytes)})</button>
         </div>
-        <div class="pick-list">${d.groups.map(dupGroupHtml).join('')}</div>
+        <div class="pick-list">${d.groups.map((g: any) => dupGroupHtml(g)).join('')}</div>
         <div class="pick-foot">
-          <button class="btn" data-dup-go="1" disabled>고른 사본 정리하기</button>
+          <button class="btn" data-dup-merge="1" disabled>하나로 합치기</button>
+          <button class="opt" data-dup-go="1" disabled>고른 사본 지우기</button>
           <span class="t-caption" data-dup-sum="1">아직 고르신 게 없어요</span>
         </div>
         ${d.groupCount > d.groups.length ? `<div class="t-caption" style="color:var(--muted);margin-top:6px">
@@ -2168,11 +2225,32 @@ async function loadDupes() {
     const boxes = new Map<string, HTMLInputElement>()
     const sizeOf = new Map<string, number>(allCopies.map((c: any) => [c.path, c.size]))
 
+    /* 합칠 수 있는 사본 = 같은 드라이브에 있고 시스템 자리가 아닌 것.
+       엔진이 사본마다 판정해서 보낸다(mergeBlocked). */
+    const mergeBtn = host.querySelector<HTMLButtonElement>('[data-dup-merge]')
+    const keeperOf = new Map<string, string>()
+    const blockedOf = new Map<string, string | null>()
+    for (const g of d.groups) {
+      for (const c of g.copies) {
+        keeperOf.set(c.path, g.keeper.path)
+        blockedOf.set(c.path, c.mergeBlocked ?? null)
+      }
+    }
+
     const sync = () => {
       const bytes = [...dupPicked].reduce((n, p) => n + (sizeOf.get(p) ?? 0), 0)
       goBtn.disabled = dupPicked.size === 0
-      goBtn.textContent = dupPicked.size ? `사본 ${dupPicked.size}개 정리하기` : '고른 사본 정리하기'
+      goBtn.textContent = dupPicked.size ? `사본 ${dupPicked.size}개 지우기 (30일 보관)` : '고른 사본 지우기'
       sumEl.textContent = dupPicked.size ? `${dupPicked.size}개 · ${fmtBytes(bytes)}` : '아직 고르신 게 없어요'
+      if (mergeBtn) {
+        // 합칠 수 없는 것까지 세면 버튼의 숫자가 거짓말이 된다.
+        const ok = [...dupPicked].filter((p) => !blockedOf.get(p))
+        const okBytes = ok.reduce((n, p) => n + (sizeOf.get(p) ?? 0), 0)
+        mergeBtn.disabled = ok.length === 0
+        mergeBtn.textContent = ok.length
+          ? `${ok.length}개를 하나로 합치기 (${fmtBytes(okBytes)} 회수)`
+          : '하나로 합치기'
+      }
     }
 
     host.querySelectorAll<HTMLInputElement>('[data-dup]').forEach((box) => {
@@ -2191,6 +2269,57 @@ async function loadDupes() {
         dupPicked.add(c.path)
       }
       sync()
+    })
+
+    /* ── 하나로 합치기 ────────────────────────────────────────
+       지우는 게 아니다. 사본 자리를 원본과 **같은 실물**로 이어 붙여서, 경로는
+       전부 살아 있고 디스크만 한 벌치를 쓰게 만든다. 같은 모델을 여섯 프로그램이
+       각자 갖고 있는 경우의 유일하게 맞는 답이다. */
+    mergeBtn?.addEventListener('click', async () => {
+      const targets = [...dupPicked].filter((p) => !blockedOf.get(p))
+      if (!targets.length) return
+      const bytes = targets.reduce((n, p) => n + (sizeOf.get(p) ?? 0), 0)
+      const blocked = [...dupPicked].filter((p) => blockedOf.get(p))
+      if (!confirm(
+        `${targets.length.toLocaleString()}개를 하나로 합칠까요?\n\n` +
+        `${spaceHint(bytes, true)}` +
+        `지우지 않습니다. 파일 경로는 전부 그대로 열리고, 디스크만 한 벌치를 씁니다.\n` +
+        `※ 합친 뒤에는 같은 실물이라, 한쪽을 고치면 양쪽이 같이 바뀝니다.\n` +
+        `   (모델·영상처럼 읽기만 하는 파일이면 문제 없어요)` +
+        (blocked.length ? `\n\n${blocked.length}개는 못 합쳐요 — ${blockedOf.get(blocked[0])}` : '')
+      )) return
+
+      mergeBtn.disabled = true
+      mergeBtn.textContent = '합치는 중…'
+      // 남길 파일(원본)별로 묶어서 넘긴다 — 엔진은 '원본 하나 + 사본들' 단위로 받는다.
+      const byKeeper = new Map<string, string[]>()
+      for (const p of targets) {
+        const k = keeperOf.get(p)!
+        byKeeper.set(k, [...(byKeeper.get(k) ?? []), p])
+      }
+      let merged = 0
+      let freed = 0
+      const failures: { path: string; reason: string }[] = []
+      try {
+        for (const [keeper, copies] of byKeeper) {
+          const r = await engine('dupes-link', [keeper, ...copies])
+          merged += r.mergedCount
+          freed += r.bytes
+          for (const f of r.failed ?? []) failures.push(f)
+        }
+        outEl.innerHTML = `<div class="pick-done">
+          <div class="pick-done-h">${merged.toLocaleString()}개를 하나로 합쳤어요 — ${fmtBytes(freed)} 회수</div>
+          <div class="t-caption">파일은 하나도 안 지웠어요. 경로는 전부 그대로 열립니다.</div>
+          ${failures.length ? `<div class="t-caption">${failures.length}개는 못 합쳤어요 — ${esc(failures[0].reason)}</div>` : ''}
+        </div>`
+        toast(`${fmtBytes(freed)}를 회수했어요. 지운 파일은 없습니다.`, 'good')
+        dupesLoaded = false
+        refreshDisk(true)
+      } catch (err) {
+        toast('합치지 못했어요: ' + errText(err), 'bad')
+      } finally {
+        sync()
+      }
     })
 
     goBtn.addEventListener('click', async () => {
@@ -2218,9 +2347,39 @@ async function loadDupes() {
         sync()
       }
     })
+    wireDupRoots(host, modelRoots)
   } catch (err) {
     host.innerHTML = `<div class="note" style="margin-top:12px">찾지 못했어요: ${esc(errText(err))}</div>`
   }
+}
+
+/**
+ * 볼 폴더 고르기.
+ *
+ * ★ "폴더를 고르세요"로 시작하지 않는다 — 어디에 모델이 쌓여 있는지 아는 사람은
+ *   이 기능이 필요 없다. 찾아서 보여주고, 고르는 것만 맡긴다.
+ *   (같은 이유로 이동 화면도 자동 탐색으로 바꿨다 — relocate.ts 머리말)
+ */
+function wireDupRoots(host: HTMLElement, roots: { label: string; path: string }[]) {
+  const boxes = host.querySelectorAll<HTMLInputElement>('[data-dup-root]')
+  const chosen = () => [...boxes].filter((b) => b.checked).map((b) => roots[+b.dataset.dupRoot!].path)
+
+  host.querySelector<HTMLButtonElement>('[data-dup-scan]')?.addEventListener('click', () => {
+    dupRoots = chosen()
+    if (!dupRoots.length) { toast('볼 폴더를 하나 이상 골라주세요.', 'bad'); return }
+    loadDupes()
+  })
+
+  host.querySelector<HTMLButtonElement>('[data-dup-add]')?.addEventListener('click', async () => {
+    try {
+      const path = await TAURI.dialog.open({ directory: true, title: '같은 파일을 찾을 폴더 고르기' })
+      if (!path) return
+      dupRoots = [...chosen(), path as string]
+      loadDupes()
+    } catch (err) {
+      toast('폴더를 고르지 못했어요: ' + errText(err), 'bad')
+    }
+  })
 }
 
 /**
@@ -2237,9 +2396,11 @@ function dupGroupHtml(g: any): string {
       <div class="pg-h">
         <span class="pg-who">${esc(g.keeper.name)}</span>
         <span class="pg-v">남길 것</span>
+        ${g.isModel ? `<span class="pg-v" style="color:var(--accent);border-color:var(--accent)">합치기 권장</span>` : ''}
         <span class="pg-amt">사본 ${g.copies.length}개 · ${fmtBytes(g.wastedBytes)} 낭비</span>
       </div>
       <div class="pg-l pg-ok"><i>✓</i>${esc(g.keeperReason)}</div>
+      ${g.isModel ? `<div class="pg-l pg-mv"><i>⇄</i>받아온 자료예요. 프로그램마다 필요할 수 있으니 <b>지우기보다 합치기</b>가 안전합니다 — 경로는 다 살아 있고 용량만 한 벌치를 씁니다.</div>` : ''}
       <div class="bd-path" style="margin-top:2px">${esc(g.keeper.path)}</div>
       <div class="pg-files">${g.copies.map((c: any) => `
         <label class="pick-row">
@@ -2247,6 +2408,7 @@ function dupGroupHtml(g: any): string {
           <span class="pick-name">${esc(c.name)}</span>
           <span class="pick-size">${fmtBytes(c.size)}</span>
           <span class="bd-path">${esc(c.path)}</span>
+          ${c.mergeBlocked ? `<span class="pick-bk warn">⚠ 합치기는 안 돼요 — ${esc(c.mergeBlocked)}</span>` : ''}
         </label>`).join('')}
       </div>
     </div>`
@@ -2430,8 +2592,9 @@ async function loadQuar() {
 
     if (!data.items.length) {
       host.innerHTML = `<div class="card">${purgeNote}<div class="empty"><svg class="ic"><use href="#i-undo"/></svg><b>아직 보관 중인 게 없어요</b><span>정리를 실행하면 여기에 30일간 보관됩니다.</span></div></div>`
-      // 격리한 게 없어도 옮긴 게 있을 수 있다. 여기서 안 그리면 되돌릴 길이 사라진다.
+      // 보관 중인 게 없어도 옮기거나 합친 게 있을 수 있다. 안 그리면 되돌릴 길이 사라진다.
       renderMovedUndo(host)
+      renderMergedUndo(host)
       return
     }
     const day = 86400000
@@ -2527,9 +2690,71 @@ async function loadQuar() {
        **어느 드라이브로 옮겼는지 기억해서** 그 화면을 찾아가야 한다.
        기억해야 하는 되돌리기는 되돌리기가 아니다. */
     renderMovedUndo(host)
+    renderMergedUndo(host)
   } catch (err) {
     host.innerHTML = `<div class="card"><div class="note">보관함을 읽지 못했어요: ${esc(errText(err))}</div></div>`
   }
+}
+
+/**
+ * 하나로 합친 것 — 다시 따로 뗄 수 있게.
+ *
+ * ★ '되돌리기'라고 부르지 않는다. 따로 떼면 그만큼 용량을 **도로 쓴다.**
+ *   되돌리기라는 말은 "원래대로 공짜로 돌아간다"로 읽히는데 그게 아니다.
+ */
+async function renderMergedUndo(host: HTMLElement) {
+  let d: any
+  try {
+    d = await engine('merge-list')
+  } catch {
+    return
+  }
+  if (!d.count) return
+
+  const box = document.createElement('div')
+  box.className = 'card'
+  box.style.marginTop = '12px'
+  box.innerHTML = `
+    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <h2 class="t-title" style="font-weight:var(--w-num)">하나로 합친 ${d.count.toLocaleString()}개 · ${fmtBytes(d.bytes)} 회수 중</h2>
+    </div>
+    <div class="t-small" style="color:var(--muted);margin:-4px 0 12px">
+      지운 게 아니라 <b>같은 실물을 여러 자리에서 함께 쓰는 것</b>이에요. 경로는 전부 그대로 열립니다.
+      따로 떼면 그만큼 용량을 도로 씁니다.
+    </div>
+    ${d.items.slice(0, 50).map((m: any) => `
+      <div class="row">
+        <div class="row-main">
+          <div class="row-path" style="margin-top:0">${esc(m.linked)}</div>
+          <div class="row-sub">${fmtBytes(m.size)} · 실물은 ${esc(m.keeper)}</div>
+        </div>
+        <div class="row-act"><button class="opt" data-unmerge="${esc(m.id)}">따로 떼기</button></div>
+      </div>`).join('')}`
+
+  host.appendChild(box)
+
+  box.querySelectorAll<HTMLButtonElement>('[data-unmerge]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true
+      btn.textContent = '떼는 중…'
+      try {
+        const r = await engine('merge-undo', [btn.dataset.unmerge!])
+        if (!r.splitCount) {
+          toast(r.failed?.[0]?.reason ?? '따로 떼지 못했어요.', 'bad')
+          btn.disabled = false
+          btn.textContent = '따로 떼기'
+          return
+        }
+        toast('따로 뗐어요. 그만큼 용량을 다시 씁니다.', 'good')
+        refreshDisk(true)
+        loadQuar()
+      } catch (err) {
+        toast('따로 떼지 못했어요: ' + errText(err), 'bad')
+        btn.disabled = false
+        btn.textContent = '따로 떼기'
+      }
+    })
+  })
 }
 
 /** 옮긴 것 되돌리기 — 보관함 아래에 이어 붙인다. 목록이 비면 아무것도 안 그린다. */

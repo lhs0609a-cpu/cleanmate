@@ -16,6 +16,8 @@ import {
   findDuplicates,
   hashAndGroup,
   buildFileDupGroups,
+  isModelFile,
+  findInstallCauses,
   DUP_MIN_BYTES,
   type DupFile,
 } from './dupes.ts'
@@ -100,6 +102,55 @@ test('★ 실제 파일로 확인 — 내용이 같아야만 중복이다', asyn
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
+})
+
+/* ── 받아온 자료(AI 모델)는 규칙이 다르다 ──────────────────── */
+
+test('★ AppData 안이어도 받아온 모델은 중복으로 본다', () => {
+  // 실측: 같은 모델 6.46GB가 6벌, 그중 3벌이 AppData 안이었다. AppData를 통째로
+  // 빼는 규칙은 '프로그램 부품'을 위한 것이지 '받아온 자료'를 위한 게 아니다.
+  const p = 'C:\\Users\\me\\AppData\\Roaming\\app\\engine\\ComfyUI\\models\\checkpoints\\sd_xl_base_1.0.safetensors'
+  assert.equal(isModelFile(p), true)
+  assert.equal(isDupeCandidate(p).ok, true, '모델인데도 AppData라는 이유로 빠졌다')
+})
+
+test('AppData 안의 평범한 파일은 여전히 안 본다 — 예외를 넓히지 않는다', () => {
+  assert.equal(isDupeCandidate('C:\\Users\\me\\AppData\\Roaming\\app\\data.bin').ok, false)
+})
+
+test('확장자가 없어도 모델 자리에 있으면 모델로 본다 (ollama가 받아둔 것)', () => {
+  assert.equal(isModelFile('C:\\Users\\me\\.ollama\\models\\blobs\\sha256-fffbdeec'), true)
+})
+
+test('★ 원인을 말한다 — "같은 프로그램이 4곳에 있어요"', () => {
+  // 폴더 이름이 제각각이어도(GVF-ComfyUI · ComfyUI_windows_portable) 같은 프로그램으로 묶는다.
+  const mk = (path: string) => ({ path, name: 'm.safetensors', size: 6 * 1024 ** 3, mtimeMs: 1 })
+  const groups = [{
+    hash: 'h',
+    keeper: mk('C:\\AI\\ComfyUI_windows_portable\\ComfyUI\\models\\m.safetensors'),
+    copies: [
+      mk('C:\\Users\\me\\GVF-ComfyUI\\models\\m.safetensors'),
+      mk('C:\\Users\\me\\AppData\\Roaming\\x\\engine\\ComfyUI_windows_portable\\ComfyUI\\models\\m.safetensors'),
+    ],
+    wastedBytes: 12 * 1024 ** 3,
+    keeperReason: '',
+  }]
+  const [c] = findInstallCauses(groups as any)
+  assert.equal(c.name, 'ComfyUI')
+  assert.equal(c.roots.length, 3, '설치 자리를 다 세지 못했다')
+  assert.equal(c.wastedBytes, 12 * 1024 ** 3)
+})
+
+test('한 곳에만 있으면 원인으로 올리지 않는다 — 겁주지 않는다', () => {
+  const mk = (path: string) => ({ path, name: 'a.safetensors', size: 1024 ** 3, mtimeMs: 1 })
+  const groups = [{
+    hash: 'h',
+    keeper: mk('C:\\AI\\ComfyUI\\models\\a.safetensors'),
+    copies: [mk('C:\\AI\\ComfyUI\\models\\backup\\a.safetensors')],
+    wastedBytes: 1024 ** 3,
+    keeperReason: '',
+  }]
+  assert.deepEqual(findInstallCauses(groups as any), [])
 })
 
 test('작은 파일은 아예 안 본다 — 목록만 길어진다', async () => {
