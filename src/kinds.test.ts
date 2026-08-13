@@ -31,10 +31,10 @@ test('★ 출처가 확장자보다 먼저다 — 같은 mp4도 어디 있느냐
   assert.equal(kindOf(p('D:', '내영상', 'rec.mp4')).label, '동영상')
 })
 
-test('개발 산출물과 캐시를 구분해서 알려준다', () => {
-  assert.equal(kindOf(p('C:', 'proj', 'node_modules', 'a.js')).label, '개발 중간 산출물')
+test('프로그램 만들 때 생긴 것과 캐시를 구분해서 알려준다', () => {
+  assert.equal(kindOf(p('C:', 'proj', 'node_modules', 'a.js')).label, '프로그램 만들 때 생긴 부품·완성본')
   assert.equal(kindOf(p('C:', 'Users', 'me', 'AppData', 'Local', 'Cache', 'f.bin')).label,
-    '앱이 만든 임시·캐시')
+    '앱이 잠깐 쓰려고 만든 것')
 })
 
 test('★ 모르면 "기타"라고 한다 — 틀린 이름표는 없는 것보다 나쁘다', () => {

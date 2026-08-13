@@ -75,7 +75,7 @@ $dlSum = (Get-ChildItem $dl -Force -Recurse -File | Measure-Object -Property Len
 
 export async function gatherReclaimFacts(): Promise<ReclaimFacts> {
   if (process.platform !== 'win32') {
-    throw new Error('휴지통·업데이트 캐시 프로브는 지금 Windows만 지원합니다.')
+    throw new Error('휴지통·업데이트가 남긴 파일 확인은 지금 윈도우에서만 됩니다.')
   }
   const { stdout } = await exec(
     'powershell.exe',
@@ -146,7 +146,7 @@ export function probeUpdateCache(f: ReclaimFacts): Finding | null {
 
   return {
     id: 'win.updatecache',
-    title: '윈도우 업데이트 캐시',
+    title: '윈도우 업데이트가 남긴 설치 파일',
     bytes: f.updateCacheBytes,
     zone: 'LOCKED',
     explain: {

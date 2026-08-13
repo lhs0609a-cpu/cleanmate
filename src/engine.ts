@@ -73,10 +73,10 @@ const SPECS: Record<Unknown, UnknownSpec> = {
   U2_PROJECT_ACTIVE: {
     infoGain: 0.9,
     ease: 0.85,
-    question: (b, c) => `개발 폴더 ${c}곳(${b})이 오래 조용하네요. 이 프로젝트들 아직 작업하시나요?`,
-    rationale: '지워도 다시 설치·빌드할 수 있지만, 지금 쓰는 프로젝트인지는 사용자만 압니다.',
+    question: (b, c) => `프로그램 만들 때 생긴 폴더 ${c}곳(${b})이 오래 조용하네요. 이 폴더들 아직 쓰시나요?`,
+    rationale: '지워도 다시 만들 수 있지만, 지금 쓰시는 폴더인지는 사용자만 압니다.',
     yesLabel: '아니요, 안 써요',
-    yesPreview: (b, c) => `${c}곳(${b})을 삭제 후보로. 나중에 필요하면 다시 설치하면 됩니다.`,
+    yesPreview: (b, c) => `${c}곳(${b})을 정리 후보로. 나중에 필요하면 다시 받으면 됩니다.`,
     noLabel: '아직 써요',
   },
   U3_APP_IN_USE: {

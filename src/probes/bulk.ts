@@ -101,32 +101,40 @@ export async function gatherBulkFacts(): Promise<BulkItem[]> {
    ──────────────────────────────────────────────────────────── */
 
 function wslFinding(it: BulkItem): Finding {
-  const who = it.label && !/^(LocalState|wsl|data|disk)$/i.test(it.label) ? it.label : 'WSL 배포판'
+  const who = it.label && !/^(LocalState|wsl|data|disk)$/i.test(it.label) ? it.label : '리눅스'
   return {
     id: `bulk.wsl.${it.path.toLowerCase()}`,
-    title: `리눅스(WSL) 디스크 — ${who}`,
+    title: `윈도우 안의 리눅스 저장소 — ${who}`,
     bytes: it.bytes,
     zone: 'AMBIG',
     explain: {
       what:
-        `윈도우 안에서 돌아가는 리눅스의 하드디스크 한 장이에요. 파일 하나가 ${size(it.bytes)}입니다.\n` +
+        `윈도우 안에 리눅스 컴퓨터가 하나 더 들어 있고, 그 컴퓨터의 저장소 전체가 파일 하나로 들어 있어요. 이 파일 하나가 ${size(it.bytes)}입니다.\n` +
         it.path,
       why:
         '리눅스 안에 설치한 것·받은 것이 전부 이 한 파일에 들어갑니다. ' +
         '★ 그리고 이 파일은 **커지기만 합니다** — 리눅스 안에서 30GB를 지워도 윈도우가 보는 크기는 그대로예요.',
       usedBy: [
-        `${who} — 이 파일이 곧 그 환경입니다. 안의 코드·설정·설치한 것 전부.`,
-        'Docker나 개발 도구를 WSL에서 쓰신다면 그것들도 여기 들어 있습니다.',
+        `${who} — 이 파일 하나가 곧 그 리눅스 전부예요. 안에 설치한 것·만든 것 모두.`,
+        '개발용 프로그램을 이 리눅스에서 쓰신다면 그것들도 여기 들어 있습니다.',
       ],
       ifRemoved: [
         `★ 그 리눅스 환경이 통째로 사라집니다. 안에 있던 작업물도 함께입니다.`,
         `${size(it.bytes)}가 비지만, 되돌릴 방법이 없습니다.`,
       ],
       recovery: 'none',
+      /**
+       * ★ 명령어는 일부러 그대로 둔다.
+       *   이건 사용자가 **직접 쳐야 하는 말**이라, 쉬운 말로 바꾸면 아예 쓸 수 없다.
+       *   대신 "어디에 붙여넣는지"를 화면 그대로 적어준다 — 모르는 건 명령어가
+       *   아니라 그 창을 어떻게 여는지다.
+       */
       recoveryNote:
-        '지우면 끝입니다. 그래서 저희는 건드리지 않아요. ' +
-        '용량만 줄이고 싶으시면 지우지 말고 **압축**하세요: 리눅스 안에서 필요 없는 걸 지운 뒤, ' +
-        '관리자 PowerShell에서 `wsl --shutdown` 다음 `Optimize-VHD -Path "경로" -Mode Full` (또는 diskpart의 compact vdisk). ' +
+        '지우면 끝입니다. 그래서 저희는 건드리지 않아요.\n' +
+        '용량만 줄이고 싶으시면 지우지 말고 쪼그라뜨리면 됩니다. 리눅스 안에서 필요 없는 걸 먼저 지우신 다음,\n' +
+        '윈도우 검색창에 “PowerShell”을 치고 마우스 오른쪽 → “관리자 권한으로 실행”을 누른 뒤, 아래 두 줄을 그대로 붙여넣으세요:\n' +
+        '  wsl --shutdown\n' +
+        '  Optimize-VHD -Path "위에 적힌 경로" -Mode Full\n' +
         '안에서 지운 만큼 실제로 줄어듭니다.',
       ifKept: `아무 문제 없어요. ${size(it.bytes)}를 계속 쓸 뿐입니다.`,
     },
@@ -136,26 +144,27 @@ function wslFinding(it: BulkItem): Finding {
 function dockerFinding(it: BulkItem): Finding {
   return {
     id: `bulk.docker.${it.path.toLowerCase()}`,
-    title: 'Docker 데이터 디스크',
+    title: 'Docker(개발용 프로그램)의 저장소',
     bytes: it.bytes,
     zone: 'AMBIG',
     explain: {
-      what: `Docker가 이미지·컨테이너·볼륨을 담아두는 가상 디스크 한 장이에요. ${size(it.bytes)}입니다.\n${it.path}`,
+      what: `Docker(개발용 프로그램)가 받아둔 프로그램 묶음과 그 안에 저장한 자료를 담아두는 저장소예요. 파일 하나가 ${size(it.bytes)}입니다.\n${it.path}`,
       why:
-        '한 번 받은 이미지는 지우지 않는 한 계속 쌓입니다. 빌드 캐시도 여기 들어가요. ' +
+        '한 번 받은 프로그램 묶음은 지우지 않는 한 계속 쌓입니다. 만들면서 생긴 임시 파일도 여기 들어가요. ' +
         '★ 이 파일도 커지기만 합니다 — Docker 안에서 지워도 윈도우가 보는 크기는 그대로예요.',
       usedBy: [
-        'Docker Desktop — 받아둔 이미지, 만들어둔 컨테이너·볼륨 전부입니다.',
-        '데이터베이스를 볼륨에 담아 쓰셨다면 그 데이터도 여기 있습니다.',
+        'Docker — 받아둔 프로그램 묶음과 그 안에 만들어둔 것 전부입니다.',
+        '여기에 자료를 저장하는 프로그램을 쓰셨다면 그 자료도 함께 들어 있습니다.',
       ],
       ifRemoved: [
-        '★ 이미지·컨테이너·볼륨이 전부 사라집니다. 볼륨 안의 데이터도 함께입니다.',
-        '이미지는 다시 받을 수 있지만, 볼륨에 담긴 것은 되돌릴 수 없습니다.',
+        '★ 받아둔 프로그램 묶음과 그 안에 저장한 자료가 전부 사라집니다.',
+        '프로그램 묶음은 다시 받을 수 있지만, 그 안에 저장한 자료는 되돌릴 수 없습니다.',
       ],
       recovery: 'none',
       recoveryNote:
-        '파일을 지우는 대신 Docker에게 정리시키세요: `docker system prune -a --volumes` (지울 것을 먼저 보여줍니다). ' +
-        '그다음 `wsl --shutdown` 후 vhdx를 압축해야 윈도우 쪽 용량이 실제로 빕니다.',
+        '파일을 지우는 대신 Docker에게 정리를 시키세요. 명령 창에 아래를 붙여넣으면 무엇을 지울지 먼저 보여줍니다:\n' +
+        '  docker system prune -a --volumes\n' +
+        '그다음 저장소 파일을 쪼그라뜨려야 윈도우 쪽 용량이 실제로 빕니다(위 리눅스 항목과 같은 방법).',
       ifKept: `아무 문제 없어요. ${size(it.bytes)}를 계속 쓸 뿐입니다.`,
     },
   }

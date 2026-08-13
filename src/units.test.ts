@@ -156,7 +156,7 @@ test('여러 날에 걸쳐 고친 건 작업 중이라고 말한다', () => {
   const files = Array.from({ length: 40 }, (_, i) => ({ path: `C:\\dev\\p\\src\\f${i}.ts`, ageDays: i % 12 }))
   const a = activityForRoot(dirs(files), 'C:\\dev\\p')!
   assert.equal(looksLikeOneShot(a), false)
-  assert.match(activitySentence(a), /12일에 걸쳐 소스를 고치셨어요/)
+  assert.match(activitySentence(a), /12일에 걸쳐 직접 고치셨어요/)
 })
 
 test('★ 퍼센트는 몇 개 중 몇 개인지 함께 쓴다 — 검증할 수 없는 숫자는 안 쓴다', () => {
@@ -171,7 +171,7 @@ test('★ 퍼센트는 몇 개 중 몇 개인지 함께 쓴다 — 검증할 수
   )!
   assert.equal(a.recentPercent, 25)
   // 분모와 분자가 문장에 있어야 사용자가 탐색기를 열어 확인할 수 있다.
-  assert.match(activitySentence(a), /소스 4개 중 최근 30일에 바뀐 것 1개 · 25%/)
+  assert.match(activitySentence(a), /직접 만드신 파일 4개 중 최근 30일에 바뀐 것 1개 · 25%/)
 })
 
 test('셀 게 없으면 아무 말도 안 한다 — 빈칸을 지어내지 않는다', () => {

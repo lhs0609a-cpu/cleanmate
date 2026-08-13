@@ -93,9 +93,9 @@ const NEVER_MOVE = [
   { test: /[\\/]\$recycle\.bin[\\/]/i, why: '휴지통' },
   { test: /[\\/]system volume information[\\/]/i, why: '시스템 복원' },
   // 새 이름(.teraclean)과 옛 이름(.cleanmate) 둘 다. 옛 격리함에도 사용자 파일이 들어 있다.
-  { test: /[\\/]\.(teraclean|cleanmate)[\\/]/i, why: '격리함 — 여기서 직접 옮기면 안 됩니다' },
+  { test: /[\\/]\.(teraclean|cleanmate)[\\/]/i, why: '보관함 — 여기서 직접 옮기면 안 됩니다' },
   { test: new RegExp(`[\\\\/]${MOVED_FOLDER}[\\\\/]`, 'i'), why: '이미 옮겨둔 폴더' },
-  { test: /[\\/]node_modules[\\/]/i, why: '패키지 폴더 — 옮기면 프로젝트가 깨집니다' },
+  { test: /[\\/]node_modules[\\/]/i, why: '부품 폴더 — 옮기면 그 프로그램이 못 찾습니다' },
   /**
    * ★ 가상환경. node_modules는 막아뒀는데 .venv는 빠져 있었다 — 파이썬 쪽이
    *   훨씬 위험한데도. 가상환경은 **자기 절대 경로를 안에 적어두고**(pyvenv.cfg,
@@ -103,7 +103,7 @@ const NEVER_MOVE = [
    *   `python`이 안 뜬다. 게다가 파일 하나(1.2GB짜리 dll)만 빼가면 폴더는
    *   멀쩡해 보이는데 import만 실패한다 — 원인을 찾기가 가장 어려운 고장이다.
    */
-  { test: /[\\/](\.venv|venv|site-packages|__pycache__|\.git)[\\/]/i, why: '개발 환경 폴더 — 옮기면 그 프로젝트가 깨집니다' },
+  { test: /[\\/](\.venv|venv|site-packages|__pycache__|\.git)[\\/]/i, why: '프로그램 부품 상자 — 옮기면 그 프로그램이 못 찾습니다' },
   /**
    * ★ AppData\Local 전체. 여태는 Local\Programs만 막았는데, 그건 이 화면이
    *   사용자 폴더(다운로드·영상·사진)만 훑던 시절의 규칙이다. 이제 질문 목록에서
@@ -115,8 +115,8 @@ const NEVER_MOVE = [
    *   node_modules·가상환경 규칙보다 **뒤에** 둔다. 둘 다 걸리는 경로에서는
    *   "개발 환경 폴더"가 더 정확한 설명이고, 사용자가 다음에 할 행동도 달라진다.
    */
-  { test: /[\\/]appdata[\\/]local[\\/]/i, why: '프로그램이 저장한 데이터 — 옮기면 그 앱이 못 찾습니다' },
-  { test: /[\\/](onedrive|dropbox|google drive|drivefs)[\\/]/i, why: '동기화 폴더' },
+  { test: /[\\/]appdata[\\/]local[\\/]/i, why: '프로그램이 저장한 자료 — 옮기면 그 앱이 못 찾습니다' },
+  { test: /[\\/](onedrive|dropbox|google drive|drivefs)[\\/]/i, why: '클라우드와 자동으로 맞추는 폴더' },
 ]
 
 /**
@@ -385,12 +385,12 @@ async function exists(path: string): Promise<boolean> {
 /** 정션으로도 옮기면 안 되는 곳. 위의 NEVER_MOVE보다 짧다 — 이유가 달라서다. */
 const NEVER_JUNCTION = [
   { test: /[\\/]windows[\\/]/i, why: '윈도우 시스템 폴더' },
-  { test: /[\\/]program files( \(x86\))?[\\/]/i, why: '설치된 프로그램 — 설치 관리자가 자기 복구를 돌릴 때 깨집니다' },
+  { test: /[\\/]program files( \(x86\))?[\\/]/i, why: '설치된 프로그램 — 프로그램이 자기 파일을 못 찾게 됩니다' },
   { test: /[\\/]programdata[\\/]/i, why: '프로그램 공용 데이터' },
-  { test: /[\\/](onedrive|dropbox|google drive|drivefs|icloud)[\\/]/i, why: '동기화 폴더 — 클라우드가 통째로 다시 올립니다' },
+  { test: /[\\/](onedrive|dropbox|google drive|drivefs|icloud)[\\/]/i, why: '클라우드와 자동으로 맞추는 폴더 — 통째로 다시 올라갑니다' },
   { test: /[\\/]\$recycle\.bin[\\/]/i, why: '휴지통' },
   { test: /[\\/]system volume information[\\/]/i, why: '시스템 복원' },
-  { test: /[\\/]\.(teraclean|cleanmate)[\\/]/i, why: '격리함' },
+  { test: /[\\/]\.(teraclean|cleanmate)[\\/]/i, why: '보관함' },
   { test: new RegExp(`[\\\\/]${MOVED_FOLDER}[\\\\/]`, 'i'), why: '이미 옮겨둔 폴더' },
 ]
 

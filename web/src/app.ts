@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.10.1'
+const APP_VERSION = '0.11.0'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -155,7 +155,7 @@ let lastDisk: { free: number; total: number; drive: string } | null = null
 /**
  * 정리 전후 여유 공간 한 줄.
  *
- * ★ 격리는 **용량이 바로 안 빈다.** 격리함이 같은 드라이브에 있어서다.
+ * ★ 격리는 **용량이 바로 안 빈다.** 보관함이 같은 드라이브에 있어서다.
  *   여기서 "94GB → 96GB"라고 쓰면 그건 거짓말이고, 사용자는 정리 후 용량이
  *   그대로인 걸 보고 도구를 못 믿게 된다. 그래서 격리와 이동의 문장을 가른다.
  */
@@ -163,7 +163,7 @@ function spaceHint(bytes: number, immediate = false): string {
   if (!lastDisk) return ''
   const drive = lastDisk.drive.replace(/\\$/, '')
   if (!immediate) {
-    return `지금은 용량이 안 빕니다 — 격리함이 같은 드라이브에 있어요. 격리함에서 '지금 비우기'를 누르면 ${drive} 남은 공간이 ${fmtBytes(lastDisk.free)} → ${fmtBytes(lastDisk.free + bytes)}가 됩니다.\n\n`
+    return `지금은 용량이 안 빕니다 — 보관함이 같은 드라이브에 있어요. 보관함에서 '지금 비우기'를 누르면 ${drive} 남은 공간이 ${fmtBytes(lastDisk.free)} → ${fmtBytes(lastDisk.free + bytes)}가 됩니다.\n\n`
   }
   return `${drive} 남은 공간 ${fmtBytes(lastDisk.free)} → ${fmtBytes(lastDisk.free + bytes)}\n\n`
 }
@@ -245,7 +245,7 @@ let scannedPath: string | null = null // Tauri: 정리 실행에 쓸 경로
 function renderReport(r: Report) {
   const total = r.zones.safe.bytes + r.zones.ambig.bytes + r.zones.locked.bytes
   $('zbars').innerHTML =
-    zbar('존 A 안전', 'zsafe', r.zones.safe.bytes, total, r.plan.autoCount, '캐시·로그처럼 다시 생기는 것. 규칙이 확증한 것만 자동 정리해요.') +
+    zbar('존 A 안전', 'zsafe', r.zones.safe.bytes, total, r.plan.autoCount, '임시 파일·기록처럼 지워도 다시 생기는 것. 규칙으로 확인한 것만 자동 정리해요.') +
     zbar('존 B 애매', 'zamb', r.zones.ambig.bytes, total, r.zones.ambig.count, '사용자만 아는 것. 무인 삭제 안 하고 물어봅니다.') +
     zbar('존 C 잠금', 'zlock', r.zones.locked.bytes, total, r.zones.locked.count, '시스템·설정·클라우드. 지우면 뭔가 깨져서 아예 안 건드려요.')
 
@@ -258,13 +258,13 @@ function renderReport(r: Report) {
   $('plan-lede').innerHTML =
     where + '확실한 건 알아서 지우고(용량이 바로 빕니다), 애매한 건 아래에서 물어봅니다.'
   $('plan3').innerHTML = `
-    <div class="stat"><div class="n g">${fmtBytes(r.plan.autoBytes)}</div><div class="l">지금 정리 가능<br>확실한 캐시 ${r.plan.autoCount.toLocaleString()}개 · 규칙 확증분만</div></div>
+    <div class="stat"><div class="n g">${fmtBytes(r.plan.autoBytes)}</div><div class="l">지금 정리 가능<br>확실한 임시 파일 ${r.plan.autoCount.toLocaleString()}개 · 규칙으로 확인한 것만</div></div>
     <div class="stat"><div class="n a">${fmtBytes(r.plan.askBytes)}</div><div class="l">물어보면 정리 가능<br>애매한 ${r.plan.askCount.toLocaleString()}개 · 아래 질문으로</div></div>
     <div class="stat"><div class="n m">${fmtBytes(r.plan.lockBytes)}</div><div class="l">지켜드린 것<br>${r.plan.lockCount.toLocaleString()}개 · 건드리면 위험</div></div>`
 
   $('apply-note').innerHTML = esc(r.plan.inferredBytes > 0
-    ? `“아마 캐시일” ${fmtBytes(r.plan.inferredBytes)}는 자동에서 뺐어요. “아마”로는 안 지웁니다.`
-    : '자동으로 치우는 건 전부 캐시예요. 지워도 다시 생기는 것들입니다.')
+    ? `“아마 임시 파일일” ${fmtBytes(r.plan.inferredBytes)}는 자동에서 뺐어요. “아마”로는 안 지웁니다.`
+    : '자동으로 치우는 건 전부 임시 파일이에요. 지워도 다시 생기는 것들입니다.')
 
   renderQuestions(r.questions)
   renderKept(r.kept, r.plan.lockBytes)
@@ -278,7 +278,7 @@ function renderReport(r: Report) {
   // 데스크톱에서는 실제로 정리한다. 브라우저에서는 안내만.
   document.querySelectorAll<HTMLElement>('#s-home .pill.desk').forEach((p) => { p.hidden = inTauri })
   // 버튼이 무슨 일을 하는지 그대로 쓴다. '정리하기'는 옮기는 것도 지우는 것도 될 수 있다.
-  applyBtn.textContent = inTauri ? `캐시 ${fmtBytes(r.plan.autoBytes)} 지금 지우기` : '확실한 캐시 정리하기'
+  applyBtn.textContent = inTauri ? `임시 파일 ${fmtBytes(r.plan.autoBytes)} 지금 지우기` : '확실한 임시 파일 정리하기'
 }
 
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p
@@ -538,7 +538,7 @@ async function answerAction(host: HTMLElement, unknown: string, outcome: string)
    * ★ "하나씩 볼게요" — 여기가 정반대로 동작하고 있었다.
    *
    *   이 답은 위 두 분기 어디에도 안 걸려서 그대로 흘러내려갔고, 결과적으로
-   *   **"140,613개 · 18.1GB 격리로 정리하기"** 라는 일괄 버튼이 떴다.
+   *   **"140,613개 · 18.1GB 보관함으로 옮기기"** 라는 일괄 버튼이 떴다.
    *   "하나씩 보겠다"고 고른 사람에게 전부 지우기 버튼을 내민 셈이다.
    *   게다가 눌러도 안 됐다 — 엔진은 이 답을 'review'로 해석해 아무것도 안 하고
    *   돌려주는데(engine.ts actionFor), 화면은 r.quarantinedCount를 읽어서
@@ -580,7 +580,7 @@ async function answerAction(host: HTMLElement, unknown: string, outcome: string)
   try {
     host.innerHTML = `
       <div class="bd-act">
-        <button class="btn" data-answer-go="1">${count.toLocaleString()}개 · ${fmtBytes(bytes)} 격리로 정리하기</button>
+        <button class="btn" data-answer-go="1">${count.toLocaleString()}개 · ${fmtBytes(bytes)} 보관함으로 옮기기</button>
         <span>지우지 않고 30일 보관 — 언제든 되돌립니다</span>
       </div>`
     host.querySelector<HTMLButtonElement>('[data-answer-go]')!.addEventListener('click', async (ev) => {
@@ -590,16 +590,16 @@ async function answerAction(host: HTMLElement, unknown: string, outcome: string)
       try {
         const r = await engine('answer-apply', [unknown, outcome, ...(scannedPath ? [scannedPath] : [])])
         host.innerHTML = `<div class="t-small" style="margin-top:10px;color:var(--safe);font-weight:var(--w-em)">
-          ${r.quarantinedCount.toLocaleString()}개를 격리함으로 옮겼어요 — 30일 안에 되돌릴 수 있습니다.
+          ${r.quarantinedCount.toLocaleString()}개를 보관함으로 옮겼어요 — 30일 안에 되돌릴 수 있습니다.
           ${r.failed.length ? `<span style="color:var(--muted);font-weight:var(--w-text)">${r.failed.length}개는 사용 중이라 건너뜀</span>` : ''}</div>`
         mountPurgeNow(host, bytes)
-        toast(`${r.quarantinedCount.toLocaleString()}개를 격리했어요. 격리함에서 되돌릴 수 있습니다.`, 'good')
+        toast(`${r.quarantinedCount.toLocaleString()}개를 보관함에 넣었어요. 보관함에서 되돌릴 수 있습니다.`, 'good')
         quarLoaded = false
         refreshDisk(true)
       } catch (err) {
         toast('정리하지 못했어요: ' + errText(err), 'bad')
         b.disabled = false
-        b.textContent = '격리로 정리하기'
+        b.textContent = '보관함으로 옮기기'
       }
     })
   } catch (err) {
@@ -610,7 +610,7 @@ async function answerAction(host: HTMLElement, unknown: string, outcome: string)
 /* ── 낱개로 고르기 ────────────────────────────────────────────
    이 앱의 실행 단위는 여태 '묶음 전체'였다. 그런데 화면은 파일을 낱개로
    보여준다 — 판단은 낱개로 시키고 실행은 전부-아니면-전무만 준 셈이다.
-   격리함엔 개별 되돌리기가 처음부터 있었는데(restore <id>) 지우는 쪽만 없었다. */
+   보관함엔 개별 되돌리기가 처음부터 있었는데(restore <id>) 지우는 쪽만 없었다. */
 
 /** 마지막으로 그린 질문들 — 낱개 목록이 근거(samples)를 다시 찾는 데 쓴다. */
 let lastQuestions: any[] = []
@@ -727,15 +727,16 @@ function unitCardsHtml(units: any[]): string {
             ${u.moveOnly
               // 안에 뭐가 있는지 모르는 폴더에 "통째로 정리"를 달지 않는다.
               // 모르는 것을 지우라고 권하는 게 되니까 — 옮기기만 권한다.
-              ? `<button class="btn" data-unit-move="${i}" disabled>옮기고 바로가기 남기기 (${fmtBytes(u.bytes)})</button>`
+              ? `<button class="btn" data-unit-move="${i}" disabled>옮기고 안내판 남기기 (${fmtBytes(u.bytes)})</button>`
               : `<button class="btn" data-unit="${i}">이 폴더 통째로 정리 (${fmtBytes(u.bytes)})</button>
-                 <button class="opt" data-unit-move="${i}" disabled>옮기고 바로가기 남기기</button>`}
+                 <button class="opt" data-unit-move="${i}" disabled>옮기고 안내판 남기기</button>`}
           </div>
           <div class="unit-l" data-unit-out="${i}"></div>
         </div>`).join('')}
       <div class="t-caption" style="color:var(--muted)">
-        “옮기고 바로가기 남기기”는 지우지 않아요. 폴더를 다른 드라이브로 옮기고 원래 자리에
-        바로가기(정션)를 남겨서, <b>프로그램은 예전 경로로 그대로 찾아갑니다.</b>
+        “옮기고 안내판 남기기”는 지우는 게 아니에요. 이사하고 원래 자리에
+        <b>“이 폴더는 저쪽으로 옮겼어요”</b> 안내판을 붙여두는 것과 같아서,
+        프로그램은 예전 주소로 찾아가도 그대로 열립니다.
       </div>
     </div>`
 }
@@ -834,22 +835,22 @@ function renderPicker(host: HTMLElement, unknown: string, prefer: 'delete' | 'mo
         if (p.blocked) throw new Error(p.blocked)
         if (p.sameVolume) throw new Error('같은 드라이브라 옮겨도 용량이 늘지 않아요.')
         if (!p.destination?.ok) throw new Error(p.destination?.reason ?? '대상 드라이브를 쓸 수 없어요')
-        if (!confirm(`${u.label} 폴더를 ${pickDest}로 옮길까요?\n\n${p.files.toLocaleString()}개 · ${fmtBytes(p.bytes)}\n→ ${p.dest}\n\n${spaceHint(p.bytes, true)}지우지 않습니다. 원래 자리에 바로가기를 남겨서 프로그램은 그대로 찾아가요.\n그 프로그램이 실행 중이면 먼저 닫아주세요.`)) {
+        if (!confirm(`${u.label} 폴더를 ${pickDest}로 옮길까요?\n\n${p.files.toLocaleString()}개 · ${fmtBytes(p.bytes)}\n→ ${p.dest}\n\n${spaceHint(p.bytes, true)}지우지 않습니다. 원래 자리엔 안내판이 남아서, 프로그램은 예전 주소로 찾아가도 그대로 열려요.\n그 프로그램이 실행 중이면 먼저 닫아주세요.`)) {
           btn.disabled = false
-          btn.textContent = u.moveOnly ? `옮기고 바로가기 남기기 (${fmtBytes(u.bytes)})` : '옮기고 바로가기 남기기'
+          btn.textContent = u.moveOnly ? `옮기고 안내판 남기기 (${fmtBytes(u.bytes)})` : '옮기고 안내판 남기기'
           return
         }
         btn.textContent = '옮기는 중… (복사하고 대조하느라 몇 분 걸려요)'
         const r = await engine('relocate-folder-apply', [pickDest, u.path])
         btn.textContent = `${fmtBytes(r.bytes)} 옮겼어요`
-        outEl.innerHTML = `<i>✓</i>${esc(r.movedTo)}로 옮기고 원래 자리에 바로가기를 남겼어요. 되돌리기는 '드라이브 옮기기' 화면에 있습니다.`
+        outEl.innerHTML = `<i>✓</i>${esc(r.movedTo)}로 옮기고 원래 자리에 안내판을 남겼어요. 되돌리기는 '드라이브 옮기기' 화면에 있습니다.`
         toast(`${u.label}을(를) 옮겼어요. C드라이브가 ${fmtBytes(r.bytes)} 비었습니다.`, 'good')
         refreshDisk(true)
       } catch (err) {
         toast('옮기지 못했어요: ' + errText(err), 'bad')
         outEl.innerHTML = `<i>✕</i>${esc(errText(err))}`
         btn.disabled = false
-        btn.textContent = u.moveOnly ? `옮기고 바로가기 남기기 (${fmtBytes(u.bytes)})` : '옮기고 바로가기 남기기'
+        btn.textContent = u.moveOnly ? `옮기고 안내판 남기기 (${fmtBytes(u.bytes)})` : '옮기고 안내판 남기기'
       }
     })
   })
@@ -859,12 +860,12 @@ function renderPicker(host: HTMLElement, unknown: string, prefer: 'delete' | 'mo
   host.querySelectorAll<HTMLButtonElement>('[data-unit]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const u = units[+btn.dataset.unit!]
-      if (!confirm(`${u.label} 폴더를 통째로 정리할까요?\n\n${u.path}\n${u.count.toLocaleString()}개 · ${fmtBytes(u.bytes)}\n\n${u.onDelete}\n\n${spaceHint(u.bytes)}지우지 않고 격리함에 30일 보관합니다.`)) return
+      if (!confirm(`${u.label} 폴더를 통째로 정리할까요?\n\n${u.path}\n${u.count.toLocaleString()}개 · ${fmtBytes(u.bytes)}\n\n${u.onDelete}\n\n${spaceHint(u.bytes)}지우지 않고 보관함에 30일 보관합니다.`)) return
       btn.disabled = true
       btn.textContent = '정리 중… (파일이 많으면 몇 분 걸려요)'
       try {
         const r = await engine('quarantine-folders', [u.path])
-        btn.textContent = `${r.quarantinedCount.toLocaleString()}개를 격리했어요`
+        btn.textContent = `${r.quarantinedCount.toLocaleString()}개를 보관함에 넣었어요`
         const note = document.createElement('div')
         note.className = 't-caption'
         note.style.color = 'var(--muted)'
@@ -873,7 +874,7 @@ function renderPicker(host: HTMLElement, unknown: string, prefer: 'delete' | 'mo
           (r.refusedCount ? ` 잠근 항목 ${r.refusedCount.toLocaleString()}개는 안 건드렸어요.` : '') +
           (r.failed?.length ? ` ${r.failed.length}개는 사용 중이라 건너뛰었어요.` : '')
         btn.parentElement?.appendChild(note)
-        toast(`${u.label}을(를) 정리했어요. 격리함에서 되돌릴 수 있습니다.`, 'good')
+        toast(`${u.label}을(를) 정리했어요. 보관함에서 되돌릴 수 있습니다.`, 'good')
         quarLoaded = false
         refreshDisk(true)
       } catch (err) {
@@ -897,7 +898,7 @@ function renderPicker(host: HTMLElement, unknown: string, prefer: 'delete' | 'mo
     const bytes = chosen.reduce((n, s) => n + s.size, 0)
     const movable = chosen.filter(canMove)
     goBtn.disabled = picked.size === 0
-    goBtn.textContent = picked.size ? `고른 ${picked.size}개 지우기(격리)` : '고른 것 정리하기'
+    goBtn.textContent = picked.size ? `고른 ${picked.size}개 지우기 (30일 보관)` : '고른 것 정리하기'
     sumEl.textContent = picked.size ? `${picked.size}개 · ${fmtBytes(bytes)}` : '아직 고르신 게 없어요'
     if (moveBtn) {
       // 옮길 수 없는 것은 세지 않는다. 버튼에 적힌 개수와 실제로 옮겨질 개수가
@@ -1029,7 +1030,7 @@ function renderPicker(host: HTMLElement, unknown: string, prefer: 'delete' | 'mo
       const names = risky.slice(0, 3).map((s) => `· ${baseName(s.path)} — ${s.owner.onDelete}`).join('\n')
       if (!confirm(
         `저희가 "두시는 게 안전합니다"로 본 것이 ${risky.length}개 섞여 있어요.\n\n${names}` +
-        `${risky.length > 3 ? `\n… 외 ${risky.length - 3}개` : ''}\n\n그래도 정리할까요? (격리함에서 30일간 되돌릴 수 있습니다)`
+        `${risky.length > 3 ? `\n… 외 ${risky.length - 3}개` : ''}\n\n그래도 정리할까요? (보관함에서 30일간 되돌릴 수 있습니다)`
       )) return
     }
 
@@ -1041,7 +1042,7 @@ function renderPicker(host: HTMLElement, unknown: string, prefer: 'delete' | 'mo
     )
     if (partial && !confirm(`${partial.o.unit}\n\n그래도 고른 것만 정리할까요?`)) return
 
-    if (!confirm(`고르신 ${paths.length}개(${fmtBytes(bytes)})를 정리할까요?\n\n${spaceHint(bytes)}지우지 않고 격리함에 30일 보관합니다. 언제든 되돌릴 수 있어요.`)) return
+    if (!confirm(`고르신 ${paths.length}개(${fmtBytes(bytes)})를 정리할까요?\n\n${spaceHint(bytes)}지우지 않고 보관함에 30일 보관합니다. 언제든 되돌릴 수 있어요.`)) return
 
     goBtn.disabled = true
     goBtn.textContent = '정리 중…'
@@ -1050,13 +1051,13 @@ function renderPicker(host: HTMLElement, unknown: string, prefer: 'delete' | 'mo
       // 거절당한 게 있으면 숨기지 않는다 — 왜 안 됐는지가 신뢰의 근거다.
       const refused = (r.refused ?? []) as { path: string; reason: string }[]
       host.innerHTML = `<div class="pick-done">
-        <div class="pick-done-h">${r.quarantinedCount.toLocaleString()}개를 격리함으로 옮겼어요</div>
+        <div class="pick-done-h">${r.quarantinedCount.toLocaleString()}개를 보관함으로 옮겼어요</div>
         <div class="t-caption">30일 안에 되돌릴 수 있습니다.</div>
         ${r.failed?.length ? `<div class="t-caption">${r.failed.length}개는 사용 중이라 건너뛰었어요.</div>` : ''}
         ${refused.length ? `<div class="t-caption">${refused.length}개는 안 건드렸어요 — ${esc(refused[0].reason)}</div>` : ''}
       </div>`
       mountPurgeNow(host, r.bytesAfterGrace ?? bytes)
-      toast(`${r.quarantinedCount.toLocaleString()}개를 격리했어요.`, 'good')
+      toast(`${r.quarantinedCount.toLocaleString()}개를 보관함에 넣었어요.`, 'good')
       quarLoaded = false
       refreshDisk(true)
     } catch (err) {
@@ -1272,8 +1273,8 @@ $('oneclick').addEventListener('click', () => runScan(false))
 $('pick2').addEventListener('click', () => runScan(true))
 
 /* ── 정리 실행 ─────────────────────────────────────────────────
-   ★ 이 버튼은 이제 **실제로 지운다.** 전에는 격리함으로 옮기고 멈췄는데,
-     격리함은 같은 드라이브에 있어서 용량이 1바이트도 안 줬다. "지금 정리 가능
+   ★ 이 버튼은 이제 **실제로 지운다.** 전에는 보관함으로 옮기고 멈췄는데,
+     보관함은 같은 드라이브에 있어서 용량이 1바이트도 안 줬다. "지금 정리 가능
      7.0GB"를 보고 누른 사람에게 "용량은 아직 그대로입니다"가 뜨는 화면이었다.
      두 번 같은 항의를 들었고, 두 번 다 맞는 말이었다.
 
@@ -1296,17 +1297,17 @@ $('apply-btn').addEventListener('click', async () => {
         `<b style="color:var(--safe)">${res.purgedCount.toLocaleString()}개를 지웠어요 — ` +
         `${fmtBytes(res.bytesAfterGrace)}가 지금 비었습니다.</b>${skipped}` +
         `<div class="t-small" style="color:var(--muted);margin-top:6px">` +
-        `규칙이 확증한 캐시·로그·임시 파일만 지웠어요. 애매한 건 아래에서 물어봅니다.</div>`
+        `규칙으로 확인한 임시 파일·기록만 지웠어요. 애매한 건 아래에서 물어봅니다.</div>`
     } else {
       // --quarantine으로 돌린 경우(선택지를 쓴 사람). 용량이 안 준다는 걸 숨기지 않는다.
       $('apply-note').innerHTML =
-        `<b style="color:var(--safe)">${res.quarantinedCount.toLocaleString()}개를 격리함으로 옮겼어요.</b> ` +
-        `<b>용량은 아직 그대로입니다</b> — 격리함이 같은 드라이브에 있거든요. ` +
+        `<b style="color:var(--safe)">${res.quarantinedCount.toLocaleString()}개를 보관함으로 옮겼어요.</b> ` +
+        `<b>용량은 아직 그대로입니다</b> — 보관함이 같은 드라이브에 있거든요. ` +
         `30일 뒤 ${fmtBytes(res.bytesAfterGrace)}가 자동으로 비워집니다.${skipped}`
       mountPurgeNow($('apply-note'), res.bytesAfterGrace)
     }
     btn.textContent = '정리 완료'
-    quarLoaded = false // 격리함 새로고침 필요
+    quarLoaded = false // 보관함 새로고침 필요
     refreshDisk(true)
   } catch (err) {
     $('apply-note').textContent = `정리 실패: ${errText(err)}`
@@ -1367,7 +1368,7 @@ function startSweepTicker(): () => void {
  * "지금 비우기" 버튼을 붙인다 — 유예 30일을 안 기다리고 즉시 용량을 확보한다.
  *
  * ── 왜 필요한가 ──────────────────────────────────────────────
- * 격리함은 **같은 드라이브에 있다.** 그래서 격리만으로는 용량이 1바이트도 안 준다.
+ * 보관함은 **같은 드라이브에 있다.** 그래서 격리만으로는 용량이 1바이트도 안 준다.
  * 디스크가 92% 찬 사람에게 "30일 뒤에 37GB가 빕니다"는 답이 아니다 —
  * 지금 부족해서 이 앱을 연 사람이다. 실제로 "삭제가 안 됐다니 이게 무슨
  * 소리냐"는 말을 들었고, 그 말이 맞았다.
@@ -1387,7 +1388,7 @@ function mountPurgeNow(host: HTMLElement, bytes: number) {
 
   box.querySelector<HTMLButtonElement>('[data-purge-now]')!.addEventListener('click', async (ev) => {
     const b = ev.currentTarget as HTMLButtonElement
-    if (!confirm(`격리함을 지금 비울까요?\n\n${fmtBytes(bytes)}가 바로 확보됩니다.\n\n30일을 기다리지 않고 지금 지우는 거라 되돌릴 수 없어요.`)) return
+    if (!confirm(`보관함을 지금 비울까요?\n\n${fmtBytes(bytes)}가 바로 확보됩니다.\n\n30일을 기다리지 않고 지금 지우는 거라 되돌릴 수 없어요.`)) return
     b.disabled = true
     b.textContent = '비우는 중…'
     try {
@@ -1412,7 +1413,7 @@ async function loadHidden() {
   card.innerHTML = `<div class="empty">이 PC를 확인하는 중...</div>`
   try {
     const data = await engine('probe')
-    if (!data.findings.length) { card.innerHTML = `<div class="empty"><svg class="ic"><use href="#i-check"/></svg><b>회수할 숨은 공간이 없어요</b><span>최대절전 파일·휴지통·업데이트 캐시 모두 깔끔합니다.</span></div>`; return }
+    if (!data.findings.length) { card.innerHTML = `<div class="empty"><svg class="ic"><use href="#i-check"/></svg><b>회수할 숨은 공간이 없어요</b><span>최대절전 파일·휴지통·업데이트가 남긴 파일 모두 깔끔합니다.</span></div>`; return }
     card.innerHTML = data.findings
       .map((f: any, i: number) => explainCard(f, i))
       .join('<hr style="border:0;border-top:1px solid var(--line);margin:22px 0">')
@@ -1520,7 +1521,7 @@ async function photosFlow(host: HTMLElement) {
             정리 폴더로 옮기기만 해요.</div>` : ''}
         ${p.dupGroupCount ? `<div class="t-small" style="font-weight:var(--w-em);margin-top:8px">
           같은 사진이 여러 벌 — ${p.dupGroupCount.toLocaleString()}묶음 · ${fmtBytes(p.dupBytes)}</div>
-          <div class="t-small" style="color:var(--muted)">원본은 그대로 두고 사본만 격리함으로 보냅니다(30일 되돌리기).</div>
+          <div class="t-small" style="color:var(--muted)">원본은 그대로 두고 사본만 보관함으로 보냅니다(30일 되돌리기).</div>
           <div style="margin-top:6px">${dupPreview}</div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
           ${p.screenshotCount ? `<button class="btn" data-photos="screenshots">스크린샷 정리</button>` : ''}
@@ -1542,7 +1543,7 @@ async function photosFlow(host: HTMLElement) {
             <div class="t-small" style="font-weight:var(--w-em);color:var(--safe)">정리했어요</div>
             <div class="t-small" style="color:var(--ink-2);margin-top:4px">
               ${r.movedCount ? `스크린샷 ${r.movedCount.toLocaleString()}장을 ${esc(r.destFolder)}로 옮겼어요.<br>` : ''}
-              ${r.quarantinedCount ? `중복 사본 ${r.quarantinedCount.toLocaleString()}장(${fmtBytes(r.quarantinedBytes)})을 격리함으로 보냈어요 — 30일 안에 되돌릴 수 있습니다.<br>` : ''}
+              ${r.quarantinedCount ? `중복 사본 ${r.quarantinedCount.toLocaleString()}장(${fmtBytes(r.quarantinedBytes)})을 보관함으로 보냈어요 — 30일 안에 되돌릴 수 있습니다.<br>` : ''}
               ${r.failed.length ? `${r.failed.length}장은 사용 중이라 건너뛰었습니다.` : ''}</div>
           </div>`
         } catch (err) {
@@ -1578,7 +1579,7 @@ async function tidyFolderFlow(target: string, host: HTMLElement) {
           ${p.bytes ? `<span style="color:var(--muted);font-weight:var(--w-text)">· ${fmtBytes(p.bytes)}</span>` : ''}</div>
         <div class="t-small" style="color:var(--muted);margin-top:2px">
           → ${esc(p.destFolder)}<br>최근 ${p.keepCount}개는 작업 중으로 보고 그대로 둡니다.
-          ${p.broken.length ? `<br>대상이 사라진 바로가기 ${p.broken.length}개는 격리함으로 보냅니다(30일 되돌리기).` : ''}
+          ${p.broken.length ? `<br>대상이 사라진 바로가기 ${p.broken.length}개는 보관함으로 보냅니다(30일 되돌리기).` : ''}
         </div>
         <div style="margin-top:8px">${list}${p.moveCount > 8 ? `<div class="t-small" style="color:var(--muted)">…외 ${p.moveCount - 8}개</div>` : ''}</div>
         <button class="btn" data-tidyapply="${esc(target)}" style="margin-top:10px">옮기기</button>
@@ -1596,7 +1597,7 @@ async function tidyFolderFlow(target: string, host: HTMLElement) {
           <div class="t-small" style="font-weight:var(--w-em);color:var(--safe)">${r.movedCount.toLocaleString()}개를 옮겼어요</div>
           <div class="t-small" style="color:var(--muted);margin-top:3px">
             ${esc(r.destFolder)}<br>
-            ${r.brokenQuarantined ? `깨진 바로가기 ${r.brokenQuarantined}개는 격리함에 있어요. ` : ''}
+            ${r.brokenQuarantined ? `깨진 바로가기 ${r.brokenQuarantined}개는 보관함에 있어요. ` : ''}
             ${r.failed.length ? `${r.failed.length}개는 사용 중이라 건너뛰었습니다.` : ''}</div>
           <button class="opt" data-tidyundo="${esc(target)}" style="margin-top:10px">되돌리기</button>
         </div>`
@@ -2138,11 +2139,11 @@ async function loadDupes() {
       <div class="mv-dests" style="margin-top:14px">
         <h2 class="t-h2" style="font-weight:var(--w-num)">${d.groupCount.toLocaleString()}묶음 · ${fmtBytes(d.wastedBytes)}를 아낄 수 있어요</h2>
         <div class="t-small" style="color:var(--muted);margin-top:4px">
-          ${d.scanned.toLocaleString()}개 중 ${fmtBytes(d.minBytes)}가 넘는 ${d.candidates.toLocaleString()}개를 추려 ${d.hashed.toLocaleString()}개의 내용을 직접 읽어 확인했습니다.
-          ${d.excluded ? `프로그램·가상환경 안의 ${d.excluded.toLocaleString()}개는 여러 벌 있는 게 정상이라 아예 안 봤어요.` : ''}
+          ${d.scanned.toLocaleString()}개 중 ${fmtBytes(d.minBytes)}가 넘는 ${d.candidates.toLocaleString()}개를 추려 ${d.hashed.toLocaleString()}개의 안을 직접 펼쳐 확인했습니다.
+          ${d.excluded ? `프로그램 부품 폴더 안의 ${d.excluded.toLocaleString()}개는 여러 벌 있는 게 정상이라 아예 안 봤어요.` : ''}
         </div>
         <div class="t-caption" style="color:var(--muted);margin-top:6px">
-          앞뒤 256KB와 크기가 모두 같으면 같은 파일로 봅니다. 그래도 원본은 남기고 사본만 격리해요(30일 되돌리기).
+          파일 앞뒤를 직접 펼쳐 보고 크기까지 같을 때만 같은 파일로 봅니다. 그래도 원본은 남기고 사본만 격리해요(30일 되돌리기).
         </div>
       </div>
 
@@ -2195,19 +2196,19 @@ async function loadDupes() {
     goBtn.addEventListener('click', async () => {
       const paths = [...dupPicked]
       const bytes = paths.reduce((n, p) => n + (sizeOf.get(p) ?? 0), 0)
-      if (!confirm(`사본 ${paths.length.toLocaleString()}개(${fmtBytes(bytes)})를 정리할까요?\n\n원본은 그대로 둡니다. ${spaceHint(bytes)}사본은 지우지 않고 격리함에 30일 보관해요.`)) return
+      if (!confirm(`사본 ${paths.length.toLocaleString()}개(${fmtBytes(bytes)})를 정리할까요?\n\n원본은 그대로 둡니다. ${spaceHint(bytes)}사본은 지우지 않고 보관함에 30일 보관해요.`)) return
       goBtn.disabled = true
       goBtn.textContent = '정리 중…'
       try {
         const r = await engine('quarantine-paths', paths)
         const refused = (r.refused ?? []) as { path: string; reason: string }[]
         outEl.innerHTML = `<div class="pick-done">
-          <div class="pick-done-h">사본 ${r.quarantinedCount.toLocaleString()}개를 격리함으로 옮겼어요</div>
+          <div class="pick-done-h">사본 ${r.quarantinedCount.toLocaleString()}개를 보관함으로 옮겼어요</div>
           <div class="t-caption">원본은 그대로 있습니다. 30일 안에 되돌릴 수 있어요.</div>
           ${r.failed?.length ? `<div class="t-caption">${r.failed.length}개는 사용 중이라 건너뛰었어요.</div>` : ''}
           ${refused.length ? `<div class="t-caption">${refused.length}개는 안 건드렸어요 — ${esc(refused[0].reason)}</div>` : ''}
         </div>`
-        toast(`사본 ${r.quarantinedCount.toLocaleString()}개를 격리했어요.`, 'good')
+        toast(`사본 ${r.quarantinedCount.toLocaleString()}개를 보관함에 넣었어요.`, 'good')
         quarLoaded = false
         dupesLoaded = false // 다시 열면 남은 묶음이 올라온다
         refreshDisk(true)
@@ -2410,13 +2411,13 @@ async function planMove(src: string, dest: string) {
   }
 }
 
-/* ── 격리함 (데스크톱: 실제 목록 + 되돌리기) ─────────────────── */
+/* ── 보관함 (데스크톱: 실제 목록 + 되돌리기) ─────────────────── */
 async function loadQuar() {
   const screen = $('s-quar')
   const listId = 'quar-list-live'
   let host = document.getElementById(listId)
   if (!host) { host = document.createElement('div'); host.id = listId; screen.appendChild(host) }
-  host.innerHTML = `<div class="empty">격리함을 읽는 중...</div>`
+  host.innerHTML = `<div class="empty">보관함을 읽는 중...</div>`
   try {
     const data = await engine('quar-list')
     // 유예가 끝난 것이 있으면 이 화면에 오기 전에 이미 지워졌다(시작할 때 purge).
@@ -2428,7 +2429,7 @@ async function loadQuar() {
       : ''
 
     if (!data.items.length) {
-      host.innerHTML = `<div class="card">${purgeNote}<div class="empty"><svg class="ic"><use href="#i-undo"/></svg><b>아직 격리된 항목이 없어요</b><span>정리를 실행하면 여기에 30일간 보관됩니다.</span></div></div>`
+      host.innerHTML = `<div class="card">${purgeNote}<div class="empty"><svg class="ic"><use href="#i-undo"/></svg><b>아직 보관 중인 게 없어요</b><span>정리를 실행하면 여기에 30일간 보관됩니다.</span></div></div>`
       // 격리한 게 없어도 옮긴 게 있을 수 있다. 여기서 안 그리면 되돌릴 길이 사라진다.
       renderMovedUndo(host)
       return
@@ -2444,7 +2445,7 @@ async function loadQuar() {
         <button class="btn" id="restore-all" style="margin-left:auto">전부 되돌리기</button>
       </div>
       <div class="t-small" style="color:var(--muted);margin:-4px 0 12px">
-        여기 있는 동안은 <b>용량이 안 줄어듭니다</b> — 격리함이 같은 드라이브에 있거든요.
+        여기 있는 동안은 <b>용량이 안 줄어듭니다</b> — 보관함이 같은 드라이브에 있거든요.
         30일을 안 기다리려면 '지금 비우기'를 누르세요.
       </div>
       ${data.items.slice(0, 50).map((it: any) => {
@@ -2489,7 +2490,7 @@ async function loadQuar() {
     document.getElementById('restore-all')?.addEventListener('click', async (ev) => {
       // ★ 여기만 try/catch가 빠져 있었다. 실패하면 unhandled rejection으로 흘러
       //   화면엔 아무 일도 안 일어난 것처럼 보였다 — 개별 되돌리기엔 있는데
-      //   '전부'에만 없었다. 되돌리기가 조용히 실패하는 건 격리함의 존재 이유를 깬다.
+      //   '전부'에만 없었다. 되돌리기가 조용히 실패하는 건 보관함의 존재 이유를 깬다.
       const b = ev.currentTarget as HTMLButtonElement
       b.disabled = true
       b.textContent = '되돌리는 중…'
@@ -2507,7 +2508,7 @@ async function loadQuar() {
     // 유예를 안 기다리고 지금 비운다. 되돌릴 수 없으므로 숫자와 함께 한 번 더 확인받는다.
     document.getElementById('purge-all')?.addEventListener('click', async (ev) => {
       const b = ev.currentTarget as HTMLButtonElement
-      if (!confirm(`격리함을 지금 비울까요?\n\n${data.items.length.toLocaleString()}개 · ${fmtBytes(data.totalBytes)}가 바로 확보됩니다.\n\n30일을 기다리지 않고 지금 지우는 거라 되돌릴 수 없어요.`)) return
+      if (!confirm(`보관함을 지금 비울까요?\n\n${data.items.length.toLocaleString()}개 · ${fmtBytes(data.totalBytes)}가 바로 확보됩니다.\n\n30일을 기다리지 않고 지금 지우는 거라 되돌릴 수 없어요.`)) return
       b.disabled = true
       b.textContent = '비우는 중…'
       try {
@@ -2527,17 +2528,17 @@ async function loadQuar() {
        기억해야 하는 되돌리기는 되돌리기가 아니다. */
     renderMovedUndo(host)
   } catch (err) {
-    host.innerHTML = `<div class="card"><div class="note">격리함을 읽지 못했어요: ${esc(errText(err))}</div></div>`
+    host.innerHTML = `<div class="card"><div class="note">보관함을 읽지 못했어요: ${esc(errText(err))}</div></div>`
   }
 }
 
-/** 옮긴 것 되돌리기 — 격리함 아래에 이어 붙인다. 목록이 비면 아무것도 안 그린다. */
+/** 옮긴 것 되돌리기 — 보관함 아래에 이어 붙인다. 목록이 비면 아무것도 안 그린다. */
 async function renderMovedUndo(host: HTMLElement) {
   let d: any
   try {
     d = await engine('undo-list')
   } catch {
-    return // 격리함은 이미 그려졌다. 부가 목록 하나 때문에 화면을 망치지 않는다.
+    return // 보관함은 이미 그려졌다. 부가 목록 하나 때문에 화면을 망치지 않는다.
   }
   if (!d.movedCount) return
 
@@ -2555,7 +2556,7 @@ async function renderMovedUndo(host: HTMLElement) {
       <div class="row">
         <div class="row-main">
           <div class="row-path" style="margin-top:0">${esc(m.originalPath)}</div>
-          <div class="row-sub">${fmtBytes(m.size)}${m.kind === 'folder' ? ` · 폴더 ${(m.files ?? 0).toLocaleString()}개 · 원래 자리에 바로가기 있음` : ''} → ${esc(m.movedTo)}</div>
+          <div class="row-sub">${fmtBytes(m.size)}${m.kind === 'folder' ? ` · 폴더 ${(m.files ?? 0).toLocaleString()}개 · 원래 자리에 안내판 있음` : ''} → ${esc(m.movedTo)}</div>
         </div>
         <div class="row-act"><button class="opt" data-undo-move="${esc(m.id)}" data-dest="${esc(m.destRoot)}">되돌리기</button></div>
       </div>`).join('')}
@@ -2702,7 +2703,7 @@ async function checkUpdate(manual = false) {
    격리는 '옮기기'라 그것만으로는 용량이 안 빈다. 30일이 지난 것을 실제로
    지우는 이 호출이 있어야 "정리했는데 용량이 그대로"가 끝난다.
 
-   ★ 왜 앱을 켤 때인가: 사용자가 격리함을 열어봐야만 지워진다면, 안 열어보는
+   ★ 왜 앱을 켤 때인가: 사용자가 보관함을 열어봐야만 지워진다면, 안 열어보는
      사람의 디스크는 영원히 안 빈다. 판단(30일)은 엔진 안에 갇혀 있어서
      여기서 앞당길 방법이 없다 — 그래서 매번 불러도 안전하다. */
 let lastPurge: { purgedCount: number; bytes: number } | null = null
@@ -2712,7 +2713,7 @@ async function purgeExpiredQuarantine() {
     const r = await engine('purge')
     if (r.purgedCount) {
       lastPurge = { purgedCount: r.purgedCount, bytes: r.bytes }
-      quarLoaded = false // 격리함을 다시 읽어야 한다
+      quarLoaded = false // 보관함을 다시 읽어야 한다
     }
   } catch {
     /* 못 지워도 앱은 정상 작동한다. 다음 실행 때 다시 시도된다. */

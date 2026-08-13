@@ -33,7 +33,7 @@ test('Docker는 파일이 아니라 Docker에게 정리시킨다', () => {
   const [d] = probeBulk([item('docker', 30 * GB, 'C:\\x\\Docker\\wsl\\data\\ext4.vhdx')])
   assert.match(d.title, /Docker/)
   assert.match(d.explain.recoveryNote, /docker system prune/, '정식 정리 명령을 안 알려준다')
-  assert.ok(d.explain.ifRemoved.some((s) => /볼륨/.test(s)), '볼륨 데이터가 날아간다는 경고가 없다')
+  assert.ok(d.explain.ifRemoved.some((s) => /저장한 자료/.test(s)), '안에 저장한 자료가 날아간다는 경고가 없다')
 })
 
 test('Windows.old는 윈도우 정식 도구로 넘긴다 — 우리가 지우지 않는다', () => {
@@ -51,7 +51,7 @@ test('작은 것은 아예 보고하지 않는다', () => {
 
 test('배포판 이름이 없으면 지어내지 않는다', () => {
   const [f] = probeBulk([item('wsl', 40 * GB, 'C:\\x\\ext4.vhdx', 'LocalState')])
-  assert.match(f.title, /WSL 배포판/, '폴더 이름을 그대로 배포판 이름처럼 쓴다')
+  assert.match(f.title, /리눅스 저장소/, '폴더 이름을 그대로 리눅스 이름처럼 쓴다')
 })
 
 test('없는 PC에서는 조용히 빈 목록 — 프로브 하나가 전체를 죽이지 않는다', async () => {

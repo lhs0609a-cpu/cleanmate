@@ -24,12 +24,12 @@ const ONNX =
 test('★ 1.2GB짜리 dll이 어느 프로젝트 것인지 이름을 댄다', () => {
   const o = ownerOf(TORCH)
   assert.equal(o.program, 'ACE-Step-1.5', '가상환경을 담은 폴더가 곧 주인이다')
-  assert.equal(o.programKind, '개발 프로젝트')
+  assert.equal(o.programKind, '작업 폴더')
   assert.ok(o.identified, '경로에서 그대로 읽은 이름이므로 추정이 아니다')
-  assert.match(o.role, /AI 계산 라이브러리/)
+  assert.match(o.role, /AI 계산에 쓰는 프로그램 부품/)
   // 결정에 필요한 건 "다시 만들 수 있다"가 아니라 "얼마나 걸리나"다.
   assert.match(o.onDelete, /ACE-Step-1\.5/)
-  assert.match(o.onDelete, /pip install/)
+  assert.match(o.onDelete, /인터넷에서 다시 받으면/)
   assert.match(o.onDelete, /분/)
   assert.equal(o.verdict, 'ask')
 })
@@ -64,14 +64,14 @@ test('사진·동영상 같은 낱개 파일에는 "묶음" 경고를 붙이지 
 test('허깅페이스 모델 캐시는 "다시 받는다"까지 말한다', () => {
   const o = ownerOf(ONNX)
   assert.equal(o.program, 'cthumb-sample')
-  assert.match(o.role, /허깅페이스/)
+  assert.match(o.role, /AI 학습 파일/)
   assert.equal(o.verdict, 'safe')
   assert.match(o.onDelete, /자동으로 받습니다/)
   assert.ok(o.breaks.some((a) => /인터넷/.test(a)), '오프라인이면 못 쓴다는 사실을 숨기지 않는다')
 })
 
 test('한 줄 정체가 "프로그램의 역할" 꼴로 나온다', () => {
-  assert.match(ownerHeadline(ownerOf(TORCH)), /^ACE-Step-1\.5\(개발 프로젝트\)의 /)
+  assert.match(ownerHeadline(ownerOf(TORCH)), /^ACE-Step-1\.5\(작업 폴더\)의 /)
 })
 
 /* ────────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ test('★ 배틀그라운드 셰이더 캐시: 이름을 대고, 세이브는 �
   assert.equal(o.program, '배틀그라운드')
   assert.equal(o.programKind, '게임')
   assert.equal(o.verdict, 'safe')
-  assert.match(o.role, /셰이더/)
+  assert.match(o.role, /밑그림/)
   assert.match(o.onDelete, /배틀그라운드/)
   assert.ok(o.intact.some((a) => /세이브/.test(a)), '진행 상황이 안전하다는 걸 말해야 결정이 된다')
 })

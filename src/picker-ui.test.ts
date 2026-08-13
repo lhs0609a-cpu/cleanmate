@@ -198,8 +198,8 @@ test('★ 옮긴 것도 격리함 화면에서 되돌린다 — 어느 드라이
   assert.match(src, /function renderMovedUndo\(/, '옮긴 것 되돌리기 목록이 없다')
   assert.match(src, /engine\('undo-list'\)/, '격리와 이동을 한 목록으로 읽지 않는다')
   // 격리함이 비어 있어도 옮긴 게 있으면 보여야 한다.
-  const empty = src.indexOf('아직 격리된 항목이 없어요')
-  assert.match(src.slice(empty, empty + 400), /renderMovedUndo\(/, '격리함이 비면 되돌릴 길이 사라진다')
+  const empty = src.indexOf('아직 보관 중인 게 없어요')
+  assert.match(src.slice(empty, empty + 400), /renderMovedUndo\(/, '보관함이 비면 되돌릴 길이 사라진다')
 })
 
 test('★ 낱개 격리는 실행 직전에 엔진이 다시 분류한다 — 화면 말을 그냥 믿지 않는다', () => {

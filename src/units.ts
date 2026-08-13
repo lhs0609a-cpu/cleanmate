@@ -81,7 +81,7 @@ export interface Unit {
  * 프로젝트가 살아 있는지의 관측값.
  *
  * ★ .venv 파일의 수정일은 '쓴 날'이 아니라 **'설치한 날'**이다. 그래서
- *   "26일 전에 마지막으로 손댔어요"는 "26일 전에 pip install 했다"는 뜻이지
+ *   "26일 전에 마지막으로 바뀌었어요"는 "26일 전에 pip install 했다"는 뜻이지
  *   "26일 전까지 작업했다"가 아니다. "아직 작업하시나요?"의 답이 될 수 없다.
  *   진짜 답은 옆에 있다 — **표시 폴더 바깥의 소스 파일**이 언제 바뀌었나.
  */
@@ -136,33 +136,33 @@ interface MarkerSpec {
  */
 const MARKERS: Record<string, MarkerSpec> = {
   node_modules: {
-    what: '설치해 둔 라이브러리',
-    onDelete: '다시 열 때 npm install 한 번이면 돌아옵니다 (1~3분).',
-    undoCost: 'npm install 1~3분',
+    what: '인터넷에서 받아둔 프로그램 부품',
+    onDelete: '그 폴더를 다시 열 때 부품을 자동으로 다시 받습니다 (1~3분).',
+    undoCost: '다시 받는 데 1~3분',
   },
   '.venv': {
-    what: '파이썬 가상환경',
-    onDelete: '가상환경을 다시 만들면 돌아옵니다 (pip install, 몇 분).',
-    undoCost: 'pip install 몇 분',
+    what: '그 폴더 전용 부품 상자',
+    onDelete: '부품을 다시 받아 채우면 그대로 돌아옵니다 (몇 분).',
+    undoCost: '다시 받는 데 몇 분',
   },
   venv: {
-    what: '파이썬 가상환경',
-    onDelete: '가상환경을 다시 만들면 돌아옵니다 (pip install, 몇 분).',
-    undoCost: 'pip install 몇 분',
+    what: '그 폴더 전용 부품 상자',
+    onDelete: '부품을 다시 받아 채우면 그대로 돌아옵니다 (몇 분).',
+    undoCost: '다시 받는 데 몇 분',
   },
   'site-packages': {
-    what: '파이썬 라이브러리',
-    onDelete: 'pip install로 다시 받습니다 (몇 분).',
-    undoCost: 'pip install 몇 분',
+    what: '받아둔 프로그램 부품 모음',
+    onDelete: '인터넷에서 다시 받습니다 (몇 분).',
+    undoCost: '다시 받는 데 몇 분',
   },
-  target: { what: '빌드 결과물', onDelete: '다시 빌드하면 그대로 만들어집니다.', undoCost: '빌드 한 번' },
-  dist: { what: '빌드 결과물', onDelete: '다시 빌드하면 그대로 만들어집니다.', undoCost: '빌드 한 번' },
-  build: { what: '빌드 결과물', onDelete: '다시 빌드하면 그대로 만들어집니다.', undoCost: '빌드 한 번' },
-  out: { what: '빌드 결과물', onDelete: '다시 빌드하면 그대로 만들어집니다.', undoCost: '빌드 한 번' },
-  '.next': { what: '빌드 캐시', onDelete: '다음 실행 때 다시 만듭니다.', undoCost: '자동 재생성' },
-  __pycache__: { what: '파이썬 캐시', onDelete: '실행하면 다시 생깁니다.', undoCost: '자동 재생성' },
-  '.gradle': { what: '그레이들 캐시', onDelete: '다음 빌드 때 다시 받습니다.', undoCost: '다음 빌드 때 재다운로드' },
-  '.tox': { what: '테스트 환경', onDelete: '다시 만들면 돌아옵니다.', undoCost: '재생성 몇 분' },
+  target: { what: '만들어 낸 완성본', onDelete: '원본이 남아 있어서 다시 만들면 그대로 나옵니다.', undoCost: '다시 만들기 한 번' },
+  dist: { what: '만들어 낸 완성본', onDelete: '원본이 남아 있어서 다시 만들면 그대로 나옵니다.', undoCost: '다시 만들기 한 번' },
+  build: { what: '만들어 낸 완성본', onDelete: '원본이 남아 있어서 다시 만들면 그대로 나옵니다.', undoCost: '다시 만들기 한 번' },
+  out: { what: '만들어 낸 완성본', onDelete: '원본이 남아 있어서 다시 만들면 그대로 나옵니다.', undoCost: '다시 만들기 한 번' },
+  '.next': { what: '빨리 열려고 미리 만들어 둔 것', onDelete: '다음에 열 때 다시 만듭니다.', undoCost: '알아서 다시 생김' },
+  __pycache__: { what: '빨리 켜지려고 미리 만들어 둔 것', onDelete: '실행하면 다시 생깁니다.', undoCost: '알아서 다시 생김' },
+  '.gradle': { what: '받아둔 프로그램 부품', onDelete: '다음에 만들 때 인터넷에서 다시 받습니다.', undoCost: '다시 받는 데 몇 분' },
+  '.tox': { what: '시험용 부품 상자', onDelete: '다시 만들면 돌아옵니다.', undoCost: '다시 만드는 데 몇 분' },
 }
 
 const MARKER_NAMES = Object.keys(MARKERS)
@@ -480,7 +480,7 @@ export function attachActivity(units: Unit[], dirs: SourceDirs): Unit[] {
  */
 export function activitySentence(a: UnitActivity | undefined, recentDays = RECENT_DAYS): string {
   if (!a || !a.sourceFiles) return ''
-  const what = a.scope === 'source' ? '소스' : '이 폴더의 파일'
+  const what = a.scope === 'source' ? '직접 만드신 파일' : '이 폴더의 파일'
 
   const tail = `(${what} ${a.sourceFiles.toLocaleString()}개 중 최근 ${recentDays}일에 ${
     a.scope === 'folder' ? '생기거나 바뀐' : '바뀐'
@@ -493,7 +493,7 @@ export function activitySentence(a: UnitActivity | undefined, recentDays = RECEN
   if (looksLikeOneShot(a)) {
     const rest = a.recentSources - a.busiestCount
     return `${a.busiestDay}일 전 하루에 ${a.busiestCount.toLocaleString()}개가 한꺼번에 ${
-      a.scope === 'folder' ? '쌓였어요' : '깔렸어요'
+      a.scope === 'folder' ? '쌓였어요' : '들어왔어요'
     } — 그 뒤로 ${rest ? `${rest.toLocaleString()}개만 ` : ''}바뀌었습니다 ${tail}`
   }
 
@@ -511,12 +511,12 @@ export function activitySentence(a: UnitActivity | undefined, recentDays = RECEN
 
   const head =
     a.sourceDays === null
-      ? '소스 파일의 수정일을 못 읽었어요'
+      ? '직접 만드신 파일이 언제 바뀌었는지 못 읽었어요'
       : a.spreadDays >= 3
-        ? `최근 ${recentDays}일 중 ${a.spreadDays}일에 걸쳐 소스를 고치셨어요 — 작업 중인 프로젝트입니다`
+        ? `최근 ${recentDays}일 중 ${a.spreadDays}일에 걸쳐 직접 고치셨어요 — 아직 쓰시는 폴더입니다`
         : a.sourceDays <= recentDays
-          ? `소스를 ${a.sourceDays}일 전에 고쳤어요`
-          : `소스도 ${ago(a.sourceDays)}째 그대로예요`
+          ? `${a.sourceDays}일 전에 직접 고치신 게 있어요`
+          : `직접 만드신 파일도 ${ago(a.sourceDays)}째 그대로예요`
   return `${head} ${tail}`
 }
 
@@ -527,8 +527,8 @@ export function activitySentence(a: UnitActivity | undefined, recentDays = RECEN
 export function lastTouched(days: number | null): string {
   if (days === null) return '언제 손댔는지 알 수 없어요'
   if (days < 7) return '최근에도 쓰고 계세요'
-  if (days < 30) return `${days}일 전에 마지막으로 손댔어요`
+  if (days < 30) return `${days}일 전에 마지막으로 바뀌었어요`
   const months = Math.floor(days / 30)
-  if (months < 12) return `${months}개월째 손대지 않았어요`
-  return `${Math.floor(days / 365)}년 넘게 손대지 않았어요`
+  if (months < 12) return `${months}개월째 아무것도 안 바뀌었어요`
+  return `${Math.floor(days / 365)}년 넘게 아무것도 안 바뀌었어요`
 }
