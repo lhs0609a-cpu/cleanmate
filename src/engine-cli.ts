@@ -29,6 +29,9 @@
  *   startup-tasks                    로그온 예약작업 개수 (느려서 목록과 분리)
  *   startup-set    <id> <on|off>     시작프로그램 켜기/끄기 (되돌릴 수 있음)
  *   empty-recycle-bin                휴지통 비우기(윈도우 공식 명령, 되돌리기 없음)
+ *   hibernate-off | hibernate-on     최대 절전 끄기·켜기 (관리자 확인 후, 되돌릴 수 있음)
+ *   open-system-protection           시스템 복원 설정 창 열기
+ *   open-virtual-memory              가상 메모리 설정 창 열기
  *   open-cleanmgr                    윈도우 디스크 정리 도구 띄우기
  *   relocate-scan                    옮길 만한 것 자동 탐색 + 대상 드라이브 목록
  *   relocate-plan  <path> <destRoot> 다른 드라이브로 옮길 계획(미리보기)
@@ -82,6 +85,7 @@ import { gatherFacts } from './probes/facts.ts'
 import { probeHiberfil } from './probes/hiberfil.ts'
 import { gatherReclaimFacts, probeRecycleBin, probeUpdateCache } from './probes/reclaim.ts'
 import { gatherBulkFacts, probeBulk } from './probes/bulk.ts'
+import { gatherPageFile, probePageFile, gatherRestore, probeRestore } from './probes/system-space.ts'
 import { probeStartup, countLogonTasks, setStartupEnabled } from './probes/startup.ts'
 import {
   planFolderTidy,
@@ -1158,6 +1162,22 @@ async function main() {
         } catch (err) {
           process.stderr.write(`회수 프로브 실패: ${(err as Error).message}\n`)
         }
+        /* 윈도우가 자기 몫으로 잡아둔 공간(가상 메모리·시스템 복원).
+           실측에서 pagefile 65GB, 시스템 복원 최대 155GB가 나왔다 — 파일 정리를
+           다 합친 것보다 크다. 여기 없으면 사용자는 이게 있는 줄도 모른다. */
+        try {
+          const pf = await gatherPageFile()
+          const pfFinding = pf && probePageFile(pf)
+          if (pfFinding) findings.push(pfFinding)
+        } catch (err) {
+          process.stderr.write(`가상 메모리 프로브 실패: ${(err as Error).message}\n`)
+        }
+        try {
+          const rs = probeRestore(await gatherRestore())
+          if (rs) findings.push(rs)
+        } catch (err) {
+          process.stderr.write(`시스템 복원 프로브 실패: ${(err as Error).message}\n`)
+        }
         // 큰 덩어리(WSL·Docker·Windows.old)도 같은 이유로 따로 감싼다.
         try {
           // 스프레드로 넘기지 않는다 — 배열 길이만큼 인자를 만드는 자리를 안 만든다(breakdown.ts 머리말)
@@ -1525,6 +1545,54 @@ async function main() {
         break
       }
       /** 윈도우 디스크 정리를 띄우기만 한다. 우리가 고르지 않는다. */
+      /**
+       * 시스템 보호(시스템 복원) 설정 창.
+       *
+       * 여기서 사용자는 지금 쓰는 양을 보고 최대 크기를 막대로 줄일 수 있다.
+       * 우리가 vssadmin을 대신 치지 않는 이유: 지운 복원 지점은 못 되살린다.
+       * 되돌릴 수 없는 걸 대신 실행하지 않는다(types.ts 규약).
+       */
+      case 'open-system-protection': {
+        spawn('SystemPropertiesProtection.exe', [], { detached: true, stdio: 'ignore', windowsHide: false }).unref()
+        out({ opened: true })
+        break
+      }
+      /** 가상 메모리(pagefile) 크기를 정하는 정식 창 — 성능 옵션 → 고급. */
+      case 'open-virtual-memory': {
+        spawn('SystemPropertiesPerformance.exe', [], { detached: true, stdio: 'ignore', windowsHide: false }).unref()
+        out({ opened: true })
+        break
+      }
+      /**
+       * 최대 절전 끄기/켜기 — **되돌리는 명령이 있어서** 우리가 실행할 수 있는 유일한 계열.
+       *
+       * ★ 여태 화면엔 "실행(관리자 권한)은 다음 업데이트에서 연결됩니다"만 떠 있었다.
+       *   12.7GB짜리를 찾아놓고 사용자에게 직접 powercfg를 치라고 한 셈이다.
+       *   명령은 여기 하드코딩돼 있고, 화면은 이름만 보낸다.
+       *
+       * 관리자 확인(UAC)은 윈도우가 띄운다. 취소하면 아무 일도 안 일어난다.
+       */
+      case 'hibernate-off':
+      case 'hibernate-on': {
+        const on = command === 'hibernate-on'
+        const before = await gatherFacts()
+        try {
+          // Start-Process -Verb RunAs가 UAC를 띄운다. -Wait로 끝날 때까지 기다린다.
+          await runPowerShell(
+            `Start-Process powercfg -ArgumentList '/hibernate','${on ? 'on' : 'off'}' -Verb RunAs -Wait -WindowStyle Hidden`
+          )
+        } catch {
+          fail('관리자 확인이 취소됐거나 실행하지 못했어요. 아무것도 바뀌지 않았습니다.')
+        }
+        // 실제로 바뀌었는지 다시 재서 답한다 — "했다"는 말만 하지 않는다.
+        const after = await gatherFacts()
+        out({
+          hibernateEnabled: after.fastStartupEnabled,
+          freedBytes: Math.max(0, (before.hiberfilBytes ?? 0) - (after.hiberfilBytes ?? 0)),
+          bytesNow: after.hiberfilBytes ?? 0,
+        })
+        break
+      }
       case 'open-cleanmgr': {
         const drive = process.env.SystemDrive ?? 'C:'
         spawn('cleanmgr.exe', ['/d', drive], { detached: true, stdio: 'ignore', windowsHide: false }).unref()

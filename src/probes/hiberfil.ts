@@ -94,6 +94,9 @@ export function probeHiberfil(f: SystemFacts): Finding | null {
       needsAdmin: true,
       undo: 'powercfg /hibernate on',
       undoDescribe: '최대 절전 기능을 다시 켭니다. 파일도 다시 생깁니다.',
+      // 엔진이 아는 이름. 화면은 이것만 보낼 수 있다(임의 명령 실행 통로를 안 만든다).
+      run: 'hibernate-off',
+      undoRun: 'hibernate-on',
     },
   }
 }

@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.12.1'
+const APP_VERSION = '0.13.0'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -1466,17 +1466,28 @@ function explainCard(f: any, index: number): string {
   const ul = (arr: string[]) => `<ul>${arr.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`
 
   /* 실행 줄. 항목마다 우리가 할 수 있는 게 다르다 —
-     되돌리는 명령이 있으면 SystemAction, 없으면 정식 도구(assist),
-     둘 다 없으면 아직 안전한 경로를 모르는 것이므로 솔직히 그렇게 쓴다. */
-  const foot = f.assist
-    ? `<button class="btn${f.assist.irreversible ? '' : ' ghost'}" data-assist="${index}">${esc(f.assist.label)}</button>
-       <span class="t-small" style="color:var(--muted);margin-left:10px">${esc(f.assist.note)}</span>`
-    : `<span class="pill desk">실행(관리자 권한)은 다음 업데이트에서 연결됩니다</span>`
+     되돌리는 명령이 있으면 우리가 실행(SystemAction), 없으면 정식 도구(assist),
+     둘 다 없으면 아직 안전한 경로를 모르는 것이므로 솔직히 그렇게 쓴다.
+
+     ★ 여태 SystemAction이 있어도 화면엔 "다음 업데이트에서 연결됩니다"만 떴다.
+       12.7GB짜리를 찾아놓고 사용자에게 직접 powercfg를 치라고 한 셈이다.
+       되돌릴 수 있는 것(끄면 다시 켤 수 있는 것)은 우리가 눌러드린다. */
+  const foot = f.action?.run
+    ? `<button class="btn" data-run="${index}">${esc(f.action.describe)}</button>
+       <span class="t-small" style="color:var(--muted);margin-left:10px">
+         관리자 확인 창이 한 번 뜹니다 · 되돌리기: ${esc(f.action.undoDescribe)}</span>`
+    : f.assist
+      ? `<button class="btn${f.assist.irreversible ? '' : ' ghost'}" data-assist="${index}">${esc(f.assist.label)}</button>
+         <span class="t-small" style="color:var(--muted);margin-left:10px">${esc(f.assist.note)}</span>`
+      : `<span class="pill desk">아직 안전하게 실행할 방법을 몰라서, 알려만 드립니다</span>`
 
   return `
     <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
       <h2 class="t-title" style="font-weight:var(--w-num)">${esc(f.title)}</h2>
-      <span class="t-h2 tnum" style="font-weight:var(--w-num);color:var(--safe);margin-left:auto">${gb(f.bytes)}</span>
+      <span class="t-h2 tnum" style="font-weight:var(--w-num);color:${f.bytes ? 'var(--safe)' : 'var(--muted)'};margin-left:auto">${
+        // ★ 못 잰 것에 0GB라고 쓰지 않는다. "없다"와 "못 봤다"는 다른 말이다.
+        f.bytes ? gb(f.bytes) : '확인 필요'
+      }</span>
     </div>
     <div class="expl" style="margin-top:14px">
       ${blk('이게 뭔가요', `<p>${esc(e.what)}</p>`)}
@@ -1494,6 +1505,37 @@ function explainCard(f: any, index: number): string {
  * (프로그램 제거와 같은 원칙: 되돌릴 수 없는 동작에 일괄 버튼을 만들지 않는다)
  */
 function wireAssists(host: HTMLElement, findings: any[]) {
+  /* 우리가 직접 실행하는 것 — 되돌릴 수 있는 것만 여기 온다.
+     끝나면 **실제로 얼마가 비었는지 다시 재서** 말한다. "했습니다"만 말하지 않는다. */
+  host.querySelectorAll<HTMLButtonElement>('[data-run]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const f = findings[+btn.dataset.run!]
+      const a = f.action
+      if (!confirm(`${a.describe}\n\n${a.command}\n\n관리자 확인 창이 뜹니다.\n되돌리려면: ${a.undoDescribe}\n\n계속할까요?`)) return
+      btn.disabled = true
+      const before = btn.textContent
+      btn.textContent = '실행 중… (관리자 확인 창을 확인해 주세요)'
+      try {
+        const r = await engine(a.run)
+        const box = btn.parentElement as HTMLElement
+        box.innerHTML = doneBlock(
+          `완료 — ${fmtBytes(r.freedBytes || f.bytes)}가 비었습니다`,
+          [
+            `되돌리려면: ${esc(a.undoDescribe)}`,
+            r.bytesNow ? `아직 ${fmtBytes(r.bytesNow)}가 남아 있어요 — 윈도우가 정리하는 데 잠깐 걸릴 수 있습니다.` : '',
+          ]
+        )
+        toast(`완료 — ${fmtBytes(r.freedBytes || f.bytes)}가 비었습니다.`, 'good')
+        hiddenLoaded = false
+        refreshDisk(true)
+      } catch (err) {
+        toast(errText(err), 'bad')
+        btn.disabled = false
+        btn.textContent = before
+      }
+    })
+  })
+
   host.querySelectorAll<HTMLButtonElement>('[data-assist]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const f = findings[+btn.dataset.assist!]

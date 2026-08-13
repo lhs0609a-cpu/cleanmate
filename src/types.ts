@@ -149,6 +149,15 @@ export interface SystemAction {
   /** 되돌리는 명령. 이게 없으면 SystemAction으로 만들지 않는다. */
   undo: string
   undoDescribe: string
+  /**
+   * 엔진이 아는 실행 이름. **화면은 이 이름만 보낼 수 있다.**
+   *
+   * ★ 왜 command 문자열을 그대로 실행하지 않나: 그러면 화면에서 온 아무 문자열이나
+   *   관리자 권한으로 실행하는 통로가 생긴다. command는 사람에게 보여주는 글이고,
+   *   실제로 도는 건 엔진 안에 하드코딩된 명령이다(AssistAction과 같은 원칙).
+   */
+  run?: 'hibernate-off'
+  undoRun?: 'hibernate-on'
 }
 
 /**
@@ -162,7 +171,7 @@ export interface SystemAction {
 export interface AssistAction {
   label: string
   /** 엔진이 아는 정식 도구. 임의 명령을 받지 않는다(문자열 실행 통로를 안 만든다). */
-  command: 'empty-recycle-bin' | 'open-cleanmgr'
+  command: 'empty-recycle-bin' | 'open-cleanmgr' | 'open-system-protection' | 'open-virtual-memory'
   irreversible: boolean
   note: string
 }
