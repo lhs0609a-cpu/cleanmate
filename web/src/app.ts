@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.12.0'
+const APP_VERSION = '0.12.1'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -842,9 +842,19 @@ function renderPicker(host: HTMLElement, unknown: string, prefer: 'delete' | 'mo
         }
         btn.textContent = '옮기는 중… (복사하고 대조하느라 몇 분 걸려요)'
         const r = await engine('relocate-folder-apply', [pickDest, u.path])
-        btn.textContent = `${fmtBytes(r.bytes)} 옮겼어요`
-        outEl.innerHTML = `<i>✓</i>${esc(r.movedTo)}로 옮기고 원래 자리에 안내판을 남겼어요. 되돌리기는 '드라이브 옮기기' 화면에 있습니다.`
-        toast(`${u.label}을(를) 옮겼어요. C드라이브가 ${fmtBytes(r.bytes)} 비었습니다.`, 'good')
+        const card = btn.closest('.unit') as HTMLElement | null
+        card?.classList.add('unit-done')
+        outEl.innerHTML = ''
+        ;(btn.parentElement as HTMLElement).innerHTML = doneBlock(
+          `옮기기 완료 — ${r.files.toLocaleString()}개 (${fmtBytes(r.bytes)})`,
+          [
+            // 이동은 격리와 달리 용량이 **지금** 빈다. 그 차이를 분명히 말한다.
+            `${fmtBytes(r.bytes)}가 지금 비었습니다.`,
+            `실물은 ${esc(r.movedTo)}에 있고, 원래 자리엔 안내판이 남아서 프로그램은 그대로 열려요.`,
+            '되돌리려면 보관함 화면에서 되돌리시면 됩니다.',
+          ]
+        )
+        toast(`옮기기 완료 — ${fmtBytes(r.bytes)}가 비었습니다.`, 'good')
         refreshDisk(true)
       } catch (err) {
         toast('옮기지 못했어요: ' + errText(err), 'bad')
@@ -865,16 +875,24 @@ function renderPicker(host: HTMLElement, unknown: string, prefer: 'delete' | 'mo
       btn.textContent = '정리 중… (파일이 많으면 몇 분 걸려요)'
       try {
         const r = await engine('quarantine-folders', [u.path])
-        btn.textContent = `${r.quarantinedCount.toLocaleString()}개를 보관함에 넣었어요`
-        const note = document.createElement('div')
-        note.className = 't-caption'
-        note.style.color = 'var(--muted)'
-        note.textContent =
-          `${fmtBytes(r.bytesAfterGrace ?? u.bytes)} — 30일 안에 되돌릴 수 있습니다.` +
-          (r.refusedCount ? ` 잠근 항목 ${r.refusedCount.toLocaleString()}개는 안 건드렸어요.` : '') +
-          (r.failed?.length ? ` ${r.failed.length}개는 사용 중이라 건너뛰었어요.` : '')
-        btn.parentElement?.appendChild(note)
-        toast(`${u.label}을(를) 정리했어요. 보관함에서 되돌릴 수 있습니다.`, 'good')
+        const bytes = r.bytesAfterGrace ?? u.bytes
+        /* ★ 버튼 글씨만 바꾸지 않는다 — 버튼 모양 그대로면 "아직 눌러야 하나?"로
+           읽힌다. 카드를 완료 상태로 바꾸고, 다음에 뭘 하면 되는지까지 붙인다. */
+        const card = btn.closest('.unit') as HTMLElement | null
+        card?.classList.add('unit-done')
+        const act = btn.parentElement as HTMLElement
+        act.innerHTML = doneBlock(
+          `정리 완료 — ${r.quarantinedCount.toLocaleString()}개 (${fmtBytes(bytes)})`,
+          [
+            '보관함으로 옮겼어요. 30일 안에 언제든 되돌릴 수 있습니다.',
+            // 격리는 용량이 바로 안 빈다. 여기서 안 말하면 "정리했는데 왜 그대로냐"가 된다.
+            '아직 용량은 그대로예요 — 보관함이 같은 드라이브에 있거든요.',
+            r.refusedCount ? `잠근 항목 ${r.refusedCount.toLocaleString()}개는 안 건드렸어요.` : '',
+            r.failed?.length ? `${r.failed.length}개는 사용 중이라 건너뛰었어요.` : '',
+          ]
+        )
+        mountPurgeNow(act, bytes) // 지금 비우면 진짜로 빈다 — 그 통로를 바로 옆에 둔다
+        toast(`정리 완료 — ${u.label} ${fmtBytes(bytes)}를 보관함으로 옮겼어요.`, 'good')
         quarLoaded = false
         refreshDisk(true)
       } catch (err) {
@@ -1000,7 +1018,7 @@ function renderPicker(host: HTMLElement, unknown: string, prefer: 'delete' | 'mo
       moveBtn.textContent = '옮기는 중…'
       const r = await engine('relocate-paths-apply', [pickDest, ...paths])
       outEl.innerHTML = `<div class="pick-done">
-        <div class="pick-done-h">${r.movedCount.toLocaleString()}개(${fmtBytes(r.movedBytes)})를 옮겼어요</div>
+        <div class="pick-done-h">✓ 옮기기 완료 — ${r.movedCount.toLocaleString()}개(${fmtBytes(r.movedBytes)})</div>
         <div class="t-caption">${esc(p.destFolder)} — 되돌리려면 '드라이브 옮기기' 화면에서 되돌릴 수 있어요.</div>
         ${r.failed?.length ? `<div class="t-caption">${r.failed.length}개는 옮기지 못했어요 — ${esc(r.failed[0].reason)}</div>` : ''}
         ${r.skipped?.length ? `<div class="t-caption">${r.skipped.length}개는 같은 드라이브라 건너뛰었어요.</div>` : ''}
@@ -1051,7 +1069,7 @@ function renderPicker(host: HTMLElement, unknown: string, prefer: 'delete' | 'mo
       // 거절당한 게 있으면 숨기지 않는다 — 왜 안 됐는지가 신뢰의 근거다.
       const refused = (r.refused ?? []) as { path: string; reason: string }[]
       host.innerHTML = `<div class="pick-done">
-        <div class="pick-done-h">${r.quarantinedCount.toLocaleString()}개를 보관함으로 옮겼어요</div>
+        <div class="pick-done-h">✓ 정리 완료 — ${r.quarantinedCount.toLocaleString()}개를 보관함으로 옮겼어요</div>
         <div class="t-caption">30일 안에 되돌릴 수 있습니다.</div>
         ${r.failed?.length ? `<div class="t-caption">${r.failed.length}개는 사용 중이라 건너뛰었어요.</div>` : ''}
         ${refused.length ? `<div class="t-caption">${refused.length}개는 안 건드렸어요 — ${esc(refused[0].reason)}</div>` : ''}
@@ -1378,6 +1396,24 @@ function startSweepTicker(): () => void {
  * **기다리지 않을 자유**를 더하는 것이다. 그래서 누를 때 한 번 더 확인받고,
  * 되돌릴 수 없다는 걸 숫자와 함께 분명히 말한다.
  */
+/**
+ * 끝났다는 걸 눈에 보이게 — **버튼 글씨만 바꾸면 아무도 못 알아본다.**
+ *
+ * ★ 실물 화면에서 이렇게 끝났다: 눌렀던 버튼이 회색으로 바뀌고 글씨가
+ *   "2,380개를 격리했어요"가 됐다. 버튼 모양 그대로라 **아직 처리 중인 것처럼**
+ *   읽혔고, 사용자는 "다 된 건가?"를 물어야 했다. 완료는 버튼이 아니라
+ *   **칸**으로 보여야 한다 — 초록 줄, ✓ 표시, 그리고 다음에 뭘 하면 되는지.
+ *
+ * @param title 한 줄로 무엇이 끝났나 ("정리 완료 — 2,380개")
+ * @param lines 숫자·조건 같은 나머지 사실
+ */
+function doneBlock(title: string, lines: (string | false | undefined)[]): string {
+  return `<div class="pick-done">
+    <div class="pick-done-h">✓ ${title}</div>
+    ${lines.filter(Boolean).map((l) => `<div class="t-caption">${l}</div>`).join('')}
+  </div>`
+}
+
 function mountPurgeNow(host: HTMLElement, bytes: number) {
   if (!inTauri || !bytes) return
   const box = document.createElement('div')
@@ -2308,7 +2344,7 @@ async function loadDupes() {
           for (const f of r.failed ?? []) failures.push(f)
         }
         outEl.innerHTML = `<div class="pick-done">
-          <div class="pick-done-h">${merged.toLocaleString()}개를 하나로 합쳤어요 — ${fmtBytes(freed)} 회수</div>
+          <div class="pick-done-h">✓ 합치기 완료 — ${merged.toLocaleString()}개 · ${fmtBytes(freed)} 회수</div>
           <div class="t-caption">파일은 하나도 안 지웠어요. 경로는 전부 그대로 열립니다.</div>
           ${failures.length ? `<div class="t-caption">${failures.length}개는 못 합쳤어요 — ${esc(failures[0].reason)}</div>` : ''}
         </div>`
@@ -2332,7 +2368,7 @@ async function loadDupes() {
         const r = await engine('quarantine-paths', paths)
         const refused = (r.refused ?? []) as { path: string; reason: string }[]
         outEl.innerHTML = `<div class="pick-done">
-          <div class="pick-done-h">사본 ${r.quarantinedCount.toLocaleString()}개를 보관함으로 옮겼어요</div>
+          <div class="pick-done-h">✓ 정리 완료 — 사본 ${r.quarantinedCount.toLocaleString()}개를 보관함으로 옮겼어요</div>
           <div class="t-caption">원본은 그대로 있습니다. 30일 안에 되돌릴 수 있어요.</div>
           ${r.failed?.length ? `<div class="t-caption">${r.failed.length}개는 사용 중이라 건너뛰었어요.</div>` : ''}
           ${refused.length ? `<div class="t-caption">${refused.length}개는 안 건드렸어요 — ${esc(refused[0].reason)}</div>` : ''}

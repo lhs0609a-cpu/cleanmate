@@ -660,8 +660,13 @@
           font-size:var(--t-micro);line-height:var(--lh-micro);letter-spacing:var(--tr-micro)}
   .pg-files{margin-top:var(--s-2);border-top:1px solid var(--line)}
   .pg-files .pick-row{padding:var(--s-2) 0}
+  /* 끝났다는 표시. 버튼 글씨만 바꾸면 "아직 눌러야 하나?"로 읽혀서,
+     완료는 버튼이 아니라 **칸**으로 보여준다(초록 줄 + ✓ + 다음 할 일). */
   .pick-done{border:1px solid var(--line);border-left:3px solid var(--safe);border-radius:var(--r-sm);
              padding:var(--s-3);margin-top:var(--s-3);background:var(--surface)}
+  /* 처리가 끝난 카드는 한눈에 구분되게 — 남은 것과 끝난 것이 섞이면 다시 훑어야 한다 */
+  .unit-done{border-left-color:var(--safe);opacity:.75}
+  .unit-done .unit-name{text-decoration:line-through;text-decoration-color:var(--muted)}
   .pick-done-h{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
                font-weight:var(--w-head);color:var(--safe)}
   .pick-done .t-caption{color:var(--muted);display:block;margin-top:2px}

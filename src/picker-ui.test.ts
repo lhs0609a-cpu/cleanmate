@@ -202,6 +202,40 @@ test('★ 옮긴 것도 격리함 화면에서 되돌린다 — 어느 드라이
   assert.match(src.slice(empty, empty + 400), /renderMovedUndo\(/, '보관함이 비면 되돌릴 길이 사라진다')
 })
 
+/* ────────────────────────────────────────────────────────────
+   끝났다는 걸 알 수 있는가
+
+   실물 화면: 폴더째 정리를 눌렀더니 그 버튼이 회색으로 바뀌고 글씨만
+   "2,380개를 보관함에 넣었어요"가 됐다. **버튼 모양 그대로**라 아직 처리
+   중인지 다 된 건지 구분이 안 됐고, 사용자가 "다 된 거냐"고 물어야 했다.
+   완료는 버튼이 아니라 칸으로 보여야 한다.
+   ──────────────────────────────────────────────────────────── */
+
+test('★ 처리가 끝나면 "완료"라고 말한다 — 버튼 글씨만 바꾸지 않는다', () => {
+  const src = app()
+  assert.match(src, /function doneBlock\(/, '완료 칸을 만드는 자리가 없다')
+
+  const body = pickerSource(src)
+  const start = body.indexOf("engine('quarantine-folders'")
+  assert.ok(start > 0, '폴더째 정리 실행부를 찾지 못했다')
+  const after = body.slice(start, start + 1200)
+
+  assert.match(after, /doneBlock\(/, '끝난 뒤 완료 칸을 안 그린다')
+  assert.match(after, /정리 완료/, '"완료"라는 말이 없다')
+  assert.match(after, /unit-done/, '끝난 카드를 표시하지 않는다 — 남은 것과 섞인다')
+  // 버튼 글씨만 바꾸고 끝내던 옛 방식으로 돌아가지 않게.
+  assert.doesNotMatch(after, /btn\.textContent = `\$\{r\.quarantinedCount/, '버튼 글씨만 바꾸고 끝낸다')
+})
+
+test('★ 격리 완료 문구는 "용량이 아직 그대로"라는 사실을 함께 말한다', () => {
+  const body = pickerSource(app())
+  const start = body.indexOf("engine('quarantine-folders'")
+  const after = body.slice(start, start + 1200)
+  // 여기서 안 말하면 "정리했는데 왜 용량이 그대로냐"가 된다. 그리고 바로 비울 통로도 준다.
+  assert.match(after, /아직 용량은 그대로/, '보관함은 용량을 안 비운다는 사실을 안 말한다')
+  assert.match(after, /mountPurgeNow\(/, '지금 비울 통로를 옆에 안 둔다')
+})
+
 test('★ 낱개 격리는 실행 직전에 엔진이 다시 분류한다 — 화면 말을 그냥 믿지 않는다', () => {
   const src = engine()
   const start = src.indexOf("case 'quarantine-paths'")
