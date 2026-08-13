@@ -225,7 +225,13 @@ export function buildQuestions(clusters: Cluster[]): Question[] {
                 {
                   label: '하나씩 볼게요',
                   outcome: 'REVIEW_ONE_BY_ONE' as const,
-                  preview: `${c.count}개를 목록으로 보여드릴게요.`,
+                  /**
+                   * ★ "145,401개를 목록으로 보여드릴게요"라고 적어놓고 실제로는 큰 것부터
+                   *   40개만 폈다(engine-cli의 buildBreakdown(mine, 40)). 지키지도 못할
+                   *   약속이었다 — 14만 줄은 사람이 훑을 수 있는 목록이 아니고, 그릴 수도 없다.
+                   *   할 수 있는 말로 바꾼다. 못 지킬 약속은 기능이 아니라 거짓말이다.
+                   */
+                  preview: `${c.count}개 중 큰 것부터 목록으로 보여드릴게요. 고른 것만 정리합니다.`,
                 },
               ]),
         ],

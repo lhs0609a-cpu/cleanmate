@@ -41,6 +41,26 @@ test('★ "깨지는 것"과 "그대로인 것"이 갈려 있다 — 안심의 �
   assert.ok(o.intact.some((a) => /윈도우|다른 프로그램/.test(a)))
 })
 
+/**
+ * ★ 낱개 선택이 사용자에게 손해가 되는 경우를 말해준다.
+ *
+ * 목록에서 `torch_cuda.dll 1.2GB` 하나만 체크하면 1.2GB를 아낀 것 같지만,
+ * 그 프로젝트는 6GB짜리 .venv를 통째로 지운 것과 **똑같이** 못 쓴다.
+ * 회수는 1/5인데 피해는 같다 — 그러면 그건 나쁜 선택이고, 그 사실을 아는 건
+ * 우리뿐이다. 말 안 하면 사용자는 "큰 것부터 골랐다"고 생각한다.
+ */
+test('★ 하나만 지워도 손해인 묶음은 그렇다고 말한다', () => {
+  const o = ownerOf(TORCH)
+  assert.ok(o.unit, '낱개로 지워봐야 뜻이 없다는 사실을 말하지 않는다')
+  assert.match(o.unit, /ACE-Step-1\.5/, '어느 프로젝트가 안 돌아가는지 이름을 댄다')
+  assert.doesNotMatch(o.unit, /\{프로그램/, '조사 치환이 새어나갔다')
+})
+
+test('사진·동영상 같은 낱개 파일에는 "묶음" 경고를 붙이지 않는다', () => {
+  // 아무 데나 붙이면 경고가 배경음이 된다. 한 덩어리로 깨지는 것에만 붙인다.
+  assert.equal(ownerOf('C:\\Users\\me\\Videos\\holiday.mp4').unit, '')
+})
+
 test('허깅페이스 모델 캐시는 "다시 받는다"까지 말한다', () => {
   const o = ownerOf(ONNX)
   assert.equal(o.program, 'cthumb-sample')

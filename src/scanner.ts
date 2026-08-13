@@ -17,6 +17,16 @@ export interface ScanOptions {
   /** 심볼릭 링크 순회 방지 + 과도한 깊이 차단 */
   maxDepth?: number
   onProgress?: (count: number, currentDir: string) => void
+  /**
+   * 여기까지만 훑는다(절대 시각, Date.now 기준). 넘으면 **지금까지 모은 것을 들고**
+   * 멈춘다 — 던지지 않는다.
+   *
+   * ★ 왜 필요했나: 클라우드 폴더(구글 드라이브·OneDrive)는 네트워크 드라이브인
+   *   경우가 있어서 한 번 훑는 데 몇 분이 걸린다. 백업 확인처럼 **없어도 되는
+   *   부가 정보**를 위해 사용자를 몇 분 기다리게 할 수는 없다. 덜 훑으면 못 찾을
+   *   뿐이고, 우리는 "있다"만 말하지 "없다"고는 말하지 않으므로 안전하다.
+   */
+  deadlineMs?: number
 }
 
 export interface ScanResult {
@@ -25,6 +35,8 @@ export interface ScanResult {
   skipped: { path: string; reason: string }[]
   totalBytes: number
   elapsedMs: number
+  /** 시간이 다 돼서 중간에 멈췄나. 결과를 '전부'라고 쓰면 안 되는 신호다 */
+  truncated: boolean
 }
 
 function shouldSkipDir(normalized: string): boolean {
@@ -37,9 +49,14 @@ export async function scan(root: string, opts: ScanOptions = {}): Promise<ScanRe
   const files: FileEntry[] = []
   const skipped: ScanResult['skipped'] = []
   let totalBytes = 0
+  let truncated = false
   const now = Date.now()
 
   async function walk(dir: string, depth: number): Promise<void> {
+    if (opts.deadlineMs && Date.now() > opts.deadlineMs) {
+      truncated = true
+      return
+    }
     if (depth > maxDepth) {
       skipped.push({ path: dir, reason: '최대 깊이 초과' })
       return
@@ -94,5 +111,5 @@ export async function scan(root: string, opts: ScanOptions = {}): Promise<ScanRe
   }
 
   await walk(root, 0)
-  return { files, skipped, totalBytes, elapsedMs: Date.now() - started }
+  return { files, skipped, totalBytes, elapsedMs: Date.now() - started, truncated }
 }

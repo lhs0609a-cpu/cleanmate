@@ -24,6 +24,7 @@
  *   answer-plan    <unknown> [path...]        그 질문에 걸린 항목 미리보기
  *   answer-apply   <unknown> <outcome> [path...] 답변 실행(정리는 격리로)
  *   quarantine-paths <path...>       고른 파일만 격리 (묶음이 아니라 낱개)
+ *   quarantine-folders <path...>     폴더째 격리 (.venv·node_modules 같은 결정 단위)
  *   startup                          시작프로그램 목록 + 판정
  *   startup-tasks                    로그온 예약작업 개수 (느려서 목록과 분리)
  *   startup-set    <id> <on|off>     시작프로그램 켜기/끄기 (되돌릴 수 있음)
@@ -32,6 +33,13 @@
  *   relocate-scan                    옮길 만한 것 자동 탐색 + 대상 드라이브 목록
  *   relocate-plan  <path> <destRoot> 다른 드라이브로 옮길 계획(미리보기)
  *   relocate-apply <path> <destRoot> 실제 이동
+ *   relocate-paths-plan  <destRoot> <path...> 고른 파일만 옮길 계획(미리보기)
+ *   relocate-paths-apply <destRoot> <path...> 고른 파일만 실제 이동
+ *   relocate-folder-plan  <destRoot> <folder> 폴더째 옮기고 바로가기 남기기(미리보기)
+ *   relocate-folder-apply <destRoot> <folder> 폴더째 이동 + 원래 자리에 정션
+ *   drives                           붙어 있는 드라이브와 남은 공간 (파일은 안 봄)
+ *   dupes-scan     [path...]         같은 파일이 여러 벌 있는 것 (크기→내용 해시)
+ *   backup-check   <path...>         이 파일들이 클라우드에도 있나 (하루 캐시)
  *   relocate-list  <destRoot>        옮긴 목록
  *   relocate-undo  <destRoot> <id|--all>  이동 되돌리기
  *   programs                         오래 안 쓴 설치 프로그램 (제안만)
@@ -40,7 +48,8 @@
  *   엔진은 파일도 프로그램도 임의로 지우지 않는다.
  */
 
-import { stat, readFile, writeFile, mkdir } from 'node:fs/promises'
+import { stat, readFile, writeFile, mkdir, appendFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { parseArgv } from "./argv.ts"
 import { join, dirname, basename } from 'node:path'
 import { homedir } from 'node:os'
@@ -68,6 +77,7 @@ import { UNKNOWN_EXPLAIN } from './content/unknowns.ts'
 import { gatherFacts } from './probes/facts.ts'
 import { probeHiberfil } from './probes/hiberfil.ts'
 import { gatherReclaimFacts, probeRecycleBin, probeUpdateCache } from './probes/reclaim.ts'
+import { gatherBulkFacts, probeBulk } from './probes/bulk.ts'
 import { probeStartup, countLogonTasks, setStartupEnabled } from './probes/startup.ts'
 import {
   planFolderTidy,
@@ -100,6 +110,14 @@ import {
 } from './probes/programs.ts'
 import {
   isRelocatable,
+  relocateBlockReason,
+  junctionBlockReason,
+  moveFolderWithJunction,
+  measureFolder,
+  destinationFor,
+  ledgerPathFor,
+  isSameVolume,
+  type RelocateEntry,
   planRelocate,
   applyRelocate,
   readRelocateLedger,
@@ -112,6 +130,16 @@ import {
   type RelocateItem,
 } from './relocate.ts'
 import { stampMtime } from './quarantine.ts'
+import { findDuplicates, DUP_MIN_BYTES } from './dupes.ts'
+import { foldIntoUnits, folderCandidates, lastTouched } from './units.ts'
+import {
+  cloudRoots,
+  buildBackupIndex,
+  checkBackup,
+  GOOGLE_DRIVE_FOLDERS,
+  type BackupIndex,
+  type CloudRoot,
+} from './backup.ts'
 import type { Classified, FileEntry, Outcome } from './types.ts'
 
 /** 이보다 작은 파일은 옮겨봐야 체감이 없다 — 목록만 길어진다. */
@@ -127,7 +155,23 @@ const RELOCATE_MIN_BYTES = 100 * 1024 * 1024 // 100MB
  */
 function withOwner<T extends { path: string }>(x: T) {
   const owner = ownerOf(x.path)
-  return { ...x, kind: kindOf(x.path).label, owner, headline: ownerHeadline(owner) }
+  /**
+   * "지울까요?" 옆에 "옮길 수도 있어요"를 같이 붙인다.
+   *
+   * ★ 왜 목록에 싣나: 큰 파일 앞에서 사람이 멈추는 이유는 "지우긴 아까운데
+   *   자리는 차지한다"이고, 그 답은 삭제가 아니라 이동이다. 그런데 여태 이동은
+   *   별도 화면에서 **다른 폴더를 다시 훑는** 기능이라, 지금 보고 있는 이 파일을
+   *   옮길 수 있는지는 화면 어디에도 없었다. 판단에 필요한 정보를 판단하는
+   *   자리에 둔다 — 옮기면 깨지는 것은 이유까지 함께.
+   */
+  const blocked = relocateBlockReason(x.path)
+  return {
+    ...x,
+    kind: kindOf(x.path).label,
+    owner,
+    headline: ownerHeadline(owner),
+    move: blocked ? { ok: false, why: blocked } : { ok: true, why: '' },
+  }
 }
 
 /**
@@ -176,6 +220,157 @@ async function relocateCandidates(path: string): Promise<{ items: RelocateItem[]
     })
   }
   return { items, refused }
+}
+
+/**
+ * 고른 파일만 옮길 계획을 세운다 — **폴더가 아니라 낱개.**
+ *
+ * ── 왜 필요했나 ──────────────────────────────────────────────
+ * 이동은 여태 '폴더 단위'였다(relocate-plan <폴더> <드라이브>). 그런데 사용자가
+ * 큰 파일을 마주하는 자리는 질문 목록이고, 거기서 "옮길래요"를 고르면 화면은
+ * **전혀 다른 폴더를 다시 훑는** 이동 화면으로 보냈다. 방금 보던 40개는 사라지고
+ * 다운로드·영상 폴더의 목록이 떴다. 삭제 쪽은 이미 낱개 통로가 있는데
+ * (quarantine-paths) 이동만 없어서 생긴 비대칭이다.
+ *
+ * ── 밖에서 온 경로를 그냥 믿지 않는다 ────────────────────────
+ * quarantine-paths와 같은 규칙이다. 경로마다 지금 다시 stat하고 다시 분류해서
+ * 존 C면 거절한다. 이동은 삭제보다 되돌리기가 번거로워서 오히려 더 엄격하다.
+ */
+async function relocatePathsPlan(destRoot: string, paths: string[]) {
+  const items: RelocateItem[] = []
+  const refused: { path: string; reason: string }[] = []
+
+  for (const p of paths) {
+    let st
+    try {
+      st = await stat(p)
+    } catch {
+      refused.push({ path: p, reason: '파일을 찾지 못했어요' })
+      continue
+    }
+    if (!st.isFile()) {
+      refused.push({ path: p, reason: '파일이 아니에요 — 폴더는 낱개로 다루지 않습니다' })
+      continue
+    }
+    const c = classifyOne(fileEntryOf(p, st))
+    const ok = isRelocatable(c)
+    if (!ok.ok) {
+      refused.push({ path: p, reason: ok.reason ?? '옮길 수 없습니다' })
+      continue
+    }
+    items.push({
+      path: p,
+      size: st.size,
+      meaning: c.verdict.meaning,
+      reason: `목록에서 직접 고르신 것 — ${c.verdict.meaning}`,
+      mtimeMs: stampMtime(st.mtimeMs),
+    })
+  }
+
+  const plan = planRelocate(items, destRoot)
+  return { plan, refused, destination: await checkDestination(destRoot, plan.bytes) }
+}
+
+/* ────────────────────────────────────────────────────────────
+   백업 색인 — 클라우드 폴더를 하루 한 번만 훑는다
+   ──────────────────────────────────────────────────────────── */
+
+const BACKUP_INDEX_VERSION = 1
+const BACKUP_INDEX_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+/**
+ * 이 PC의 클라우드 폴더를 모은다.
+ *
+ * 홈 폴더 아래(OneDrive·Dropbox)는 순수 함수가 답하지만, 구글 드라이브는
+ * **드라이브 문자로 붙는다**(G:\내 드라이브). 그건 실제로 있는지 봐야 알 수
+ * 있어서 여기서 확인한다 — 판단은 backup.ts, 확인은 여기.
+ */
+async function presentCloudRoots(): Promise<CloudRoot[]> {
+  const roots = cloudRoots({ home: homedir(), vars: process.env as Record<string, string | undefined> })
+  const present: CloudRoot[] = []
+  for (const r of roots) {
+    try {
+      if ((await stat(r.path)).isDirectory()) present.push(r)
+    } catch {
+      /* 그 클라우드를 안 쓰는 PC다 */
+    }
+  }
+  for (const d of await listDrives()) {
+    for (const name of GOOGLE_DRIVE_FOLDERS) {
+      const p = join(d.root, name)
+      try {
+        if ((await stat(p)).isDirectory()) present.push({ label: '구글 드라이브', path: p })
+      } catch {
+        /* 없으면 없는 대로 */
+      }
+    }
+  }
+  return present
+}
+
+async function loadBackupIndex(
+  refresh = false
+): Promise<{ index: BackupIndex; roots: CloudRoot[]; builtAt: number; partial: boolean }> {
+  const roots = await presentCloudRoots()
+  const file = appDataFile('backup-index.json')
+
+  if (!refresh) {
+    try {
+      const raw = JSON.parse(await readFile(file, 'utf8'))
+      if (
+        raw.version === BACKUP_INDEX_VERSION &&
+        Date.now() - raw.builtAt < BACKUP_INDEX_MAX_AGE_MS &&
+        // 클라우드 구성이 바뀌었으면 남의 색인이다.
+        JSON.stringify(raw.roots) === JSON.stringify(roots.map((r) => r.path))
+      ) {
+        return {
+          index: new Map(raw.entries as [string, string][]),
+          roots,
+          builtAt: raw.builtAt,
+          partial: !!raw.partial,
+        }
+      }
+    } catch {
+      /* 없거나 낡았으면 새로 만든다 */
+    }
+  }
+
+  const index: BackupIndex = new Map()
+  let partial = false
+  // 전체 예산 60초. 백업 확인은 **없어도 되는 부가 정보**다 — 이걸 위해
+  // 사용자를 몇 분 기다리게 하면 그건 기능이 아니라 방해다. 덜 훑으면 못 찾을
+  // 뿐이고, 우리는 "있다"만 말하지 "없다"고는 말하지 않으므로 틀린 말이 안 된다.
+  const deadlineMs = Date.now() + 60_000
+  for (const [i, r] of roots.entries()) {
+    progress({ t: 'backup-index', rootIndex: i, rootCount: roots.length, root: r.path, label: r.label })
+    try {
+      // 깊이도 제한한다 — 백업본은 대개 얕은 자리에 있다.
+      const scanned = await scan(r.path, { maxDepth: 8, deadlineMs })
+      if (scanned.truncated) partial = true
+      buildBackupIndex(scanned.files, r.label, index)
+    } catch {
+      continue
+    }
+  }
+
+  const builtAt = Date.now()
+  try {
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: BACKUP_INDEX_VERSION,
+        builtAt,
+        partial,
+        roots: roots.map((r) => r.path),
+        entries: [...index],
+      }),
+      'utf8'
+    )
+  } catch {
+    /* 색인을 못 남겼다고 결과를 버릴 이유는 없다. 다음에 다시 만들 뿐이다. */
+  }
+  return { index, roots, builtAt, partial }
 }
 
 /** 대상 드라이브에 넣을 수 있는지 확인한다. 못 넣으면 이유를 준다. */
@@ -590,6 +785,15 @@ async function scanPlan(paths: string[]) {
     //   '하나씩 골라 지우기'에는 턱없다 — 고를 게 8개뿐이면 고른다고 할 수 없다.
     const b = buildBreakdown(mine, 40)
     const kinds = groupByKind(mine)
+    /* ★ 결정 단위를 함께 싣는다.
+       14만 개를 낱개 체크박스로 고르라는 건 질문이 아니다. 개발 산출물의 단위는
+       파일이 아니라 폴더고(units.ts), 그렇게 접으면 14만 개가 카드 몇 장이 된다. */
+    const folded = foldIntoUnits(mine)
+    /* 표시가 없어도 큰 게 몰려 있는 폴더는 '옮기기' 후보로 올린다.
+       낱개로는 못 옮기는 것(앱 데이터)이 폴더째로는 옮겨진다 — 그 사실을
+       화면이 말하지 않으면 사용자에겐 그냥 '안 됨'으로만 보인다.
+       정션으로도 건드리면 안 되는 곳은 여기서 걸러낸다(relocate.ts가 판단). */
+    const moveCards = folderCandidates(mine).filter((u) => junctionBlockReason(u.path) === null)
     return {
       ...q,
       evidence: {
@@ -598,6 +802,11 @@ async function scanPlan(paths: string[]) {
         folders: b.folders,
         exts: b.exts,
         age: b.age,
+        // 문장은 여기서 만든다 — 화면이 "몇 개월"을 다시 계산하게 두면
+        // 같은 숫자가 두 곳에서 다르게 읽힌다(units.ts의 lastTouched).
+        units: [...folded.units, ...moveCards].map((u) => ({ ...u, lastTouched: lastTouched(u.newestDays) })),
+        looseCount: folded.looseCount,
+        looseBytes: folded.looseBytes,
         samples: b.samples.map(withOwner),
         explain: (UNKNOWN_EXPLAIN as any)[q.unknown] ?? null,
       },
@@ -853,6 +1062,13 @@ async function main() {
           findings.push(probeRecycleBin(rec), probeUpdateCache(rec))
         } catch (err) {
           process.stderr.write(`회수 프로브 실패: ${(err as Error).message}\n`)
+        }
+        // 큰 덩어리(WSL·Docker·Windows.old)도 같은 이유로 따로 감싼다.
+        try {
+          // 스프레드로 넘기지 않는다 — 배열 길이만큼 인자를 만드는 자리를 안 만든다(breakdown.ts 머리말)
+          for (const f of probeBulk(await gatherBulkFacts())) findings.push(f)
+        } catch (err) {
+          process.stderr.write(`큰 덩어리 프로브 실패: ${(err as Error).message}\n`)
         }
         out({
           facts: {
@@ -1303,6 +1519,301 @@ async function main() {
         if (!dest.ok) fail(dest.reason)
         const r = await applyRelocate(plan)
         out(r)
+        break
+      }
+      /**
+       * 고른 파일만 옮긴다 — 질문 목록에서 곧바로.
+       *   relocate-paths-plan  <destRoot> <path...>   미리보기(아무것도 안 건드림)
+       *   relocate-paths-apply <destRoot> <path...>   실제 이동
+       */
+      case 'relocate-paths-plan':
+      case 'relocate-paths-apply': {
+        const destRoot = args[0]
+        const paths = args.slice(1).filter(Boolean)
+        if (!destRoot) fail('옮길 드라이브가 필요합니다.')
+        if (!paths.length) fail('옮길 파일 경로가 필요합니다.')
+
+        const { plan, refused, destination } = await relocatePathsPlan(destRoot, paths)
+
+        if (command === 'relocate-paths-plan') {
+          out({
+            destFolder: plan.destFolder,
+            bytes: plan.bytes,
+            count: plan.items.length,
+            items: plan.items.slice(0, 200).map(({ item, dest }) => ({
+              path: item.path, size: item.size, meaning: item.meaning, dest,
+            })),
+            skipped: plan.skipped,
+            refused,
+            destination,
+          })
+          break
+        }
+
+        if (!plan.items.length) {
+          out({ movedCount: 0, movedBytes: 0, failed: [], refused, skipped: plan.skipped, ledgerPath: '' })
+          break
+        }
+        // 실행 직전에 다시 확인한다 — 미리보기를 본 뒤 대상 드라이브가 찼을 수 있다.
+        if (!destination.ok) fail(destination.reason)
+        const r = await applyRelocate(plan)
+        out({ ...r, refused, skipped: plan.skipped })
+        break
+      }
+      /**
+       * 폴더를 통째로 정리한다 — **낱개가 아니라 결정 단위.**
+       *
+       * ── 왜 필요했나 ────────────────────────────────────────────
+       * 낱개 격리(quarantine-paths)는 경로를 인자로 받는다. 그런데 .venv 하나가
+       * 12,000개면 인자 12,000개를 넘겨야 하고, 그건 명령줄 길이 제한에 걸린다.
+       * 무엇보다 그건 **사용자가 내린 결정을 잘못 옮긴 것**이다 — 사용자는
+       * "이 폴더"라고 결정했지 파일 12,000개를 하나하나 고른 게 아니다.
+       *
+       * ── 여기서도 화면 말을 그냥 믿지 않는다 ────────────────────
+       * 받은 폴더 안을 지금 다시 훑고, 파일마다 다시 분류한다. 존 C가 섞여 있으면
+       * 그것만 빼고 나머지를 격리한다 — 폴더째라고 해서 잠근 것까지 가져가지 않는다.
+       */
+      case 'quarantine-folders': {
+        const folders = args.filter(Boolean)
+        if (!folders.length) fail('정리할 폴더 경로가 필요합니다.')
+
+        const requests = []
+        const refused: { path: string; reason: string }[] = []
+        for (const folder of folders) {
+          try {
+            const st = await stat(folder)
+            if (!st.isDirectory()) {
+              refused.push({ path: folder, reason: '폴더가 아니에요' })
+              continue
+            }
+          } catch {
+            refused.push({ path: folder, reason: '폴더를 찾지 못했어요' })
+            continue
+          }
+
+          const scanned = await scan(folder)
+          for (const f of scanned.files) {
+            const c = classifyOne(f)
+            if (c.verdict.zone === 'LOCKED') {
+              refused.push({ path: f.path, reason: `잠근 항목이라 건드리지 않았어요 (${c.verdict.meaning})` })
+              continue
+            }
+            requests.push({
+              path: f.path,
+              reason: `폴더째 정리하기로 고르신 것 — ${folder}`,
+              zone: c.verdict.zone,
+              expect: { size: f.size, mtimeMs: stampMtime(f.mtime.getTime()) },
+            })
+          }
+        }
+
+        if (!requests.length) {
+          out({ quarantinedCount: 0, bytesAfterGrace: 0, failed: [], refused, refusedCount: refused.length })
+          break
+        }
+        const q = await quarantine(requests)
+        out({
+          quarantinedCount: q.quarantined.length,
+          bytesAfterGrace: q.bytes,
+          failed: q.failed,
+          // 폴더째면 거절이 수천 개일 수 있다. 개수는 정확히 주고 목록은 앞부분만.
+          refused: refused.slice(0, 20),
+          refusedCount: refused.length,
+        })
+        break
+      }
+      /**
+       * 같은 파일이 여러 벌 있는 것을 찾는다.
+       *
+       * 훑는 곳은 이동과 같은 '사람이 만든 큰 덩어리가 사는 자리'다(relocateRoots).
+       * AppData·프로그램 폴더는 애초에 안 본다 — 거기 같은 파일이 여러 벌 있는 건
+       * 정상이고, 지우면 그냥 고장이다(dupes.ts의 NOT_DUPLICATES).
+       */
+      case 'dupes-scan': {
+        const roots = args.length
+          ? args.map((p) => ({ label: p, path: p }))
+          : relocateRoots({ platform: process.platform, home: homedir() })
+        const files: { path: string; name: string; size: number; mtimeMs: number }[] = []
+
+        for (const [i, r] of roots.entries()) {
+          progress({ t: 'dupes-scan', rootIndex: i, rootCount: roots.length, root: r.path, label: r.label })
+          try {
+            const scanned = await scan(r.path)
+            for (const f of scanned.files) {
+              files.push({
+                path: f.path,
+                name: f.path.slice(Math.max(f.path.lastIndexOf('\\'), f.path.lastIndexOf('/')) + 1),
+                size: f.size,
+                mtimeMs: f.mtime.getTime(),
+              })
+            }
+          } catch {
+            continue // 그 폴더가 없거나 못 읽으면 나머지로 계속 간다
+          }
+        }
+
+        const r = await findDuplicates(files)
+        out({
+          scanned: files.length,
+          candidates: r.candidates,
+          hashed: r.hashed,
+          excluded: r.excluded,
+          wastedBytes: r.wastedBytes,
+          groupCount: r.groups.length,
+          minBytes: DUP_MIN_BYTES,
+          roots: roots.map((x) => x.label),
+          // 화면에 다 그릴 수 없으니 낭비가 큰 것부터. 개수는 위에서 따로 말한다.
+          groups: r.groups.slice(0, 60).map((g) => ({
+            keeper: { path: g.keeper.path, name: g.keeper.name, size: g.keeper.size },
+            keeperReason: g.keeperReason,
+            copies: g.copies.map((c) => ({ path: c.path, name: c.name, size: c.size })),
+            wastedBytes: g.wastedBytes,
+          })),
+        })
+        break
+      }
+      /**
+       * 고른 파일들이 클라우드에도 있는지 확인한다.
+       *
+       * ★ 왜 별도 명령인가: 클라우드 폴더를 훑는 일이라 스캔에 끼워 넣으면 스캔이
+       *   느려진다. 화면은 목록을 **먼저 그리고** 이걸 나중에 불러서 줄만 채운다 —
+       *   백업 확인이 늦어도 목록은 이미 쓸 수 있다.
+       *
+       * 색인은 하루 동안 재사용한다. 클라우드 폴더는 자주 바뀌지 않고, 매번
+       * 다시 훑으면 네트워크 드라이브에서 몇 분씩 걸린다.
+       */
+      case 'backup-check': {
+        const paths = args.filter((a) => a !== '--refresh')
+        const { index, roots, builtAt, partial } = await loadBackupIndex(args.includes('--refresh'))
+
+        const results = []
+        for (const p of paths) {
+          let size = 0
+          try {
+            size = (await stat(p)).size
+          } catch {
+            results.push({ path: p, found: false, where: '', note: '' })
+            continue
+          }
+          results.push({ path: p, ...checkBackup({ path: p, size }, index, roots) })
+        }
+        out({
+          results,
+          roots: roots.map((r) => r.label),
+          indexedAt: builtAt,
+          indexSize: index.size,
+          // 다 못 훑었으면 그렇다고 말한다. "못 찾았다"를 "없다"로 읽으면 안 된다.
+          partial,
+        })
+        break
+      }
+      /**
+       * 폴더째 옮기고 원래 자리에 바로가기(정션)를 남긴다.
+       *
+       *   relocate-folder-plan  <destRoot> <folder>  미리보기 (아무것도 안 건드림)
+       *   relocate-folder-apply <destRoot> <folder>  실제 이동 + 정션
+       *
+       * ★ 이게 "옮기면 깨져요"라고 막아둔 것들의 답이다. AppData의 앱 데이터,
+       *   게임, 가상환경 — 프로그램이 원래 경로를 그대로 열면 윈도우가 실물로
+       *   이어준다. 관리자 권한이 필요 없다.
+       */
+      case 'relocate-folder-plan':
+      case 'relocate-folder-apply': {
+        const destRoot = args[0]
+        const folder = args[1]
+        if (!destRoot || !folder) fail('옮길 드라이브와 폴더가 필요합니다.')
+
+        const blocked = junctionBlockReason(folder)
+        const destFolder = movedFolderOn(destRoot)
+        const dest = destinationFor(folder, destFolder)
+        const sameVolume = isSameVolume(folder, destFolder)
+        const measured = blocked ? { files: 0, bytes: 0 } : await measureFolder(folder)
+        const destination = await checkDestination(destRoot, measured.bytes)
+
+        if (command === 'relocate-folder-plan') {
+          out({
+            folder,
+            dest,
+            files: measured.files,
+            bytes: measured.bytes,
+            blocked,
+            sameVolume,
+            destination,
+            // 화면이 그대로 쓸 수 있는 문장. 여기서 안 만들면 화면마다 달라진다.
+            note:
+              blocked ??
+              (sameVolume
+                ? '같은 드라이브라 옮겨도 용량이 늘지 않아요.'
+                : '옮긴 뒤 원래 자리에 바로가기를 남겨서, 프로그램은 그대로 찾아갑니다.'),
+          })
+          break
+        }
+
+        if (blocked) fail(blocked)
+        if (sameVolume) fail('같은 드라이브라 옮겨도 용량이 늘지 않아요.')
+        if (!destination.ok) fail(destination.reason)
+
+        const r = await moveFolderWithJunction(folder, dest)
+        if (r.movedTo) {
+          // 실물이 옮겨졌으면 성공 여부와 무관하게 장부에 적는다 —
+          // 적지 않으면 되돌릴 방법이 사라진다.
+          const entry: RelocateEntry = {
+            id: randomUUID(),
+            originalPath: folder,
+            movedTo: r.movedTo,
+            size: r.copiedBytes,
+            mtimeMs: 0,
+            movedAt: Date.now(),
+            reason: '폴더째 옮기고 바로가기를 남긴 것',
+            kind: 'folder',
+            files: r.copiedFiles,
+          }
+          await mkdir(destFolder, { recursive: true })
+          await appendFile(ledgerPathFor(destFolder), JSON.stringify(entry) + '\n', 'utf8')
+        }
+        if (!r.ok) fail(r.reason ?? '옮기지 못했어요')
+        out({ folder, movedTo: r.movedTo, linked: r.linked, files: r.copiedFiles, bytes: r.copiedBytes })
+        break
+      }
+      /** 붙어 있는 드라이브만 훑는다 — 파일은 안 본다(이동 화면의 전체 스캔과 분리). */
+      case 'drives': {
+        out({ drives: await listDrives() })
+        break
+      }
+      /**
+       * 되돌릴 수 있는 것 전부 — 격리한 것과 옮긴 것을 한 목록으로.
+       *
+       * ★ 왜 합치나: 사용자에게는 "내가 이 도구로 건드린 것"이 하나다. 그런데
+       *   되돌리기가 격리함 화면과 '드라이브 옮기기' 화면으로 갈려 있어서,
+       *   옮긴 걸 되돌리려면 어느 드라이브로 옮겼는지를 **기억해서** 그 화면을
+       *   찾아가야 했다. 기억해야 하는 되돌리기는 되돌리기가 아니다.
+       */
+      case 'undo-list': {
+        const roots = await listQuarantineRoots()
+        const quarantined = []
+        for (const root of roots) {
+          for (const e of await readManifest(root)) {
+            quarantined.push({ ...e, root, kind: 'quarantine' as const })
+          }
+        }
+
+        const moved = []
+        for (const d of await listDrives()) {
+          const folder = movedFolderOn(d.root)
+          for (const e of await readRelocateLedger(folder)) {
+            moved.push({ ...e, destRoot: d.root, kind: e.kind === 'folder' ? ('folder' as const) : ('file' as const) })
+          }
+        }
+
+        out({
+          quarantined: quarantined.sort((a, b) => b.quarantinedAt - a.quarantinedAt).slice(0, 200),
+          quarantinedCount: quarantined.length,
+          quarantinedBytes: quarantined.reduce((s, e) => s + e.size, 0),
+          moved: moved.sort((a, b) => b.movedAt - a.movedAt).slice(0, 200),
+          movedCount: moved.length,
+          movedBytes: moved.reduce((s, e) => s + e.size, 0),
+          graceDays: GRACE_DAYS,
+        })
         break
       }
       case 'relocate-list': {

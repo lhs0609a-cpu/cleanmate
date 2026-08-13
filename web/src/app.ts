@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.9.14'
+const APP_VERSION = '0.10.0'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -144,6 +144,30 @@ let diskReadAt = 0
  *   엔진 호출은 statfs 한 번이라 싸다. 홈으로 올 때와 창이 다시 앞으로 나올 때
  *   읽는다.
  */
+/**
+ * 마지막으로 읽은 디스크 상태. "정리하면 얼마나 남나"를 확인 문구에 쓴다.
+ *
+ * ★ 숫자를 새로 만들지 않는다 — 화면 위쪽이 보여주는 그 값을 그대로 쓴다.
+ *   같은 화면에서 남은 공간이 두 가지로 보이면 둘 다 안 믿게 된다.
+ */
+let lastDisk: { free: number; total: number; drive: string } | null = null
+
+/**
+ * 정리 전후 여유 공간 한 줄.
+ *
+ * ★ 격리는 **용량이 바로 안 빈다.** 격리함이 같은 드라이브에 있어서다.
+ *   여기서 "94GB → 96GB"라고 쓰면 그건 거짓말이고, 사용자는 정리 후 용량이
+ *   그대로인 걸 보고 도구를 못 믿게 된다. 그래서 격리와 이동의 문장을 가른다.
+ */
+function spaceHint(bytes: number, immediate = false): string {
+  if (!lastDisk) return ''
+  const drive = lastDisk.drive.replace(/\\$/, '')
+  if (!immediate) {
+    return `지금은 용량이 안 빕니다 — 격리함이 같은 드라이브에 있어요. 격리함에서 '지금 비우기'를 누르면 ${drive} 남은 공간이 ${fmtBytes(lastDisk.free)} → ${fmtBytes(lastDisk.free + bytes)}가 됩니다.\n\n`
+  }
+  return `${drive} 남은 공간 ${fmtBytes(lastDisk.free)} → ${fmtBytes(lastDisk.free + bytes)}\n\n`
+}
+
 function refreshDisk(force = false) {
   if (!inTauri) return
   const now = Date.now()
@@ -160,6 +184,7 @@ async function loadDisk() {
   }
   try {
     const d = await engine('disk')
+    lastDisk = d
     const pct = d.usedPercent
     const ring = $('disk-ring')
     ring.style.setProperty('--pct', String(pct))
@@ -180,9 +205,9 @@ async function loadDisk() {
 }
 
 /* ── 화면 전환 ─────────────────────────────────────────────── */
-const screens = ['home', 'hidden', 'startup', 'programs', 'move', 'quar', 'tidy']
+const screens = ['home', 'hidden', 'startup', 'programs', 'dupes', 'move', 'quar', 'tidy']
 let hiddenLoaded = false, quarLoaded = false, programsLoaded = false, moveLoaded = false
-let startupLoaded = false
+let startupLoaded = false, dupesLoaded = false
 function go(name: string) {
   for (const s of screens) $(`s-${s}`).classList.toggle('on', s === name)
   document.querySelectorAll<HTMLButtonElement>('.nav button').forEach((b) => b.classList.toggle('on', b.dataset.go === name))
@@ -195,6 +220,7 @@ function go(name: string) {
   if (inTauri && name === 'quar' && !quarLoaded) { quarLoaded = true; loadQuar() }
   if (inTauri && name === 'programs' && !programsLoaded) { programsLoaded = true; loadPrograms() }
   if (inTauri && name === 'move' && !moveLoaded) { moveLoaded = true; loadMove() }
+  if (inTauri && name === 'dupes' && !dupesLoaded) { dupesLoaded = true; loadDupes() }
 }
 document.querySelectorAll<HTMLButtonElement>('.nav button').forEach((b) => b.addEventListener('click', () => go(b.dataset.go!)))
 
@@ -272,8 +298,17 @@ const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p
  * 그래서 (프로그램 + 역할 + 판정)이 같은 파일을 한 묶음으로 묶고, 설명은 묶음에
  * 한 번만 쓰고 파일은 이름·크기·경로만 줄줄이 붙인다.
  */
-function fileCardsHtml(samples: any[]): string {
-  const groups = new Map<string, { o: any; headline: string; files: any[] }>()
+interface OwnerGroup { o: any; headline: string; files: any[] }
+
+/**
+ * (프로그램 + 역할 + 판정)이 같은 파일을 한 묶음으로.
+ *
+ * ★ 근거 패널과 낱개 목록이 **같은 함수**를 쓴다. 두 화면이 같은 파일을 다르게
+ *   묶으면 사용자는 다른 파일이라고 읽는다 — 한쪽에서 "3개"라고 본 것이
+ *   다른 쪽에서 흩어져 나오면 어느 쪽을 믿을지부터 고민하게 된다.
+ */
+function groupByOwner(samples: any[]): OwnerGroup[] {
+  const groups = new Map<string, OwnerGroup>()
   for (const s of samples) {
     // 소유자 판별이 없는 옛 응답(사이드카가 구버전)은 묶을 근거가 없다 → 파일마다 한 줄.
     const key = s.owner ? `${s.headline}|${s.owner.verdict}` : `plain:${s.path}`
@@ -281,7 +316,11 @@ function fileCardsHtml(samples: any[]): string {
     if (g) g.files.push(s)
     else groups.set(key, { o: s.owner, headline: s.headline ?? s.owner?.role ?? '', files: [s] })
   }
-  return [...groups.values()].map(groupCardHtml).join('')
+  return [...groups.values()]
+}
+
+function fileCardsHtml(samples: any[]): string {
+  return groupByOwner(samples).map(groupCardHtml).join('')
 }
 
 /** 파일 한 줄 — 이름 · 크기 · 경로. 설명은 묶음이 이미 했다. */
@@ -512,11 +551,24 @@ async function answerAction(host: HTMLElement, unknown: string, outcome: string)
     return
   }
 
+  /**
+   * ★ "옮길래요" — 여기도 약속과 다른 곳으로 보내고 있었다.
+   *
+   *   버튼 하나('드라이브 옮기기 열기')만 띄우고 끝났는데, 그 화면은 **방금 보던
+   *   파일들과 아무 상관이 없다.** 다운로드·영상·사진 폴더를 처음부터 다시 훑어서
+   *   전혀 다른 목록을 보여준다(relocateRoots). "이 40개를 옮기겠다"고 답한 사람
+   *   앞에 다른 목록을 놓고 처음부터 다시 고르라고 한 셈이다.
+   *
+   *   이제 그 자리에서 이 파일들을 그대로 고르고 옮긴다. 옮기면 깨지는 것
+   *   (프로그램 폴더·앱 데이터·가상환경)은 목록에서 이유와 함께 표시된다.
+   */
   if (outcome === 'MOVE') {
     host.innerHTML = `<div class="t-small" style="margin-top:10px;color:var(--ink-2)">
-      옮기기는 대상 드라이브가 필요해요.
-      <button class="opt" data-goto-move="1" style="margin-left:6px">드라이브 옮기기 열기 →</button></div>`
+      지우지 않고 자리만 옮겨요. 옮기면 깨지는 것은 아래에서 이유와 함께 빼드립니다.
+      <button class="opt" data-goto-move="1" style="margin-left:6px">폴더째 옮기기 →</button></div>
+      <div data-move-pick="1"></div>`
     host.querySelector<HTMLButtonElement>('[data-goto-move]')!.addEventListener('click', () => go('move'))
+    renderPicker(host.querySelector<HTMLElement>('[data-move-pick]')!, unknown, 'move')
     return
   }
 
@@ -566,6 +618,148 @@ let lastQuestions: any[] = []
 /** 지금 고른 경로. 화면을 다시 그려도 선택이 살아 있어야 한다. */
 const picked = new Set<string>()
 
+/** 낱개 목록에서 고른 이동 대상 드라이브. 화면을 다시 그려도 유지한다. */
+let pickDest: string | null = null
+
+/** 이 파일을 다른 드라이브로 옮겨도 되나. 엔진이 판단해서 실어 보낸다(withOwner). */
+const canMove = (s: any): boolean => s?.move?.ok === true
+
+/**
+ * 낱개 한 줄 — 체크박스 · 이름 · 크기 · 경로.
+ * 설명은 묶음 머리가 이미 했다. 파일마다 같은 네 줄을 반복하면 아무도 안 읽는다.
+ */
+function pickRowHtml(s: any): string {
+  return `
+    <label class="pick-row">
+      <input type="checkbox" data-pick="${esc(s.path)}">
+      <span class="pick-name">${esc(baseName(s.path))}</span>
+      <span class="pick-size">${fmtBytes(s.size)}</span>
+      <span class="bd-path">${esc(s.path)}</span>
+    </label>`
+}
+
+/**
+ * 옮길 수 있나 — 묶음 단위로 한 줄.
+ *
+ * 지우기만 물으면 "지우긴 아까운데 자리는 차지한다"에는 답이 없다. 그 답은
+ * 이동이고, 이동은 파일마다 가능·불가능이 갈린다(relocate.ts). 그래서 결정하는
+ * 자리에서 바로 말한다 — 안 되는 건 이유까지. 이유 없는 거절은 고장으로 읽힌다.
+ */
+function moveNoteHtml(files: any[]): string {
+  if (files.some((f) => f.move === undefined)) return '' // 옛 사이드카 — 아는 척하지 않는다
+  const ok = files.filter(canMove).length
+  if (ok === files.length) {
+    return `<div class="pg-l pg-mv"><i>⇄</i>다른 드라이브로 옮길 수 있어요 — 지우지 않고 자리만 옮깁니다</div>`
+  }
+  const why = files.find((f) => !canMove(f))?.move?.why ?? '옮길 수 없습니다'
+  if (ok === 0) return `<div class="pg-l pg-nomv"><i>⇄</i>옮기기는 안 돼요 — ${esc(why)}</div>`
+  return `<div class="pg-l pg-mv"><i>⇄</i>${ok}개만 옮길 수 있어요. 나머지는 ${esc(why)}</div>`
+}
+
+/**
+ * 낱개 목록의 묶음 하나 — **"이게 뭔데요?"에 목록 안에서 답한다.**
+ *
+ * ★ 왜 고쳤나: 여태 이 목록은 `torch_cuda.dll · 1.2GB · C:\…\torch_cuda.dll`만
+ *   보여줬다. 정확히 우리가 비판하던 화면이다 — 파일명과 숫자를 주고 "고르세요"라고
+ *   한다. 사용자는 그게 무슨 파일인지, 어느 프로그램 것인지, 지우면 뭐가 깨지는지를
+ *   모른 채 체크박스를 눌러야 했다.
+ *
+ *   황당한 건 그 답을 **엔진이 이미 보내고 있었다는 것**이다(owners.ts → withOwner).
+ *   같은 응답을 접힌 '근거 자세히' 패널은 다 쓰고 있었는데, 정작 지울 것을 고르는
+ *   화면만 안 쓰고 있었다. 정보가 없어서가 아니라 안 그려서 못 읽은 것이다.
+ */
+function pickGroupHtml(g: OwnerGroup, gi: number): string {
+  const bytes = g.files.reduce((n: number, f: any) => n + f.size, 0)
+  const o = g.o
+  const line = (cls: string, mark: string, items?: string[]) =>
+    items?.length ? `<div class="pg-l ${cls}"><i>${mark}</i>${esc(items.join(' · '))}</div>` : ''
+
+  return `
+    <div class="pg${o ? ` pg-${esc(o.verdict)}` : ''}">
+      <div class="pg-h">
+        <span class="pg-who">${esc(g.headline || baseName(g.files[0].path))}</span>
+        ${o ? `<span class="pg-v">${esc(o.verdictLabel)}</span>` : ''}
+        <span class="pg-amt">${g.files.length}개 · ${fmtBytes(bytes)}</span>
+        <button class="pg-all" data-pick-group="${gi}">${g.files.length}개 다 고르기</button>
+      </div>
+      ${o ? `<div class="pg-l pg-do"><i>→</i>${esc(o.onDelete)}</div>` : ''}
+      ${line('pg-bad', '✕', o?.breaks)}
+      ${line('pg-ok', '✓', o?.intact)}
+      ${o?.unit ? `<div class="pg-l pg-unit"><i>!</i>${esc(o.unit)}</div>` : ''}
+      ${moveNoteHtml(g.files)}
+      ${o?.because ? `<div class="pg-why">근거 ${esc(o.because)}</div>` : ''}
+      <div class="pg-files">${g.files.map(pickRowHtml).join('')}</div>
+    </div>`
+}
+
+/* ── 결정 단위(폴더) ──────────────────────────────────────────
+   ★ 왜 낱개 목록 위에 이게 오나
+
+   화면은 "145,401개를 목록으로 보여드릴게요"라고 하고 체크박스 40줄을 폈다.
+   14만 개를 낱개로 고르라는 건 정리가 아니고, 게다가 **낱개로 고르는 것 자체가
+   손해다** — .venv에서 dll 하나를 빼면 용량은 1/5만 줄고 프로젝트는 통째로
+   지운 것과 똑같이 안 돌아간다.
+
+   개발 산출물의 단위는 파일이 아니라 폴더다. 그래서 엔진이 접어서 보내주고
+   (units.ts), 여기서는 **폴더 하나 = 결정 하나**로 그린다. 낱개 목록은
+   그 아래에 그대로 남는다 — 폴더째가 싫은 사람의 선택지를 뺏지 않는다. */
+
+function unitCardsHtml(units: any[]): string {
+  if (!units?.length) return ''
+  return `
+    <div class="units">
+      <div class="units-h">
+        <span>폴더째 결정하시는 게 빠릅니다 — 이 안의 파일은 한 덩어리로 움직여요</span>
+        <select class="pick-dest" data-unit-dest="1"><option value="">옮길 드라이브…</option></select>
+      </div>
+      ${units.map((u, i) => `
+        <div class="unit">
+          <div class="unit-h">
+            <span class="unit-name">${esc(u.label)}</span>
+            <span class="unit-amt">${fmtBytes(u.bytes)} · ${u.count.toLocaleString()}개</span>
+          </div>
+          <div class="unit-l">${esc(u.what)} · ${esc(u.lastTouched ?? '')}</div>
+          <div class="unit-l"><i>→</i>${esc(u.onDelete)}</div>
+          <div class="bd-path">${esc(u.path)}</div>
+          <div class="unit-act">
+            ${u.moveOnly
+              // 안에 뭐가 있는지 모르는 폴더에 "통째로 정리"를 달지 않는다.
+              // 모르는 것을 지우라고 권하는 게 되니까 — 옮기기만 권한다.
+              ? `<button class="btn" data-unit-move="${i}" disabled>옮기고 바로가기 남기기 (${fmtBytes(u.bytes)})</button>`
+              : `<button class="btn" data-unit="${i}">이 폴더 통째로 정리 (${fmtBytes(u.bytes)})</button>
+                 <button class="opt" data-unit-move="${i}" disabled>옮기고 바로가기 남기기</button>`}
+          </div>
+          <div class="unit-l" data-unit-out="${i}"></div>
+        </div>`).join('')}
+      <div class="t-caption" style="color:var(--muted)">
+        “옮기고 바로가기 남기기”는 지우지 않아요. 폴더를 다른 드라이브로 옮기고 원래 자리에
+        바로가기(정션)를 남겨서, <b>프로그램은 예전 경로로 그대로 찾아갑니다.</b>
+      </div>
+    </div>`
+}
+
+/**
+ * 드라이브 목록을 select에 채운다. 두 자리(낱개 목록·폴더 카드)가 같은 함수를 쓴다 —
+ * 목록이 갈리면 한쪽에만 보이는 드라이브가 생긴다.
+ */
+function fillDriveSelect(sel: HTMLSelectElement, selected: string | null, onPick: (v: string | null) => void) {
+  engine('drives')
+    .then((d: any) => {
+      // 시스템 드라이브는 뺀다 — 같은 드라이브로 옮기면 용량이 안 는다.
+      const list = (d.drives ?? []).filter((v: any) => !v.isSystem)
+      if (!list.length) {
+        sel.innerHTML = `<option value="">옮길 다른 드라이브가 없어요</option>`
+        return
+      }
+      sel.innerHTML =
+        `<option value="">옮길 드라이브…</option>` +
+        list.map((v: any) => `<option value="${esc(v.root)}"${v.root === selected ? ' selected' : ''}>${esc(v.root)} 남은 공간 ${fmtBytes(v.free)}</option>`).join('')
+      onPick(sel.value || null)
+    })
+    .catch(() => { sel.innerHTML = `<option value="">드라이브를 못 읽었어요</option>` })
+  sel.addEventListener('change', () => onPick(sel.value || null))
+}
+
 /**
  * 낱개 선택 목록을 그린다.
  *
@@ -573,7 +767,7 @@ const picked = new Set<string>()
  *   그건 다시 일괄 삭제고, 사용자가 실수로 누르면 되돌릴 일이 커진다.
  *   고른 것만 지운다 — 고르는 건 사용자 몫이다.
  */
-function renderPicker(host: HTMLElement, unknown: string) {
+function renderPicker(host: HTMLElement, unknown: string, prefer: 'delete' | 'move' = 'delete') {
   const q = lastQuestions.find((x) => x.unknown === unknown)
   const samples: any[] = q?.evidence?.samples ?? []
   picked.clear()
@@ -584,61 +778,268 @@ function renderPicker(host: HTMLElement, unknown: string) {
     return
   }
 
+  const byPath = new Map<string, any>(samples.map((s) => [s.path, s]))
+  const groups = groupByOwner(samples)
+  const movableTotal = samples.filter(canMove).length
+  const units: any[] = q?.evidence?.units ?? []
+  const loose = q?.evidence?.looseCount ?? 0
+
   host.innerHTML = `
+    ${prefer === 'move' ? '' : unitCardsHtml(units)}
     <div class="pick" style="margin-top:10px">
       <div class="pick-head">
-        <span>지울 것만 골라주세요 — 고른 것만 정리합니다</span>
+        <span>${prefer === 'move'
+          ? '옮길 것만 골라주세요 — 고른 것만 옮깁니다'
+          : units.length
+            ? `폴더째가 아니라 파일 하나씩 고르실 거면 여기서${loose ? ` (묶이지 않은 ${loose.toLocaleString()}개 포함)` : ''}`
+            : '지울 것만 골라주세요 — 고른 것만 정리합니다'}</span>
         <button class="opt" data-pick-all="1">큰 것 10개 고르기</button>
       </div>
-      <div class="pick-list">${samples.map((s, i) => `
-        <label class="pick-row">
-          <input type="checkbox" data-pick="${i}">
-          <span class="pick-name">${esc(baseName(s.path))}</span>
-          <span class="pick-size">${fmtBytes(s.size)}</span>
-          <span class="bd-path">${esc(s.path)}</span>
-        </label>`).join('')}
-      </div>
+      <div class="pick-list">${groups.map(pickGroupHtml).join('')}</div>
       <div class="pick-foot">
-        <button class="btn" data-pick-go="1" disabled>고른 것 정리하기</button>
+        <button class="${prefer === 'move' ? 'opt' : 'btn'}" data-pick-go="1" disabled>고른 것 정리하기</button>
+        ${movableTotal ? `
+          <select class="pick-dest" data-pick-dest="1"><option value="">옮길 드라이브…</option></select>
+          <button class="${prefer === 'move' ? 'btn' : 'opt'}" data-pick-move="1" disabled>고른 것 옮기기</button>` : ''}
         <span class="t-caption" data-pick-sum="1">아직 고르신 게 없어요</span>
       </div>
+      <div class="t-caption" data-pick-bk="1" style="margin-top:6px" hidden></div>
       <div class="t-caption" style="color:var(--muted);margin-top:6px">
-        큰 것부터 ${samples.length}개까지 보여드려요. 지우지 않고 30일 보관 — 언제든 되돌립니다.</div>
+        큰 것부터 ${samples.length}개까지 보여드려요. 지우지 않고 30일 보관 — 언제든 되돌립니다.${
+          movableTotal ? `<br>이 중 ${movableTotal}개는 지우는 대신 <b>다른 드라이브로 옮길 수</b> 있어요 — 파일은 그대로 남고 C드라이브만 빕니다.` : ''}</div>
+      <div data-pick-out="1"></div>
     </div>`
+
+  /* 폴더째 옮기기 — 지우는 게 아니라 자리만 바꾸고 바로가기를 남긴다.
+     "옮기면 깨져요"라고 막아둔 것들(앱 데이터·게임·가상환경)의 답이다. */
+  const unitDest = host.querySelector<HTMLSelectElement>('[data-unit-dest]')
+  const unitMoveBtns = host.querySelectorAll<HTMLButtonElement>('[data-unit-move]')
+  if (unitDest) {
+    fillDriveSelect(unitDest, pickDest, (v) => {
+      pickDest = v
+      unitMoveBtns.forEach((b) => (b.disabled = !v))
+    })
+  }
+  unitMoveBtns.forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const u = units[+btn.dataset.unitMove!]
+      if (!pickDest) return
+      const outEl = host.querySelector<HTMLElement>(`[data-unit-out="${btn.dataset.unitMove}"]`)!
+      btn.disabled = true
+      btn.textContent = '옮길 곳 확인 중…'
+      try {
+        const p = await engine('relocate-folder-plan', [pickDest, u.path])
+        if (p.blocked) throw new Error(p.blocked)
+        if (p.sameVolume) throw new Error('같은 드라이브라 옮겨도 용량이 늘지 않아요.')
+        if (!p.destination?.ok) throw new Error(p.destination?.reason ?? '대상 드라이브를 쓸 수 없어요')
+        if (!confirm(`${u.label} 폴더를 ${pickDest}로 옮길까요?\n\n${p.files.toLocaleString()}개 · ${fmtBytes(p.bytes)}\n→ ${p.dest}\n\n${spaceHint(p.bytes, true)}지우지 않습니다. 원래 자리에 바로가기를 남겨서 프로그램은 그대로 찾아가요.\n그 프로그램이 실행 중이면 먼저 닫아주세요.`)) {
+          btn.disabled = false
+          btn.textContent = u.moveOnly ? `옮기고 바로가기 남기기 (${fmtBytes(u.bytes)})` : '옮기고 바로가기 남기기'
+          return
+        }
+        btn.textContent = '옮기는 중… (복사하고 대조하느라 몇 분 걸려요)'
+        const r = await engine('relocate-folder-apply', [pickDest, u.path])
+        btn.textContent = `${fmtBytes(r.bytes)} 옮겼어요`
+        outEl.innerHTML = `<i>✓</i>${esc(r.movedTo)}로 옮기고 원래 자리에 바로가기를 남겼어요. 되돌리기는 '드라이브 옮기기' 화면에 있습니다.`
+        toast(`${u.label}을(를) 옮겼어요. C드라이브가 ${fmtBytes(r.bytes)} 비었습니다.`, 'good')
+        refreshDisk(true)
+      } catch (err) {
+        toast('옮기지 못했어요: ' + errText(err), 'bad')
+        outEl.innerHTML = `<i>✕</i>${esc(errText(err))}`
+        btn.disabled = false
+        btn.textContent = u.moveOnly ? `옮기고 바로가기 남기기 (${fmtBytes(u.bytes)})` : '옮기고 바로가기 남기기'
+      }
+    })
+  })
+
+  /* 폴더째 정리 — 결정 하나가 파일 수만 개를 옮긴다. 그래서 무엇이 사라지는지
+     숫자로 다시 보여주고, 되돌릴 수 있다는 사실을 같은 문장에 둔다. */
+  host.querySelectorAll<HTMLButtonElement>('[data-unit]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const u = units[+btn.dataset.unit!]
+      if (!confirm(`${u.label} 폴더를 통째로 정리할까요?\n\n${u.path}\n${u.count.toLocaleString()}개 · ${fmtBytes(u.bytes)}\n\n${u.onDelete}\n\n${spaceHint(u.bytes)}지우지 않고 격리함에 30일 보관합니다.`)) return
+      btn.disabled = true
+      btn.textContent = '정리 중… (파일이 많으면 몇 분 걸려요)'
+      try {
+        const r = await engine('quarantine-folders', [u.path])
+        btn.textContent = `${r.quarantinedCount.toLocaleString()}개를 격리했어요`
+        const note = document.createElement('div')
+        note.className = 't-caption'
+        note.style.color = 'var(--muted)'
+        note.textContent =
+          `${fmtBytes(r.bytesAfterGrace ?? u.bytes)} — 30일 안에 되돌릴 수 있습니다.` +
+          (r.refusedCount ? ` 잠근 항목 ${r.refusedCount.toLocaleString()}개는 안 건드렸어요.` : '') +
+          (r.failed?.length ? ` ${r.failed.length}개는 사용 중이라 건너뛰었어요.` : '')
+        btn.parentElement?.appendChild(note)
+        toast(`${u.label}을(를) 정리했어요. 격리함에서 되돌릴 수 있습니다.`, 'good')
+        quarLoaded = false
+        refreshDisk(true)
+      } catch (err) {
+        toast('정리하지 못했어요: ' + errText(err), 'bad')
+        btn.disabled = false
+        btn.textContent = `이 폴더 통째로 정리 (${fmtBytes(u.bytes)})`
+      }
+    })
+  })
 
   const goBtn = host.querySelector<HTMLButtonElement>('[data-pick-go]')!
   const sumEl = host.querySelector<HTMLElement>('[data-pick-sum]')!
+  const moveBtn = host.querySelector<HTMLButtonElement>('[data-pick-move]')
+  const destSel = host.querySelector<HTMLSelectElement>('[data-pick-dest]')
+  const outEl = host.querySelector<HTMLElement>('[data-pick-out]')!
+
+  const pickedFiles = () => [...picked].map((p) => byPath.get(p)).filter(Boolean)
 
   const sync = () => {
-    const bytes = samples.filter((s) => picked.has(s.path)).reduce((n, s) => n + s.size, 0)
+    const chosen = pickedFiles()
+    const bytes = chosen.reduce((n, s) => n + s.size, 0)
+    const movable = chosen.filter(canMove)
     goBtn.disabled = picked.size === 0
-    goBtn.textContent = picked.size ? `고른 ${picked.size}개 정리하기` : '고른 것 정리하기'
+    goBtn.textContent = picked.size ? `고른 ${picked.size}개 지우기(격리)` : '고른 것 정리하기'
     sumEl.textContent = picked.size ? `${picked.size}개 · ${fmtBytes(bytes)}` : '아직 고르신 게 없어요'
+    if (moveBtn) {
+      // 옮길 수 없는 것은 세지 않는다. 버튼에 적힌 개수와 실제로 옮겨질 개수가
+      // 다르면, 끝나고 나서 "왜 3개만 옮겨졌지"가 된다.
+      const mb = movable.reduce((n, s) => n + s.size, 0)
+      moveBtn.disabled = !movable.length || !pickDest
+      moveBtn.textContent = movable.length
+        ? `${movable.length}개(${fmtBytes(mb)}) 옮기기`
+        : '고른 것 옮기기'
+    }
   }
 
+  /* 체크박스를 경로로 찾을 수 있게 들고 있는다. 선택자로 찾으면 경로의 역슬래시가
+     CSS 이스케이프로 먹혀서 조용히 못 찾는다 — 윈도우 경로에서만 터지는 종류다. */
+  const boxes = new Map<string, HTMLInputElement>()
   host.querySelectorAll<HTMLInputElement>('[data-pick]').forEach((box) => {
+    boxes.set(box.dataset.pick!, box)
     box.addEventListener('change', () => {
-      const s = samples[+box.dataset.pick!]
-      if (box.checked) picked.add(s.path)
-      else picked.delete(s.path)
+      if (box.checked) picked.add(box.dataset.pick!)
+      else picked.delete(box.dataset.pick!)
+      sync()
+    })
+  })
+
+  /* ── 백업 확인 ────────────────────────────────────────────
+     "이거 백업해두셨어요?"를 묻는 대신 우리가 확인한다. 목록을 **먼저 그리고**
+     나중에 줄만 채운다 — 클라우드 폴더를 훑는 일이라 늦을 수 있는데, 그동안
+     목록을 못 보게 만들 이유는 없다.
+
+     ★ 찾은 것만 말한다. 못 찾았다고 "백업이 없다"고 하지 않는다 — 색인이 시간
+        예산 안에서 다 못 훑었을 수 있고(partial), 그 차이를 사용자가 알 수 없다.
+        한 번 단정했다가 틀리면 나머지 판단까지 같이 의심받는다. */
+  const bkEl = host.querySelector<HTMLElement>('[data-pick-bk]')!
+  engine('backup-check', samples.map((s) => s.path))
+    .then((b: any) => {
+      let found = 0
+      for (const r of b.results ?? []) {
+        if (!r.note) continue
+        const row = boxes.get(r.path)?.closest('.pick-row')
+        if (!row) continue
+        const el = document.createElement('span')
+        el.className = r.found ? 'pick-bk' : 'pick-bk warn'
+        el.textContent = (r.found ? '✓ ' : '⚠ ') + r.note
+        row.appendChild(el)
+        if (r.found) found++
+      }
+      if (found) {
+        bkEl.hidden = false
+        bkEl.innerHTML = `<b style="color:var(--safe)">${found}개는 ${esc((b.roots ?? []).join('·'))}에도 있어요</b> — 그건 지워도 그쪽에 남습니다.`
+      }
+    })
+    .catch(() => { /* 백업 확인이 안 돼도 목록은 그대로 쓸 수 있다 */ })
+
+  const setPicked = (path: string, on: boolean) => {
+    const box = boxes.get(path)
+    if (box) box.checked = on
+    if (on) picked.add(path)
+    else picked.delete(path)
+  }
+
+  /** 묶음째 고르기 — 설명이 하나면 결정도 하나다. 한 줄씩 누르게 하지 않는다. */
+  host.querySelectorAll<HTMLButtonElement>('[data-pick-group]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const files = groups[+btn.dataset.pickGroup!].files
+      const on = !files.every((f: any) => picked.has(f.path)) // 다 골라져 있으면 해제
+      for (const f of files) setPicked(f.path, on)
+      btn.textContent = on ? `${files.length}개 해제` : `${files.length}개 다 고르기`
       sync()
     })
   })
 
   host.querySelector<HTMLButtonElement>('[data-pick-all]')!.addEventListener('click', () => {
     // 목록은 이미 큰 것부터다. 상위 10개만 눌러준다 — 전체 선택 버튼은 두지 않는다.
-    host.querySelectorAll<HTMLInputElement>('[data-pick]').forEach((box, i) => {
-      if (i >= 10) return
-      box.checked = true
-      picked.add(samples[i].path)
-    })
+    for (const s of samples.slice(0, 10)) setPicked(s.path, true)
     sync()
   })
 
+  /* ── 옮기기 ────────────────────────────────────────────────
+     대상 드라이브 목록은 파일을 훑지 않는 가벼운 명령으로 받는다(drives).
+     여기서 relocate-scan을 부르면 다운로드·영상 폴더를 통째로 다시 훑는다 —
+     지금 눈앞의 40개와 아무 상관없는 작업으로 몇 분을 쓰게 된다. */
+  if (destSel) fillDriveSelect(destSel, pickDest, (v) => { pickDest = v; sync() })
+
+  moveBtn?.addEventListener('click', async () => {
+    const paths = pickedFiles().filter(canMove).map((s) => s.path)
+    if (!paths.length || !pickDest) return
+    moveBtn.disabled = true
+    moveBtn.textContent = '옮길 곳 확인 중…'
+    try {
+      // 먼저 계획만 세운다 — 아무것도 안 건드리고 어디로 갈지·몇 개가 갈지 보여준다.
+      const p = await engine('relocate-paths-plan', [pickDest, ...paths])
+      if (!p.destination?.ok) throw new Error(p.destination?.reason ?? '대상 드라이브를 쓸 수 없어요')
+      if (!p.count) {
+        outEl.innerHTML = `<div class="note" style="margin-top:10px">옮길 수 있는 게 없었어요.${
+          p.refused?.length ? ` ${esc(p.refused[0].reason)}` : ''}</div>`
+        return
+      }
+      if (!confirm(`${p.count.toLocaleString()}개(${fmtBytes(p.bytes)})를 ${p.destFolder}로 옮길까요?\n\n${spaceHint(p.bytes, true)}지우지 않습니다. 폴더 구조를 유지한 채 옮기고, 옮긴 기록이 파일 옆에 남아 언제든 되돌릴 수 있어요.`)) return
+      moveBtn.textContent = '옮기는 중…'
+      const r = await engine('relocate-paths-apply', [pickDest, ...paths])
+      outEl.innerHTML = `<div class="pick-done">
+        <div class="pick-done-h">${r.movedCount.toLocaleString()}개(${fmtBytes(r.movedBytes)})를 옮겼어요</div>
+        <div class="t-caption">${esc(p.destFolder)} — 되돌리려면 '드라이브 옮기기' 화면에서 되돌릴 수 있어요.</div>
+        ${r.failed?.length ? `<div class="t-caption">${r.failed.length}개는 옮기지 못했어요 — ${esc(r.failed[0].reason)}</div>` : ''}
+        ${r.skipped?.length ? `<div class="t-caption">${r.skipped.length}개는 같은 드라이브라 건너뛰었어요.</div>` : ''}
+      </div>`
+      toast(`${r.movedCount.toLocaleString()}개를 옮겼어요. 용량이 그만큼 빕니다.`, 'good')
+      refreshDisk(true)
+    } catch (err) {
+      toast('옮기지 못했어요: ' + errText(err), 'bad')
+      outEl.innerHTML = `<div class="note" style="margin-top:10px">옮기지 못했어요: ${esc(errText(err))}</div>`
+    } finally {
+      sync()
+    }
+  })
+
   goBtn.addEventListener('click', async () => {
-    const paths = samples.filter((s) => picked.has(s.path)).map((s) => s.path)
-    const bytes = samples.filter((s) => picked.has(s.path)).reduce((n, s) => n + s.size, 0)
-    if (!confirm(`고르신 ${paths.length}개(${fmtBytes(bytes)})를 정리할까요?\n\n지우지 않고 격리함에 30일 보관합니다. 언제든 되돌릴 수 있어요.`)) return
+    const chosen = samples.filter((s) => picked.has(s.path))
+    const paths = chosen.map((s) => s.path)
+    const bytes = chosen.reduce((n, s) => n + s.size, 0)
+
+    /* ★ '두시는 게 안전합니다'로 판정한 걸 고르셨으면 한 번 더 묻는다.
+       엔진은 존 C(잠금)만 거절한다. 그런데 owners.ts의 'keep'은 그것보다 넓다 —
+       세이브 파일·설정·직접 만든 문서처럼 **되돌릴 수 없는 것**이 여기 들어온다.
+       거절하지는 않는다. 사용자가 자기 파일을 지울 권리는 있으니까. 다만 무엇을
+       고르셨는지 이름을 대고 한 번 더 확인한다. */
+    const risky = chosen.filter((s) => s.owner?.verdict === 'keep')
+    if (risky.length) {
+      const names = risky.slice(0, 3).map((s) => `· ${baseName(s.path)} — ${s.owner.onDelete}`).join('\n')
+      if (!confirm(
+        `저희가 "두시는 게 안전합니다"로 본 것이 ${risky.length}개 섞여 있어요.\n\n${names}` +
+        `${risky.length > 3 ? `\n… 외 ${risky.length - 3}개` : ''}\n\n그래도 정리할까요? (격리함에서 30일간 되돌릴 수 있습니다)`
+      )) return
+    }
+
+    /* ★ 낱개로 고르면 손해인 묶음 — 폴더째가 더 나은 경우를 말해준다.
+       일부만 골라 지우면 용량은 조금 줄고 프로젝트는 통째로 지운 것과 똑같이
+       안 돌아간다(owners.ts의 unit). 막지는 않는다. 알려주고 결정은 사용자가 한다. */
+    const partial = groups.find(
+      (g) => g.o?.unit && g.files.some((f: any) => picked.has(f.path)) && !g.files.every((f: any) => picked.has(f.path))
+    )
+    if (partial && !confirm(`${partial.o.unit}\n\n그래도 고른 것만 정리할까요?`)) return
+
+    if (!confirm(`고르신 ${paths.length}개(${fmtBytes(bytes)})를 정리할까요?\n\n${spaceHint(bytes)}지우지 않고 격리함에 30일 보관합니다. 언제든 되돌릴 수 있어요.`)) return
 
     goBtn.disabled = true
     goBtn.textContent = '정리 중…'
@@ -1706,6 +2107,148 @@ function excludedBlock(d: any): string {
   </details>`
 }
 
+/* ── 같은 파일이 여러 벌 ──────────────────────────────────────
+   ★ 왜 별도 화면인가: 이건 스캔 결과가 아니라 **내용을 읽어야** 알 수 있는
+     사실이다(크기로 좁히고 해시로 확정 — dupes.ts). 스캔에 끼워 넣으면 스캔이
+     느려지고, 스캔을 안 한 사람은 영영 못 본다. 그래서 자기 시간을 갖는다. */
+const dupPicked = new Set<string>()
+
+async function loadDupes() {
+  const host = $('dupes-body')
+  host.innerHTML = `<div class="card"><div class="empty">같은 파일을 찾는 중… (내용을 읽어 확인하느라 조금 걸려요)</div></div>`
+  dupPicked.clear()
+  try {
+    const d = await engine('dupes-scan')
+
+    if (!d.groupCount) {
+      host.innerHTML = `<div class="note" style="margin-top:12px">
+        <b>같은 파일이 없어요</b>
+        <span>${d.scanned.toLocaleString()}개를 봤고, 그중 ${fmtBytes(d.minBytes)}가 넘는 ${d.candidates.toLocaleString()}개를 자세히 확인했습니다.</span>
+      </div>`
+      return
+    }
+
+    // 사본 전체(= 지울 수 있는 것) 목록. 버튼의 숫자와 실제가 같아야 한다.
+    const allCopies = d.groups.flatMap((g: any) => g.copies)
+    const allBytes = allCopies.reduce((n: number, c: any) => n + c.size, 0)
+
+    host.innerHTML = `
+      <div class="mv-dests" style="margin-top:14px">
+        <h2 class="t-h2" style="font-weight:var(--w-num)">${d.groupCount.toLocaleString()}묶음 · ${fmtBytes(d.wastedBytes)}를 아낄 수 있어요</h2>
+        <div class="t-small" style="color:var(--muted);margin-top:4px">
+          ${d.scanned.toLocaleString()}개 중 ${fmtBytes(d.minBytes)}가 넘는 ${d.candidates.toLocaleString()}개를 추려 ${d.hashed.toLocaleString()}개의 내용을 직접 읽어 확인했습니다.
+          ${d.excluded ? `프로그램·가상환경 안의 ${d.excluded.toLocaleString()}개는 여러 벌 있는 게 정상이라 아예 안 봤어요.` : ''}
+        </div>
+        <div class="t-caption" style="color:var(--muted);margin-top:6px">
+          앞뒤 256KB와 크기가 모두 같으면 같은 파일로 봅니다. 그래도 원본은 남기고 사본만 격리해요(30일 되돌리기).
+        </div>
+      </div>
+
+      <div class="pick" style="margin-top:12px">
+        <div class="pick-head">
+          <span>치울 사본만 골라주세요 — 원본은 건드리지 않습니다</span>
+          <button class="opt" data-dup-all="1">사본 전부 고르기 (${allCopies.length.toLocaleString()}개 · ${fmtBytes(allBytes)})</button>
+        </div>
+        <div class="pick-list">${d.groups.map(dupGroupHtml).join('')}</div>
+        <div class="pick-foot">
+          <button class="btn" data-dup-go="1" disabled>고른 사본 정리하기</button>
+          <span class="t-caption" data-dup-sum="1">아직 고르신 게 없어요</span>
+        </div>
+        ${d.groupCount > d.groups.length ? `<div class="t-caption" style="color:var(--muted);margin-top:6px">
+          낭비가 큰 ${d.groups.length}묶음만 보여드려요. 정리하고 다시 열면 나머지가 올라옵니다.</div>` : ''}
+        <div data-dup-out="1"></div>
+      </div>`
+
+    const goBtn = host.querySelector<HTMLButtonElement>('[data-dup-go]')!
+    const sumEl = host.querySelector<HTMLElement>('[data-dup-sum]')!
+    const outEl = host.querySelector<HTMLElement>('[data-dup-out]')!
+    const boxes = new Map<string, HTMLInputElement>()
+    const sizeOf = new Map<string, number>(allCopies.map((c: any) => [c.path, c.size]))
+
+    const sync = () => {
+      const bytes = [...dupPicked].reduce((n, p) => n + (sizeOf.get(p) ?? 0), 0)
+      goBtn.disabled = dupPicked.size === 0
+      goBtn.textContent = dupPicked.size ? `사본 ${dupPicked.size}개 정리하기` : '고른 사본 정리하기'
+      sumEl.textContent = dupPicked.size ? `${dupPicked.size}개 · ${fmtBytes(bytes)}` : '아직 고르신 게 없어요'
+    }
+
+    host.querySelectorAll<HTMLInputElement>('[data-dup]').forEach((box) => {
+      boxes.set(box.dataset.dup!, box)
+      box.addEventListener('change', () => {
+        if (box.checked) dupPicked.add(box.dataset.dup!)
+        else dupPicked.delete(box.dataset.dup!)
+        sync()
+      })
+    })
+
+    host.querySelector<HTMLButtonElement>('[data-dup-all]')!.addEventListener('click', () => {
+      for (const c of allCopies) {
+        const box = boxes.get(c.path)
+        if (box) box.checked = true
+        dupPicked.add(c.path)
+      }
+      sync()
+    })
+
+    goBtn.addEventListener('click', async () => {
+      const paths = [...dupPicked]
+      const bytes = paths.reduce((n, p) => n + (sizeOf.get(p) ?? 0), 0)
+      if (!confirm(`사본 ${paths.length.toLocaleString()}개(${fmtBytes(bytes)})를 정리할까요?\n\n원본은 그대로 둡니다. ${spaceHint(bytes)}사본은 지우지 않고 격리함에 30일 보관해요.`)) return
+      goBtn.disabled = true
+      goBtn.textContent = '정리 중…'
+      try {
+        const r = await engine('quarantine-paths', paths)
+        const refused = (r.refused ?? []) as { path: string; reason: string }[]
+        outEl.innerHTML = `<div class="pick-done">
+          <div class="pick-done-h">사본 ${r.quarantinedCount.toLocaleString()}개를 격리함으로 옮겼어요</div>
+          <div class="t-caption">원본은 그대로 있습니다. 30일 안에 되돌릴 수 있어요.</div>
+          ${r.failed?.length ? `<div class="t-caption">${r.failed.length}개는 사용 중이라 건너뛰었어요.</div>` : ''}
+          ${refused.length ? `<div class="t-caption">${refused.length}개는 안 건드렸어요 — ${esc(refused[0].reason)}</div>` : ''}
+        </div>`
+        toast(`사본 ${r.quarantinedCount.toLocaleString()}개를 격리했어요.`, 'good')
+        quarLoaded = false
+        dupesLoaded = false // 다시 열면 남은 묶음이 올라온다
+        refreshDisk(true)
+      } catch (err) {
+        toast('정리하지 못했어요: ' + errText(err), 'bad')
+        goBtn.disabled = false
+        sync()
+      }
+    })
+  } catch (err) {
+    host.innerHTML = `<div class="note" style="margin-top:12px">찾지 못했어요: ${esc(errText(err))}</div>`
+  }
+}
+
+/**
+ * 중복 묶음 하나 — 남길 것을 먼저, 이유와 함께.
+ *
+ * 사본 쪽에만 체크박스를 둔다. 원본에 체크박스가 있으면 "둘 중 아무거나 골라
+ * 지우세요"가 되고, 그 순간 이 기능은 판단을 사용자에게 떠넘긴 게 된다.
+ * 원본을 바꾸고 싶으면 사본을 남기고 원본을 고르는 게 아니라, 목록에서
+ * 그 묶음을 건너뛰면 된다 — 아무것도 안 하는 게 언제나 가능해야 한다.
+ */
+function dupGroupHtml(g: any): string {
+  return `
+    <div class="pg pg-safe">
+      <div class="pg-h">
+        <span class="pg-who">${esc(g.keeper.name)}</span>
+        <span class="pg-v">남길 것</span>
+        <span class="pg-amt">사본 ${g.copies.length}개 · ${fmtBytes(g.wastedBytes)} 낭비</span>
+      </div>
+      <div class="pg-l pg-ok"><i>✓</i>${esc(g.keeperReason)}</div>
+      <div class="bd-path" style="margin-top:2px">${esc(g.keeper.path)}</div>
+      <div class="pg-files">${g.copies.map((c: any) => `
+        <label class="pick-row">
+          <input type="checkbox" data-dup="${esc(c.path)}">
+          <span class="pick-name">${esc(c.name)}</span>
+          <span class="pick-size">${fmtBytes(c.size)}</span>
+          <span class="bd-path">${esc(c.path)}</span>
+        </label>`).join('')}
+      </div>
+    </div>`
+}
+
 /* ── 다른 드라이브로 옮기기 ──────────────────────────────────── */
 let moveDest: string | null = null
 
@@ -1884,6 +2427,8 @@ async function loadQuar() {
 
     if (!data.items.length) {
       host.innerHTML = `<div class="card">${purgeNote}<div class="empty"><svg class="ic"><use href="#i-undo"/></svg><b>아직 격리된 항목이 없어요</b><span>정리를 실행하면 여기에 30일간 보관됩니다.</span></div></div>`
+      // 격리한 게 없어도 옮긴 게 있을 수 있다. 여기서 안 그리면 되돌릴 길이 사라진다.
+      renderMovedUndo(host)
       return
     }
     const day = 86400000
@@ -1974,9 +2519,70 @@ async function loadQuar() {
         toast('비우지 못했어요: ' + errText(err), 'bad')
       }
     })
+    /* ★ 옮긴 것도 같은 화면에서 되돌린다.
+       전에는 이동 되돌리기가 '드라이브 옮기기' 화면에만 있었다. 그러면 사용자는
+       **어느 드라이브로 옮겼는지 기억해서** 그 화면을 찾아가야 한다.
+       기억해야 하는 되돌리기는 되돌리기가 아니다. */
+    renderMovedUndo(host)
   } catch (err) {
     host.innerHTML = `<div class="card"><div class="note">격리함을 읽지 못했어요: ${esc(errText(err))}</div></div>`
   }
+}
+
+/** 옮긴 것 되돌리기 — 격리함 아래에 이어 붙인다. 목록이 비면 아무것도 안 그린다. */
+async function renderMovedUndo(host: HTMLElement) {
+  let d: any
+  try {
+    d = await engine('undo-list')
+  } catch {
+    return // 격리함은 이미 그려졌다. 부가 목록 하나 때문에 화면을 망치지 않는다.
+  }
+  if (!d.movedCount) return
+
+  const box = document.createElement('div')
+  box.className = 'card'
+  box.style.marginTop = '12px'
+  box.innerHTML = `
+    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <h2 class="t-title" style="font-weight:var(--w-num)">다른 드라이브로 옮긴 ${d.movedCount.toLocaleString()}개 · ${fmtBytes(d.movedBytes)}</h2>
+    </div>
+    <div class="t-small" style="color:var(--muted);margin:-4px 0 12px">
+      이건 지운 게 아니라 <b>자리만 옮긴 것</b>이에요. 되돌리면 원래 경로로 그대로 돌아옵니다.
+    </div>
+    ${d.moved.slice(0, 50).map((m: any) => `
+      <div class="row">
+        <div class="row-main">
+          <div class="row-path" style="margin-top:0">${esc(m.originalPath)}</div>
+          <div class="row-sub">${fmtBytes(m.size)}${m.kind === 'folder' ? ` · 폴더 ${(m.files ?? 0).toLocaleString()}개 · 원래 자리에 바로가기 있음` : ''} → ${esc(m.movedTo)}</div>
+        </div>
+        <div class="row-act"><button class="opt" data-undo-move="${esc(m.id)}" data-dest="${esc(m.destRoot)}">되돌리기</button></div>
+      </div>`).join('')}
+    ${d.movedCount > 50 ? `<div class="t-small" style="color:var(--muted);margin-top:10px">…외 ${(d.movedCount - 50).toLocaleString()}개</div>` : ''}`
+
+  host.appendChild(box)
+
+  box.querySelectorAll<HTMLButtonElement>('[data-undo-move]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true
+      btn.textContent = '되돌리는 중…'
+      try {
+        const r = await engine('relocate-undo', [btn.dataset.dest!, btn.dataset.undoMove!])
+        if (!r.restoredCount) {
+          toast(r.failed?.[0]?.reason ?? '되돌리지 못했어요.', 'bad')
+          btn.disabled = false
+          btn.textContent = '되돌리기'
+          return
+        }
+        toast('원래 자리로 되돌렸어요.', 'good')
+        refreshDisk(true)
+        loadQuar()
+      } catch (err) {
+        toast('되돌리지 못했어요: ' + errText(err), 'bad')
+        btn.disabled = false
+        btn.textContent = '되돌리기'
+      }
+    })
+  })
 }
 
 /* ── 자동 업데이트 (V3/알약식) ─────────────────────────────────

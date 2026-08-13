@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   isRelocatable,
+  relocateBlockReason,
   isSameVolume,
   volumeOf,
   destinationFor,
@@ -71,6 +72,43 @@ test('★파일은 살아도 앱이 깨지는 경로는 옮기지 않는다', ()
     assert.equal(r.ok, false, `옮기면 안 되는데 허용됨: ${p}`)
     assert.ok(r.reason, `왜 안 되는지 이유가 있어야 한다: ${p}`)
   }
+})
+
+/**
+ * ★ 낱개 이동이 생기면서 들어오는 경로의 성격이 바뀌었다.
+ *
+ * 여태 이동은 '다운로드·영상·사진 폴더를 훑어서'만 시작했다(relocateRoots).
+ * 그래서 AppData나 가상환경 경로는 애초에 후보에 없었고, 규칙에도 없었다.
+ * 이제 질문 목록에서 고른 파일이 그대로 들어온다 — 화면에 실제로 떠 있던
+ * `AppData\Local\MusicFactory\ACE-Step-1.5\.venv\...\torch_cuda.dll` 같은 것들이다.
+ * 이걸 옮기면 파일은 멀쩡한데 프로젝트만 조용히 안 돌아간다.
+ */
+test('★가상환경·AppData·불러 쓰는 파일은 옮기지 않는다 — 낱개 이동으로 들어오는 것들', () => {
+  const 금지: [string, string][] = [
+    ['C:\\Users\\me\\AppData\\Local\\App\\data.bin', 'AppData\\Local은 프로그램이 저장한 자리다'],
+    ['C:\\dev\\proj\\.venv\\Lib\\site-packages\\torch\\lib\\torch_cuda.dll', '가상환경은 자기 경로를 안에 적어둔다'],
+    ['C:\\dev\\proj\\venv\\Scripts\\python.exe', '가상환경'],
+    ['C:\\dev\\proj\\.git\\objects\\pack\\a.pack', '.git을 옮기면 저장소가 깨진다'],
+    ['C:\\Users\\me\\Downloads\\lib\\ffmpeg.dll', '경로가 멀쩡해도 불러 쓰는 파일이다'],
+  ]
+  for (const [p, why] of 금지) {
+    assert.equal(isRelocatable(classified(p)).ok, false, `옮기면 안 되는데 허용됨(${why}): ${p}`)
+    assert.ok(relocateBlockReason(p), `왜 안 되는지 이유가 있어야 한다: ${p}`)
+  }
+})
+
+test('★목록을 그릴 때는 분류 없이 경로만으로도 판정이 나온다', () => {
+  // 화면은 "이건 옮길 수 있어요"를 **고르기 전에** 보여줘야 한다. 그 시점엔
+  // 스캔 결과가 아니라 경로 문자열뿐이다. 그래서 순수 함수 통로를 따로 둔다.
+  assert.equal(relocateBlockReason('C:\\Users\\me\\Videos\\holiday.mp4'), null)
+  assert.ok(relocateBlockReason('C:\\Windows\\System32\\x.bin'))
+})
+
+test('설치 파일은 옮길 수 있다 — 다시 받으면 그만인 큰 덩어리다', () => {
+  // .dll은 막고 .exe·.msi는 막지 않는다. 다운로드 폴더의 설치 파일은 옮겨도
+  // 아무도 안 깨지고, 크기가 커서 옮길 값어치가 가장 큰 축이다.
+  assert.equal(isRelocatable(classified('C:\\Users\\me\\Downloads\\setup.exe')).ok, true)
+  assert.equal(isRelocatable(classified('C:\\Users\\me\\Downloads\\office.msi')).ok, true)
 })
 
 test('평범한 사용자 데이터는 옮길 수 있다', () => {

@@ -572,7 +572,9 @@
              font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
              font-weight:var(--w-em);color:var(--ink-2);margin-bottom:var(--s-2)}
   .pick-head button{margin-left:auto}
-  .pick-list{max-height:340px;overflow-y:auto;border:1px solid var(--line);
+  /* 줄마다 판단 근거가 붙으면서 한 묶음이 340px를 그냥 넘긴다 — 스크롤 안에서
+     첫 묶음의 설명조차 안 끝나면 접힌 것과 같다. */
+  .pick-list{max-height:460px;overflow-y:auto;border:1px solid var(--line);
              border-radius:var(--r-sm);background:var(--surface)}
   .pick-row{display:grid;grid-template-columns:auto 1fr auto;gap:var(--s-2) var(--s-3);
             align-items:center;padding:var(--s-2) var(--s-3);border-top:1px solid var(--line);cursor:pointer}
@@ -584,8 +586,68 @@
   .pick-size{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
              color:var(--muted);white-space:nowrap}
   .pick-row .bd-path{grid-column:2/-1;margin-top:0}
+  /* 백업 확인 결과 — 목록을 그린 뒤 나중에 붙는 줄이다(engine backup-check) */
+  .pick-bk{grid-column:2/-1;font-size:var(--t-micro);line-height:var(--lh-micro);
+           letter-spacing:var(--tr-micro);color:var(--safe)}
+  .pick-bk.warn{color:var(--lock)}
   .pick-foot{display:flex;align-items:center;gap:var(--s-3);flex-wrap:wrap;margin-top:var(--s-3)}
   .pick-foot span{color:var(--muted)}
+  .pick-dest{font:inherit;font-size:var(--t-caption);line-height:var(--lh-caption);
+             padding:6px var(--s-2);border:1px solid var(--line);border-radius:var(--r-sm);
+             background:var(--surface);color:var(--ink-2)}
+
+  /* ── 결정 단위(폴더) 카드 ───────────────────────────────────
+     14만 개짜리 질문을 카드 몇 장으로 접은 자리다. 낱개 목록보다 **위에** 둔다 —
+     대부분의 사람에게 옳은 결정이 폴더째이기 때문이다. */
+  .units{margin-top:10px}
+  .units-h{display:flex;align-items:center;gap:var(--s-2);flex-wrap:wrap;
+           font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
+           font-weight:var(--w-em);color:var(--ink-2);margin-bottom:var(--s-2)}
+  .units-h select{margin-left:auto}
+  .unit{border:1px solid var(--line);border-left:3px solid var(--amb);border-radius:var(--r-sm);
+        background:var(--surface);padding:var(--s-3);margin-bottom:var(--s-2)}
+  .unit-h{display:flex;align-items:baseline;gap:var(--s-2);flex-wrap:wrap}
+  .unit-name{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
+             font-weight:var(--w-head);color:var(--ink)}
+  .unit-amt{font-size:var(--t-caption);line-height:var(--lh-caption);color:var(--muted);margin-left:auto}
+  .unit-l{display:flex;gap:var(--s-2);margin-top:3px;color:var(--ink-2);
+          font-size:var(--t-caption);line-height:var(--lh-caption);letter-spacing:var(--tr-caption)}
+  .unit-l i{flex:none;width:12px;text-align:center;font-style:normal;font-weight:var(--w-num);color:var(--amb)}
+  .unit-act{display:flex;gap:var(--s-2);flex-wrap:wrap;margin-top:var(--s-2)}
+
+  /* ── 낱개 목록의 묶음 머리 ──────────────────────────────────
+     목록이 파일명과 숫자만 주던 자리다. 무엇의 것이고 지우면 뭐가 깨지는지를
+     묶음마다 한 번씩 쓴다(파일마다 쓰면 같은 네 줄이 40번 반복된다).
+     왼쪽 색 띠가 판정이다 — 초록 안전 / 노랑 물어봄 / 빨강 두는 게 안전. */
+  .pg{--k:var(--amb);border-top:1px solid var(--line);border-left:3px solid var(--k);
+      padding:var(--s-3);background:var(--surface)}
+  .pg:first-child{border-top:0}
+  .pg-safe{--k:var(--safe)} .pg-ask{--k:var(--amb)} .pg-keep{--k:var(--lock)}
+  .pg-h{display:flex;align-items:baseline;gap:var(--s-2);flex-wrap:wrap}
+  .pg-who{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
+          font-weight:var(--w-head);color:var(--ink)}
+  .pg-v{font-size:var(--t-micro);line-height:var(--lh-micro);letter-spacing:var(--tr-micro);
+        font-weight:var(--w-em);color:var(--k);border:1px solid var(--k);border-radius:999px;
+        padding:1px 8px;white-space:nowrap}
+  .pg-amt{font-size:var(--t-caption);line-height:var(--lh-caption);color:var(--muted);
+          margin-left:auto;white-space:nowrap}
+  .pg-all{font:inherit;font-size:var(--t-micro);line-height:var(--lh-micro);
+          padding:3px 8px;border:1px solid var(--line);border-radius:999px;
+          background:var(--surface-2);color:var(--ink-2);cursor:pointer;white-space:nowrap}
+  .pg-all:hover{border-color:var(--k);color:var(--k)}
+  .pg-l{display:flex;gap:var(--s-2);margin-top:3px;
+        font-size:var(--t-caption);line-height:var(--lh-caption);letter-spacing:var(--tr-caption)}
+  .pg-l i{flex:none;width:12px;text-align:center;font-style:normal;font-weight:var(--w-num)}
+  .pg-do{color:var(--ink-2)} .pg-do i{color:var(--k)}
+  .pg-bad{color:var(--ink-2)} .pg-bad i{color:var(--lock)}
+  .pg-ok{color:var(--ink-2)} .pg-ok i{color:var(--safe)}
+  .pg-unit{color:var(--ink-2)} .pg-unit i{color:var(--amb)}
+  .pg-mv{color:var(--ink-2)} .pg-mv i{color:var(--accent)}
+  .pg-nomv{color:var(--muted)} .pg-nomv i{color:var(--muted)}
+  .pg-why{margin-top:var(--s-2);color:var(--faint);
+          font-size:var(--t-micro);line-height:var(--lh-micro);letter-spacing:var(--tr-micro)}
+  .pg-files{margin-top:var(--s-2);border-top:1px solid var(--line)}
+  .pg-files .pick-row{padding:var(--s-2) 0}
   .pick-done{border:1px solid var(--line);border-left:3px solid var(--safe);border-radius:var(--r-sm);
              padding:var(--s-3);margin-top:var(--s-3);background:var(--surface)}
   .pick-done-h{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
@@ -773,6 +835,9 @@
     <circle cx="12" cy="12" r="8.5"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
   <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
     <path d="M13 3 5.5 13.5H11L10 21l7.5-10.5H12z"/></symbol>
+  <!-- 겹친 종이 두 장 — 같은 파일이 여러 벌 -->
+  <symbol id="i-copies" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="8.5" y="3.5" width="12" height="14" rx="2"/><path d="M15.5 20.5h-9a2 2 0 0 1-2-2v-11"/></symbol>
 </svg>
 
 <div class="toast" id="toast" hidden></div>
@@ -789,6 +854,7 @@
       <button data-go="hidden"><svg class="ic"><use href="#i-hidden"/></svg>숨은 공간</button>
       <button data-go="startup"><svg class="ic"><use href="#i-power"/></svg>시작프로그램</button>
       <button data-go="programs"><svg class="ic"><use href="#i-box"/></svg>안 쓴 프로그램</button>
+      <button data-go="dupes"><svg class="ic"><use href="#i-copies"/></svg>같은 파일</button>
       <button data-go="move"><svg class="ic"><use href="#i-move"/></svg>드라이브 옮기기</button>
       <button data-go="quar"><svg class="ic"><use href="#i-undo"/></svg>격리함</button>
       <button data-go="tidy"><svg class="ic"><use href="#i-check"/></svg>생활 정리</button>
@@ -960,6 +1026,22 @@
   </section>
 
   <!-- 다른 드라이브로 옮기기 -->
+  <section class="screen" id="s-dupes">
+    <div class="card pad">
+      <div class="sechead"><span class="k">같은 파일</span><h2>같은 걸 두 번 갖고 계세요</h2></div>
+      <p class="lede" style="margin-top:6px">
+        이름만 비슷한 게 아니라 <b style="color:var(--ink)">내용이 완전히 같은 파일</b>만 찾습니다.
+        크기가 같은 것끼리 추린 다음 내용을 읽어서 확인해요.
+      </p>
+      <p class="lede" style="margin-top:8px">
+        프로그램 폴더·가상환경·게임처럼 <b style="color:var(--ink)">같은 파일이 여러 벌 있는 게 정상인 곳은 아예 안 봅니다.</b>
+        거기서 한 벌을 지우면 정리가 아니라 고장이거든요.
+      </p>
+      <div style="margin-top:12px"><span class="pill desk">실제 정리는 데스크톱 앱</span></div>
+      <div id="dupes-body"><div class="empty">'같은 파일' 탭을 열면 찾기 시작합니다.</div></div>
+    </div>
+  </section>
+
   <section class="screen" id="s-move">
     <div class="card pad">
       <div class="sechead"><span class="k">옮기기</span><h2>지우긴 아까운 것들</h2></div>

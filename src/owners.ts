@@ -63,6 +63,15 @@ export interface Owner {
   intact: string[]
   /** 프로그램을 확정했나. false면 추정이므로 문장이 '…로 보입니다'가 된다 */
   identified: boolean
+  /**
+   * 낱개로 골라 지우는 게 뜻이 없는 파일이면, 그 사실을 한 문장으로. 아니면 빈 문자열.
+   *
+   * ★ 왜 필요했나: 목록에서 `torch_cuda.dll 1.2GB` 하나만 체크하면 1.2GB를 아낀 것
+   *   같지만, 그 프로젝트는 6GB짜리 .venv를 통째로 지운 것과 **똑같이** 못 쓴다.
+   *   회수한 용량은 1/5인데 피해는 같다. 그러면 낱개 선택이 사용자에게 손해다.
+   *   이런 묶음은 "하나만 빼면 손해"라고 말해줘야 폴더째 지우든 두든 결정이 된다.
+   */
+  unit: string
 }
 
 const VERDICT_LABEL: Record<OwnerVerdict, string> = {
@@ -221,6 +230,8 @@ interface RoleRule {
   onDelete: string
   breaks: string[]
   intact: string[]
+  /** 낱개로 지워도 뜻이 없는 묶음이면 그 사실을 한 문장으로 (Owner.unit) */
+  unit?: string
 }
 
 /**
@@ -281,6 +292,7 @@ const ROLES: RoleRule[] = [
     onDelete: '{프로그램이} 실행되지 않습니다. pip install로 되돌립니다 (수 GB·몇 분).',
     breaks: ['{프로그램} 실행'],
     intact: ['직접 쓴 코드·설정', '윈도우와 다른 프로그램'],
+    unit: '이 파일 하나만 지워도 {프로그램은} 똑같이 안 돌아갑니다. 아낄 거면 가상환경 폴더째 지우는 편이 이득이에요.',
   },
   {
     test: /\.(onnx|safetensors|gguf|ckpt|pt|pth|tflite)$/,
@@ -301,6 +313,7 @@ const ROLES: RoleRule[] = [
     onDelete: '{프로그램이} 실행되지 않습니다. 가상환경을 다시 만들면 돌아옵니다 (몇 분).',
     breaks: ['{프로그램} 실행'],
     intact: ['직접 쓴 코드', '다른 프로젝트의 가상환경'],
+    unit: '가상환경은 한 덩어리예요. 파일 몇 개만 골라 지우면 용량은 조금 줄고 프로젝트는 그대로 못 씁니다.',
   },
   {
     test: /\/node_modules\//,
@@ -310,6 +323,7 @@ const ROLES: RoleRule[] = [
     onDelete: '{프로그램을} 다시 열 때 npm install을 한 번 돌려야 합니다 (1~3분).',
     breaks: ['다시 시작할 때 1~3분'],
     intact: ['직접 쓴 코드·설정'],
+    unit: 'node_modules도 한 덩어리예요. 일부만 지우면 어차피 npm install을 다시 돌려야 합니다.',
   },
   {
     test: /\/(dist|build|out|target|\.next|__pycache__)\//,
@@ -348,6 +362,7 @@ const ROLES: RoleRule[] = [
     onDelete: '{프로그램이} 실행되지 않고, 런처가 파일 검사로 다시 받습니다 (수 GB).',
     breaks: ['{프로그램} 실행', '다시 받는 시간·데이터'],
     intact: ['세이브·설정'],
+    unit: '하나만 지워도 런처는 파일 검사를 돌립니다. 정말 안 하실 게임이면 런처에서 삭제하는 편이 깨끗해요.',
   },
 
   /* 흔한 부산물 — 이 아래는 "지워도 된다"가 정말 맞는 것들 */
@@ -514,6 +529,7 @@ export function ownerOf(path: string): Owner {
       breaks: role.breaks.map((a) => fill(a, who)),
       intact: role.intact.map((a) => fill(a, who)),
       identified,
+      unit: role.unit ? fill(role.unit, who) : '',
     }
   }
 
@@ -540,6 +556,7 @@ export function ownerOf(path: string): Owner {
     breaks: [],
     intact: im.level === 'none' ? ['프로그램 동작 전부'] : [],
     identified,
+    unit: '',
   }
 }
 

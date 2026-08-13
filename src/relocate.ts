@@ -46,6 +46,16 @@ export interface RelocateEntry {
   mtimeMs: number
   movedAt: number
   reason: string
+  /**
+   * 무엇을 옮겼나. 없으면 파일이다(옛 장부와 호환).
+   *
+   * 'folder'는 폴더째 옮기고 원래 자리에 정션을 남긴 것이다 — 되돌리는 방법이
+   * 파일과 완전히 다르다(정션을 먼저 걷어내야 한다). 장부에 안 적으면
+   * 되돌리기가 정션 위에 파일을 복사하려 든다.
+   */
+  kind?: 'file' | 'folder'
+  /** 폴더일 때 안에 든 파일 수 */
+  files?: number
 }
 
 export interface RelocatePlan {
@@ -86,12 +96,59 @@ const NEVER_MOVE = [
   { test: /[\\/]\.(teraclean|cleanmate)[\\/]/i, why: '격리함 — 여기서 직접 옮기면 안 됩니다' },
   { test: new RegExp(`[\\\\/]${MOVED_FOLDER}[\\\\/]`, 'i'), why: '이미 옮겨둔 폴더' },
   { test: /[\\/]node_modules[\\/]/i, why: '패키지 폴더 — 옮기면 프로젝트가 깨집니다' },
+  /**
+   * ★ 가상환경. node_modules는 막아뒀는데 .venv는 빠져 있었다 — 파이썬 쪽이
+   *   훨씬 위험한데도. 가상환경은 **자기 절대 경로를 안에 적어두고**(pyvenv.cfg,
+   *   Scripts의 실행 파일들) 그 경로로 자신을 찾는다. 드라이브만 바뀌어도
+   *   `python`이 안 뜬다. 게다가 파일 하나(1.2GB짜리 dll)만 빼가면 폴더는
+   *   멀쩡해 보이는데 import만 실패한다 — 원인을 찾기가 가장 어려운 고장이다.
+   */
+  { test: /[\\/](\.venv|venv|site-packages|__pycache__|\.git)[\\/]/i, why: '개발 환경 폴더 — 옮기면 그 프로젝트가 깨집니다' },
+  /**
+   * ★ AppData\Local 전체. 여태는 Local\Programs만 막았는데, 그건 이 화면이
+   *   사용자 폴더(다운로드·영상·사진)만 훑던 시절의 규칙이다. 이제 질문 목록에서
+   *   고른 파일을 그대로 옮길 수 있게 되면서 AppData 경로가 직접 들어온다 —
+   *   `AppData\Local\MusicFactory\...\torch_cuda.dll` 같은 것들이다.
+   *   프로그램이 자기 자리에 저장한 것이라 파일이 살아 있어도 그 앱은 못 찾는다.
+   *   (지우는 건 격리함이 되돌려주지만, 옮기기는 앱이 조용히 고장 난다)
+   *
+   *   node_modules·가상환경 규칙보다 **뒤에** 둔다. 둘 다 걸리는 경로에서는
+   *   "개발 환경 폴더"가 더 정확한 설명이고, 사용자가 다음에 할 행동도 달라진다.
+   */
+  { test: /[\\/]appdata[\\/]local[\\/]/i, why: '프로그램이 저장한 데이터 — 옮기면 그 앱이 못 찾습니다' },
   { test: /[\\/](onedrive|dropbox|google drive|drivefs)[\\/]/i, why: '동기화 폴더' },
 ]
+
+/**
+ * 실행·연결에 쓰이는 파일 — 자리를 옮기면 부르는 쪽이 못 찾는다.
+ *
+ * 설치 파일(.exe·.msi)은 뺀다. 다운로드 폴더의 설치 파일은 옮겨도 아무도 안 깨지고,
+ * 오히려 크기가 커서 옮길 값어치가 있다. 여기 넣는 건 **다른 프로그램이 경로로
+ * 불러 쓰는 것들**이다.
+ */
+const NEVER_MOVE_EXT = /\.(dll|pyd|lib|so|dylib|sys|drv|ocx|node)$/i
 
 export interface Relocatable {
   ok: boolean
   reason?: string
+}
+
+/**
+ * 경로만 보고 옮기면 안 되는 이유를 찾는다. 없으면 null.
+ *
+ * ★ 왜 분류(Classified) 없이 쓰는 길을 따로 두나: 화면이 파일 목록을 그릴 때
+ *   "이건 옮길 수 있다/없다"를 **미리** 보여줘야 한다. 그때는 스캔 결과가 아니라
+ *   경로 문자열만 있다. 실행 직전에는 isRelocatable이 존까지 다시 본다 —
+ *   보여주기는 느슨하게, 실행은 엄격하게.
+ */
+export function relocateBlockReason(path: string): string | null {
+  for (const rule of NEVER_MOVE) {
+    if (rule.test.test(path)) return rule.why
+  }
+  if (NEVER_MOVE_EXT.test(path)) {
+    return '프로그램이 불러 쓰는 파일 — 자리를 옮기면 못 찾습니다'
+  }
+  return null
 }
 
 /**
@@ -102,10 +159,8 @@ export function isRelocatable(c: Classified): Relocatable {
   if (c.verdict.zone === 'LOCKED') {
     return { ok: false, reason: `잠근 항목입니다 (${c.verdict.meaning})` }
   }
-  for (const rule of NEVER_MOVE) {
-    if (rule.test.test(c.path)) return { ok: false, reason: rule.why }
-  }
-  return { ok: true }
+  const blocked = relocateBlockReason(c.path)
+  return blocked ? { ok: false, reason: blocked } : { ok: true }
 }
 
 /** 드라이브 루트를 대문자로 정규화한다. 'c:\' 와 'C:\' 는 같은 드라이브다. */
@@ -271,6 +326,13 @@ export async function undoRelocate(ids: string[], destFolder: string): Promise<U
   for (const entry of entries) {
     if (!wanted.has(entry.id)) continue
     try {
+      // 폴더는 되돌리는 방법이 다르다 — 정션을 먼저 걷어내야 한다.
+      if (entry.kind === 'folder') {
+        const r = await undoFolderJunction(entry.originalPath, entry.movedTo)
+        if (r.ok) restored.push(entry)
+        else failed.push({ entry, reason: r.reason ?? '되돌리지 못했어요' })
+        continue
+      }
       if (await exists(entry.originalPath)) {
         failed.push({ entry, reason: '원래 자리에 다른 파일이 생겼어요. 덮어쓰지 않았습니다.' })
         continue
@@ -292,6 +354,201 @@ async function exists(path: string): Promise<boolean> {
     return true
   } catch {
     return false
+  }
+}
+
+/* ────────────────────────────────────────────────────────────
+   폴더째 옮기고 자리에 바로가기(정션)를 남기기
+
+   ★ 이 기능이 위의 '옮기면 안 되는 목록'을 뒤집는다.
+
+   NEVER_MOVE의 이유는 전부 하나였다 — "파일은 살아도 그 경로를 찾던 프로그램이
+   깨진다". 그런데 폴더를 옮기고 **원래 자리에 정션(디렉터리 바로가기)을 남기면
+   그 이유가 사라진다.** 프로그램이 C:\...\.venv를 열면 윈도우가 D:의 실물로
+   조용히 이어준다. 게임 라이브러리를 다른 드라이브로 옮길 때 쓰는 그 방법이다.
+
+   정션은 관리자 권한이 필요 없다(심볼릭 링크와 다르다). 그래서 우리가 할 수 있다.
+
+   ── 그래도 안 되는 것 ────────────────────────────────────────
+   윈도우 자신·설치된 프로그램·클라우드 동기화 폴더는 여전히 막는다.
+     - 윈도우 폴더: 업데이트·복구가 실제 경로를 전제로 동작한다
+     - Program Files: 설치 관리자가 자기 복구를 돌릴 때 깨진다
+     - 동기화 폴더: 동기화 클라이언트가 통째로 다시 올리거나 내린다
+   즉 "정션이면 다 된다"가 아니라 **"정션이면 앱 데이터·개발 환경·게임은 된다"**다.
+
+   ── 순서가 데이터를 지킨다 ───────────────────────────────────
+   복사 → 개수·용량 대조 → 원본 삭제 → 정션 생성.
+   대조 없이 지우면 복사가 절반만 됐어도 알 수 없고, 정션을 먼저 만들면
+   자기 자신을 가리키는 경로가 생긴다.
+   ──────────────────────────────────────────────────────────── */
+
+/** 정션으로도 옮기면 안 되는 곳. 위의 NEVER_MOVE보다 짧다 — 이유가 달라서다. */
+const NEVER_JUNCTION = [
+  { test: /[\\/]windows[\\/]/i, why: '윈도우 시스템 폴더' },
+  { test: /[\\/]program files( \(x86\))?[\\/]/i, why: '설치된 프로그램 — 설치 관리자가 자기 복구를 돌릴 때 깨집니다' },
+  { test: /[\\/]programdata[\\/]/i, why: '프로그램 공용 데이터' },
+  { test: /[\\/](onedrive|dropbox|google drive|drivefs|icloud)[\\/]/i, why: '동기화 폴더 — 클라우드가 통째로 다시 올립니다' },
+  { test: /[\\/]\$recycle\.bin[\\/]/i, why: '휴지통' },
+  { test: /[\\/]system volume information[\\/]/i, why: '시스템 복원' },
+  { test: /[\\/]\.(teraclean|cleanmate)[\\/]/i, why: '격리함' },
+  { test: new RegExp(`[\\\\/]${MOVED_FOLDER}[\\\\/]`, 'i'), why: '이미 옮겨둔 폴더' },
+]
+
+/**
+ * 이 폴더를 옮기고 정션을 남겨도 되나. 경로만 보고 답한다.
+ *
+ * 너무 얕은 경로(드라이브 뿌리·사용자 폴더 자체)도 막는다. C:\Users\me를 통째로
+ * 옮기면 그건 이사지 정리가 아니고, 실패했을 때 되돌릴 수 있는 규모가 아니다.
+ */
+export function junctionBlockReason(path: string): string | null {
+  const norm = path.replace(/\//g, '\\').replace(/\\+$/, '')
+  for (const rule of NEVER_JUNCTION) {
+    if (rule.test.test(norm + '\\')) return rule.why
+  }
+  const segs = norm.split('\\').filter(Boolean)
+  if (segs.length <= 1) return '드라이브 전체는 옮길 수 없어요'
+  if (/^users$/i.test(segs[1] ?? '') && segs.length <= 3) {
+    return '사용자 폴더 전체는 옮기지 않아요 — 되돌리기가 감당이 안 되는 규모입니다'
+  }
+  return null
+}
+
+export interface FolderMoveResult {
+  ok: boolean
+  /** 실물이 실제로 있는 자리 */
+  movedTo: string
+  /** 원래 자리에 정션을 만들었나 */
+  linked: boolean
+  copiedFiles: number
+  copiedBytes: number
+  /** 안 됐으면 왜 — 사람이 읽을 문장 */
+  reason?: string
+}
+
+/** 폴더 안의 파일 수·합계. 복사가 제대로 됐는지 대조하는 데만 쓴다. */
+export async function measureFolder(dir: string): Promise<{ files: number; bytes: number }> {
+  const { readdir } = await import('node:fs/promises')
+  let files = 0
+  let bytes = 0
+  async function walk(d: string): Promise<void> {
+    let entries
+    try {
+      entries = await readdir(d, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      const full = join(d, e.name)
+      if (e.isSymbolicLink()) continue
+      if (e.isDirectory()) {
+        await walk(full)
+        continue
+      }
+      if (!e.isFile()) continue
+      try {
+        const st = await stat(full)
+        files++
+        bytes += st.size
+      } catch {
+        /* 못 읽은 파일은 세지 않는다 — 대조가 느슨해지는 쪽이 안전하다 */
+      }
+    }
+  }
+  await walk(dir)
+  return { files, bytes }
+}
+
+/**
+ * 폴더를 다른 드라이브로 옮기고 원래 자리에 정션을 남긴다.
+ *
+ * 실패하면 **원본을 그대로 둔다.** 이 함수가 지켜야 할 유일한 약속이다.
+ */
+export async function moveFolderWithJunction(src: string, dest: string): Promise<FolderMoveResult> {
+  const { cp, rm, symlink } = await import('node:fs/promises')
+  const fail = (reason: string): FolderMoveResult =>
+    ({ ok: false, movedTo: '', linked: false, copiedFiles: 0, copiedBytes: 0, reason })
+
+  const blocked = junctionBlockReason(src)
+  if (blocked) return fail(blocked)
+
+  try {
+    if (!(await stat(src)).isDirectory()) return fail('폴더가 아니에요')
+  } catch {
+    return fail('폴더를 찾지 못했어요')
+  }
+  if (await exists(dest)) return fail('옮길 자리에 같은 이름의 폴더가 이미 있어요')
+
+  const before = await measureFolder(src)
+
+  // ① 복사. 원본은 아직 그대로다.
+  await mkdir(dirname(dest), { recursive: true })
+  try {
+    await cp(src, dest, { recursive: true, force: false, errorOnExist: true, preserveTimestamps: true })
+  } catch (err) {
+    // 반쯤 복사된 것을 남기지 않는다 — 다음 시도의 '이미 있어요'가 된다.
+    await rm(dest, { recursive: true, force: true }).catch(() => {})
+    return fail(`복사하지 못했어요: ${(err as Error).message}`)
+  }
+
+  // ② 대조. 개수와 용량이 같아야 원본을 지운다.
+  const after = await measureFolder(dest)
+  if (after.files !== before.files || after.bytes !== before.bytes) {
+    await rm(dest, { recursive: true, force: true }).catch(() => {})
+    return fail(
+      `복사한 결과가 원본과 달라요 (원본 ${before.files}개·대상 ${after.files}개). 아무것도 지우지 않았습니다.`
+    )
+  }
+
+  // ③ 원본 삭제 → ④ 정션. 이 사이가 유일하게 위험한 구간이라 바로 붙여 둔다.
+  try {
+    await rm(src, { recursive: true, force: true })
+  } catch (err) {
+    await rm(dest, { recursive: true, force: true }).catch(() => {})
+    return fail(`원본을 비우지 못했어요(사용 중일 수 있어요): ${(err as Error).message}`)
+  }
+
+  try {
+    await symlink(dest, src, 'junction')
+  } catch (err) {
+    // 실물은 dest에 멀쩡히 있다. 그 사실을 정확히 알려준다 — 여기서 얼버무리면
+    // 사용자는 파일이 사라진 줄 안다.
+    return {
+      ok: false,
+      movedTo: dest,
+      linked: false,
+      copiedFiles: after.files,
+      copiedBytes: after.bytes,
+      reason:
+        `옮기기는 끝났는데 원래 자리에 바로가기를 못 만들었어요(${(err as Error).message}). ` +
+        `파일은 ${dest}에 그대로 있습니다.`,
+    }
+  }
+
+  return { ok: true, movedTo: dest, linked: true, copiedFiles: after.files, copiedBytes: after.bytes }
+}
+
+/**
+ * 정션으로 옮긴 폴더를 되돌린다. 정션을 먼저 걷어내고 실물을 제자리로.
+ * 순서를 바꾸면 자기 자신 위로 복사하게 된다.
+ */
+export async function undoFolderJunction(originalPath: string, movedTo: string): Promise<{ ok: boolean; reason?: string }> {
+  const { rm, cp, lstat, unlink } = await import('node:fs/promises')
+  try {
+    const st = await lstat(originalPath).catch(() => null)
+    if (st) {
+      if (!st.isSymbolicLink() && !st.isDirectory()) return { ok: false, reason: '원래 자리에 다른 게 있어요' }
+      if (st.isSymbolicLink()) await unlink(originalPath)
+      // 정션이 아니라 실제 폴더가 생겼다면 덮어쓰지 않는다.
+      else if ((await measureFolder(originalPath)).files > 0) {
+        return { ok: false, reason: '원래 자리에 새 파일이 생겼어요. 덮어쓰지 않았습니다.' }
+      } else await rm(originalPath, { recursive: true, force: true })
+    }
+    await mkdir(dirname(originalPath), { recursive: true })
+    await cp(movedTo, originalPath, { recursive: true, preserveTimestamps: true })
+    await rm(movedTo, { recursive: true, force: true })
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, reason: (err as Error).message }
   }
 }
 
