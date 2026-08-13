@@ -61,11 +61,70 @@ export interface Unit {
    *   권하는 셈이다. 옮기기는 다르다 — 아무것도 안 없어지니까.
    */
   moveOnly?: boolean
+  /** 되돌리는 데 드는 것 한 마디: 'pip install 몇 분' */
+  undoCost: string
+  /**
+   * 이 프로젝트를 아직 쓰고 있나 — **관측된 사실만.**
+   *
+   * ★ 왜 확률을 안 쓰나: "안 쓸 확률 87%" 같은 숫자를 만들 근거가 우리에겐 없다.
+   *   사용자가 이걸 쓸지 안 쓸지의 정답 데이터가 없으니 그건 계산이 아니라 지어내기고,
+   *   무엇보다 **사용자가 검증할 수 없는 숫자**다. "왜 87%예요?"에 답을 못 한다.
+   *   한 번 틀리면 나머지 설명까지 같이 의심받는다 — 이 앱이 신뢰로 버는 걸 깎는다.
+   *
+   * 대신 셀 수 있는 걸 센다. 아래는 전부 파일 시스템에서 실제로 읽은 값이고,
+   * 사용자가 탐색기를 열어 그대로 확인할 수 있다.
+   */
+  activity?: UnitActivity
 }
+
+/**
+ * 프로젝트가 살아 있는지의 관측값.
+ *
+ * ★ .venv 파일의 수정일은 '쓴 날'이 아니라 **'설치한 날'**이다. 그래서
+ *   "26일 전에 마지막으로 손댔어요"는 "26일 전에 pip install 했다"는 뜻이지
+ *   "26일 전까지 작업했다"가 아니다. "아직 작업하시나요?"의 답이 될 수 없다.
+ *   진짜 답은 옆에 있다 — **표시 폴더 바깥의 소스 파일**이 언제 바뀌었나.
+ */
+export interface UnitActivity {
+  /**
+   * 무엇을 센 값인가.
+   *   'source' — 프로젝트의 사람이 쓴 파일(코드·설정·문서)
+   *   'folder' — 그 폴더 자신의 파일들
+   * 섞으면 문장이 거짓이 된다. "소스는 그대로"와 "폴더는 매일 바뀐다"는 다른 말이다.
+   */
+  scope: 'source' | 'folder'
+  /** 센 파일 수 */
+  sourceFiles: number
+  /** 그중 최근 RECENT_DAYS 안에 바뀐 것 */
+  recentSources: number
+  /** 비율(%) — 지어낸 확률이 아니라 센 개수의 비율이다 */
+  recentPercent: number
+  /** 소스를 마지막으로 고친 게 며칠 전인가. 모르면 null */
+  sourceDays: number | null
+  /**
+   * 최근 것들이 **며칠에 걸쳐** 생겼나.
+   *
+   * ★ 이게 없으면 숫자가 거짓말을 한다. 실측에서 바로 걸렸다:
+   *   ACE-Step-1.5의 소스 1,161개가 전부 '최근 30일'에 들어와 100%가 나왔는데,
+   *   실제로는 **28일 전 하루에 한꺼번에 깔린 것**이었다. 오늘 고친 건 1개뿐.
+   *   설치·전개 한 번과 매일 고쳐 온 것이 같은 숫자로 보이면 신호가 아니다.
+   *   며칠에 걸쳐 있는지를 세면 둘이 갈린다.
+   */
+  spreadDays: number
+  /** 가장 많이 몰린 날이 며칠 전인가 (설치일로 읽히는 날) */
+  busiestDay: number | null
+  /** 그날 하루에 생긴 개수 */
+  busiestCount: number
+}
+
+/** '최근'의 기준. 한 달 안에 손댄 프로젝트는 쓰는 중으로 본다. */
+export const RECENT_DAYS = 30
 
 interface MarkerSpec {
   what: string
   onDelete: string
+  /** 되돌리는 데 실제로 드는 것. 한 마디로 */
+  undoCost: string
 }
 
 /**
@@ -79,27 +138,31 @@ const MARKERS: Record<string, MarkerSpec> = {
   node_modules: {
     what: '설치해 둔 라이브러리',
     onDelete: '다시 열 때 npm install 한 번이면 돌아옵니다 (1~3분).',
+    undoCost: 'npm install 1~3분',
   },
   '.venv': {
     what: '파이썬 가상환경',
     onDelete: '가상환경을 다시 만들면 돌아옵니다 (pip install, 몇 분).',
+    undoCost: 'pip install 몇 분',
   },
   venv: {
     what: '파이썬 가상환경',
     onDelete: '가상환경을 다시 만들면 돌아옵니다 (pip install, 몇 분).',
+    undoCost: 'pip install 몇 분',
   },
   'site-packages': {
     what: '파이썬 라이브러리',
     onDelete: 'pip install로 다시 받습니다 (몇 분).',
+    undoCost: 'pip install 몇 분',
   },
-  target: { what: '빌드 결과물', onDelete: '다시 빌드하면 그대로 만들어집니다.' },
-  dist: { what: '빌드 결과물', onDelete: '다시 빌드하면 그대로 만들어집니다.' },
-  build: { what: '빌드 결과물', onDelete: '다시 빌드하면 그대로 만들어집니다.' },
-  out: { what: '빌드 결과물', onDelete: '다시 빌드하면 그대로 만들어집니다.' },
-  '.next': { what: '빌드 캐시', onDelete: '다음 실행 때 다시 만듭니다.' },
-  __pycache__: { what: '파이썬 캐시', onDelete: '실행하면 다시 생깁니다.' },
-  '.gradle': { what: '그레이들 캐시', onDelete: '다음 빌드 때 다시 받습니다.' },
-  '.tox': { what: '테스트 환경', onDelete: '다시 만들면 돌아옵니다.' },
+  target: { what: '빌드 결과물', onDelete: '다시 빌드하면 그대로 만들어집니다.', undoCost: '빌드 한 번' },
+  dist: { what: '빌드 결과물', onDelete: '다시 빌드하면 그대로 만들어집니다.', undoCost: '빌드 한 번' },
+  build: { what: '빌드 결과물', onDelete: '다시 빌드하면 그대로 만들어집니다.', undoCost: '빌드 한 번' },
+  out: { what: '빌드 결과물', onDelete: '다시 빌드하면 그대로 만들어집니다.', undoCost: '빌드 한 번' },
+  '.next': { what: '빌드 캐시', onDelete: '다음 실행 때 다시 만듭니다.', undoCost: '자동 재생성' },
+  __pycache__: { what: '파이썬 캐시', onDelete: '실행하면 다시 생깁니다.', undoCost: '자동 재생성' },
+  '.gradle': { what: '그레이들 캐시', onDelete: '다음 빌드 때 다시 받습니다.', undoCost: '다음 빌드 때 재다운로드' },
+  '.tox': { what: '테스트 환경', onDelete: '다시 만들면 돌아옵니다.', undoCost: '재생성 몇 분' },
 }
 
 const MARKER_NAMES = Object.keys(MARKERS)
@@ -180,6 +243,7 @@ export function foldIntoUnits(items: UnitItem[], top = 8): UnitSplit {
         count: 1,
         bytes: it.size,
         newestDays: typeof it.ageDays === 'number' ? it.ageDays : null,
+        undoCost: spec.undoCost,
       })
     }
   }
@@ -219,7 +283,9 @@ export function folderCandidates(
   const minBytes = opts.minBytes ?? 1024 ** 3 // 1GB — 옮길 값어치가 있는 크기
   // 2개면 충분하다. 8GB짜리 두 개가 든 폴더를 "흩어져 있다"고 뺄 이유가 없다.
   const minFiles = opts.minFiles ?? 2
-  const map = new Map<string, Unit & { key: string }>()
+  const map = new Map<string, Unit & { key: string; recent: number }>()
+  /** 폴더별 '며칠 전에 몇 개' — 설치 한 번과 계속 쌓이는 것을 가른다 */
+  const byDay = new Map<string, Map<number, number>>()
 
   for (const it of items) {
     if (splitUnit(it.path)) continue // 표시가 있는 건 위쪽 규칙이 이미 다뤘다
@@ -227,10 +293,17 @@ export function folderCandidates(
     if (i <= 0) continue
     const dir = it.path.slice(0, i)
     const key = dir.toLowerCase()
+    const recent = typeof it.ageDays === 'number' && it.ageDays <= RECENT_DAYS ? 1 : 0
+    if (recent) {
+      const hist = byDay.get(key) ?? new Map<number, number>()
+      hist.set(it.ageDays!, (hist.get(it.ageDays!) ?? 0) + 1)
+      byDay.set(key, hist)
+    }
     const g = map.get(key)
     if (g) {
       g.count++
       g.bytes += it.size
+      g.recent += recent
       if (typeof it.ageDays === 'number' && (g.newestDays === null || it.ageDays < g.newestDays)) {
         g.newestDays = it.ageDays
       }
@@ -238,6 +311,7 @@ export function folderCandidates(
       const name = dir.split(/[\\/]/).filter(Boolean).slice(-2).join(' › ')
       map.set(key, {
         key,
+        recent,
         path: dir,
         label: name,
         project: '',
@@ -248,6 +322,8 @@ export function folderCandidates(
         bytes: it.size,
         newestDays: typeof it.ageDays === 'number' ? it.ageDays : null,
         moveOnly: true,
+        // 안에 뭐가 있는지 모르는 폴더다. 되돌리는 비용도 모른다 — 그래서 옮기기만 권한다.
+        undoCost: '',
       })
     }
   }
@@ -256,7 +332,192 @@ export function folderCandidates(
     .filter((u) => u.bytes >= minBytes && u.count >= minFiles)
     .sort((a, b) => b.bytes - a.bytes)
     .slice(0, opts.top ?? 4)
-    .map(({ key, ...rest }) => rest)
+    .map(({ key, recent, ...rest }) => ({
+      ...rest,
+      /* 데이터 폴더의 신호는 그 폴더 자신의 파일이다. 여기에 프로젝트 소스 규칙을
+         갖다 대면 셀 게 없어서 아무 말도 못 한다 — 정작 "지금도 쓰이는 폴더인가"가
+         옮기기 전에 제일 알고 싶은 것인데. */
+      activity: {
+        scope: 'folder' as const,
+        sourceFiles: rest.count,
+        recentSources: recent,
+        sourceDays: rest.newestDays,
+        ...spreadOf(byDay.get(key) ?? new Map(), recent, rest.count),
+      },
+    }))
+}
+
+/* ────────────────────────────────────────────────────────────
+   실사용 신호 — "아직 작업하시나요?"를 우리가 관측한다
+   ──────────────────────────────────────────────────────────── */
+
+/**
+ * 사람이 직접 쓰는 파일인가 — 코드·설정·문서.
+ *
+ * ★ 왜 좁히나 (실측에서 바로 드러났다): 처음엔 표시 폴더 바깥을 전부 셌다.
+ *   그랬더니 `ACE-Step-1.5`가 "소스 1,746개 중 최근 30일에 바뀐 것 1,746개(100%)"로
+ *   나왔다. 그 프로젝트가 활발해서가 아니라 **그 앱이 로그와 산출물을 매일
+ *   거기에 쓰고 있어서**다. 그러면 모든 프로젝트가 '작업 중'이 되고, 신호가
+ *   아니라 배경음이 된다.
+ *
+ *   사람이 손으로 고치는 파일만 센다. 프로그램이 뱉는 것(로그·출력·캐시)은 뺀다.
+ */
+const SOURCE_EXTS = new Set([
+  '.py', '.ipynb', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.vue', '.svelte',
+  '.java', '.kt', '.swift', '.c', '.h', '.cpp', '.hpp', '.cs', '.go', '.rs', '.rb', '.php', '.sql',
+  '.html', '.css', '.scss', '.json', '.toml', '.yaml', '.yml', '.ini', '.cfg', '.env',
+  '.md', '.rst', '.sh', '.bat', '.ps1', '.gradle', '.xml',
+])
+
+/** 프로그램이 뱉는 자리 — 여기 있는 건 사람이 고친 게 아니다. */
+const GENERATED_DIR = /[\\/](logs?|log|cache|caches|tmp|temp|output|outputs|results?|runs?|checkpoints?|wandb|\.pytest_cache|\.mypy_cache|\.idea|\.vscode)[\\/]/i
+
+export function isSourceLike(path: string): boolean {
+  if (GENERATED_DIR.test(path)) return false
+  const name = path.slice(Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/')) + 1)
+  const dot = name.lastIndexOf('.')
+  if (dot <= 0) return false
+  return SOURCE_EXTS.has(name.slice(dot).toLowerCase())
+}
+
+/** 폴더 하나의 활동 요약. 스캔하면서 한 파일씩 채운다. */
+export interface DirStat {
+  files: number
+  recent: number
+  newestDays: number | null
+  /** 최근 것들이 며칠 전에 몇 개씩 생겼나 — 설치 한 번과 매일 작업을 가른다 */
+  recentByDay: Map<number, number>
+}
+
+/** 폴더별 활동 장부. 키는 소문자 폴더 경로. */
+export type SourceDirs = Map<string, DirStat>
+
+/**
+ * 스캔이 지나가는 파일 하나를 장부에 적는다.
+ *
+ * ★ 스캔 도중에 적는 이유: 프로젝트마다 폴더를 다시 열어 훑으면 몇 분이 더 든다.
+ *   어차피 한 번 지나가는 파일이니 그때 세면 추가 비용이 0이다.
+ *
+ * 표시 폴더 안쪽(.venv·node_modules)은 적지 않는다. 거기 파일의 수정일은
+ * '쓴 날'이 아니라 '설치한 날'이라, 세어봐야 "아직 작업하나"에 답이 안 된다.
+ */
+export function noteSourceFile(dirs: SourceDirs, path: string, ageDays: number | undefined, recentDays = RECENT_DAYS): void {
+  if (splitUnit(path)) return
+  if (!isSourceLike(path)) return // 로그·산출물을 세면 모든 프로젝트가 '작업 중'이 된다
+  const i = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'))
+  if (i <= 0) return
+  const key = path.slice(0, i).toLowerCase()
+  const d = dirs.get(key) ?? { files: 0, recent: 0, newestDays: null, recentByDay: new Map<number, number>() }
+  d.files++
+  if (typeof ageDays === 'number') {
+    if (ageDays <= recentDays) {
+      d.recent++
+      d.recentByDay.set(ageDays, (d.recentByDay.get(ageDays) ?? 0) + 1)
+    }
+    if (d.newestDays === null || ageDays < d.newestDays) d.newestDays = ageDays
+  }
+  dirs.set(key, d)
+}
+
+/** 프로젝트 뿌리 아래 폴더들을 합쳐 활동 값을 만든다. 아무것도 못 세면 null. */
+export function activityForRoot(dirs: SourceDirs, root: string): UnitActivity | null {
+  const prefix = root.toLowerCase()
+  const with_ = prefix.endsWith('\\') ? prefix : prefix + '\\'
+  let sourceFiles = 0
+  let recentSources = 0
+  let sourceDays: number | null = null
+  const byDay = new Map<number, number>()
+
+  for (const [dir, d] of dirs) {
+    if (dir !== prefix && !dir.startsWith(with_)) continue
+    sourceFiles += d.files
+    recentSources += d.recent
+    if (d.newestDays !== null && (sourceDays === null || d.newestDays < sourceDays)) sourceDays = d.newestDays
+    for (const [day, n] of d.recentByDay) byDay.set(day, (byDay.get(day) ?? 0) + n)
+  }
+  if (!sourceFiles) return null
+  return { scope: 'source', sourceFiles, recentSources, sourceDays, ...spreadOf(byDay, recentSources, sourceFiles) }
+}
+
+/** 날짜별 개수 → 퍼진 정도. 한 날에 몰렸으면 그건 작업이 아니라 설치다. */
+export function spreadOf(byDay: Map<number, number>, recent: number, total: number) {
+  let busiestDay: number | null = null
+  let busiestCount = 0
+  for (const [day, n] of byDay) {
+    if (n > busiestCount) { busiestCount = n; busiestDay = day }
+  }
+  return {
+    recentPercent: total ? Math.round((recent / total) * 100) : 0,
+    spreadDays: byDay.size,
+    busiestDay,
+    busiestCount,
+  }
+}
+
+/** 최근 것이 하루에 몰려 있나 — 설치·전개 한 번으로 읽을 근거. */
+export function looksLikeOneShot(a: UnitActivity): boolean {
+  return a.spreadDays > 0 && a.spreadDays <= 2 && a.busiestCount >= Math.max(20, a.recentSources * 0.7)
+}
+
+/** 단위 카드에 활동 값을 붙인다. 프로젝트 뿌리 = 표시 폴더의 부모. */
+export function attachActivity(units: Unit[], dirs: SourceDirs): Unit[] {
+  return units.map((u) => {
+    // 폴더 카드는 자기 파일로 이미 셌다(folderCandidates). 덮어쓰지 않는다 —
+    // 부모 폴더의 소스를 갖다 붙이면 옆 프로젝트의 활동이 이 폴더 것처럼 보인다.
+    if (!u.marker) return u
+    const i = Math.max(u.path.lastIndexOf('\\'), u.path.lastIndexOf('/'))
+    const a = activityForRoot(dirs, i > 0 ? u.path.slice(0, i) : u.path)
+    return a ? { ...u, activity: a } : u
+  })
+}
+
+/**
+ * 실사용 신호를 한 줄로. **못 세었으면 아무 말도 안 한다** — 빈 문자열.
+ *
+ * 여기서 "안 쓰실 것 같아요" 같은 단정을 하지 않는다. 우리가 본 것만 쓰고,
+ * 결론은 사용자가 낸다. 우리가 본 것도 정확히 몇 개 중 몇 개인지 밝힌다 —
+ * 그래야 사용자가 탐색기를 열어 확인할 수 있고, 확인할 수 있어야 믿을 수 있다.
+ */
+export function activitySentence(a: UnitActivity | undefined, recentDays = RECENT_DAYS): string {
+  if (!a || !a.sourceFiles) return ''
+  const what = a.scope === 'source' ? '소스' : '이 폴더의 파일'
+
+  const tail = `(${what} ${a.sourceFiles.toLocaleString()}개 중 최근 ${recentDays}일에 ${
+    a.scope === 'folder' ? '생기거나 바뀐' : '바뀐'
+  } 것 ${a.recentSources.toLocaleString()}개 · ${a.recentPercent}%)`
+
+  const ago = (d: number) => (d < 365 ? `${Math.floor(d / 30)}개월` : `${Math.floor(d / 365)}년`)
+
+  /* ★ 하루에 몰린 건 작업이 아니라 설치다. 이걸 안 가르면 "100% 최근"이
+     "매일 쓰는 중"으로 읽힌다 — 실제로는 28일 전 하루에 깔린 것이었다. */
+  if (looksLikeOneShot(a)) {
+    const rest = a.recentSources - a.busiestCount
+    return `${a.busiestDay}일 전 하루에 ${a.busiestCount.toLocaleString()}개가 한꺼번에 ${
+      a.scope === 'folder' ? '쌓였어요' : '깔렸어요'
+    } — 그 뒤로 ${rest ? `${rest.toLocaleString()}개만 ` : ''}바뀌었습니다 ${tail}`
+  }
+
+  if (a.scope === 'folder') {
+    // 데이터 폴더는 '고친다'가 아니라 '쌓인다'. 결론도 반대다 —
+    // 지금도 쓰이는 폴더면 옮길 때 그 프로그램을 먼저 닫아야 한다.
+    const head =
+      a.spreadDays >= 3
+        ? '지금도 쌓이는 중이에요 — 옮기실 거면 그 프로그램을 먼저 닫아주세요'
+        : a.sourceDays === null
+          ? '언제 쌓인 것인지 알 수 없어요'
+          : `${ago(a.sourceDays)}째 새로 쌓인 게 없어요`
+    return `${head} ${tail}`
+  }
+
+  const head =
+    a.sourceDays === null
+      ? '소스 파일의 수정일을 못 읽었어요'
+      : a.spreadDays >= 3
+        ? `최근 ${recentDays}일 중 ${a.spreadDays}일에 걸쳐 소스를 고치셨어요 — 작업 중인 프로젝트입니다`
+        : a.sourceDays <= recentDays
+          ? `소스를 ${a.sourceDays}일 전에 고쳤어요`
+          : `소스도 ${ago(a.sourceDays)}째 그대로예요`
+  return `${head} ${tail}`
 }
 
 /**

@@ -613,6 +613,18 @@
   .unit-l{display:flex;gap:var(--s-2);margin-top:3px;color:var(--ink-2);
           font-size:var(--t-caption);line-height:var(--lh-caption);letter-spacing:var(--tr-caption)}
   .unit-l i{flex:none;width:12px;text-align:center;font-style:normal;font-weight:var(--w-num);color:var(--amb)}
+  /* 되돌리는 비용 — 사람이 실제로 무서워하는 건 '위험도'가 아니라
+     "잘못 지우면 뭘 물어내나"다. 이건 우리가 확실히 아는 값이라 배지로 단다. */
+  .unit-undo{font-size:var(--t-micro);line-height:var(--lh-micro);letter-spacing:var(--tr-micro);
+             font-weight:var(--w-em);color:var(--safe);border:1px solid var(--safe);
+             border-radius:999px;padding:1px 8px;white-space:nowrap}
+  /* 실사용 신호. 최근에 손댄 프로젝트는 카드 색을 바꿔서 먼저 눈에 띄게 한다 —
+     "지우세요"가 아니라 "이건 쓰는 중입니다"라는 경고다. */
+  .unit-act-l{color:var(--ink-2)}
+  .unit-live{border-left-color:var(--lock)}
+  .unit-live .unit-act-l{color:var(--lock)}
+  .unit-live .unit-act-l i{color:var(--lock)}
+  .unit-live .unit-undo{color:var(--lock);border-color:var(--lock)}
   .unit-act{display:flex;gap:var(--s-2);flex-wrap:wrap;margin-top:var(--s-2)}
 
   /* ── 낱개 목록의 묶음 머리 ──────────────────────────────────

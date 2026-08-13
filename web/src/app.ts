@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.10.0'
+const APP_VERSION = '0.10.1'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -713,12 +713,14 @@ function unitCardsHtml(units: any[]): string {
         <select class="pick-dest" data-unit-dest="1"><option value="">옮길 드라이브…</option></select>
       </div>
       ${units.map((u, i) => `
-        <div class="unit">
+        <div class="unit${u.activeNow ? ' unit-live' : ''}">
           <div class="unit-h">
             <span class="unit-name">${esc(u.label)}</span>
+            ${u.undoCost ? `<span class="unit-undo">되돌리기 ${esc(u.undoCost)}</span>` : ''}
             <span class="unit-amt">${fmtBytes(u.bytes)} · ${u.count.toLocaleString()}개</span>
           </div>
           <div class="unit-l">${esc(u.what)} · ${esc(u.lastTouched ?? '')}</div>
+          ${u.activityNote ? `<div class="unit-l unit-act-l"><i>◆</i>${esc(u.activityNote)}</div>` : ''}
           <div class="unit-l"><i>→</i>${esc(u.onDelete)}</div>
           <div class="bd-path">${esc(u.path)}</div>
           <div class="unit-act">

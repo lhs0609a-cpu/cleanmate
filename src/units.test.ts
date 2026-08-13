@@ -9,7 +9,18 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { splitUnit, foldIntoUnits, folderCandidates, lastTouched, UNIT_MIN_BYTES } from './units.ts'
+import {
+  splitUnit,
+  foldIntoUnits,
+  folderCandidates,
+  lastTouched,
+  noteSourceFile,
+  activityForRoot,
+  activitySentence,
+  looksLikeOneShot,
+  UNIT_MIN_BYTES,
+  type SourceDirs,
+} from './units.ts'
 
 const GB = 1024 ** 3
 const TORCH = 'C:\\Users\\me\\AppData\\Local\\MusicFactory\\ACE-Step-1.5\\.venv\\Lib\\site-packages\\torch\\lib\\torch_cuda.dll'
@@ -103,6 +114,81 @@ test('작거나 흩어진 폴더는 후보가 아니다 — 카드가 늘어나�
     [],
     '파일 하나짜리 폴더까지 카드로 만든다'
   )
+})
+
+/* ── 실사용 신호 — 확률 대신 센 것 ───────────────────────────
+   ★ 여기서 잠그는 건 **숫자가 거짓말하지 않는 것**이다. 실측에서 바로 걸렸다:
+     소스 1,145개가 전부 '최근 30일'에 들어와 100%가 나왔는데, 실제로는
+     27일 전 하루에 한꺼번에 깔린 것이었고 그 뒤로 고친 건 1개뿐이었다.
+     설치 한 번과 매일 작업이 같은 숫자로 보이면 그건 신호가 아니다. */
+
+const dirs = (files: { path: string; ageDays: number }[]) => {
+  const m: SourceDirs = new Map()
+  for (const f of files) noteSourceFile(m, f.path, f.ageDays)
+  return m
+}
+
+test('★ 로그·산출물은 소스로 세지 않는다 — 안 그러면 모든 프로젝트가 "작업 중"이 된다', () => {
+  const m = dirs([
+    { path: 'C:\\dev\\p\\main.py', ageDays: 200 },
+    { path: 'C:\\dev\\p\\logs\\run.log', ageDays: 0 },
+    { path: 'C:\\dev\\p\\outputs\\a.wav', ageDays: 0 },
+    { path: 'C:\\dev\\p\\output.wav', ageDays: 0 }, // 확장자가 소스가 아니다
+  ])
+  const a = activityForRoot(m, 'C:\\dev\\p')!
+  assert.equal(a.sourceFiles, 1, '프로그램이 뱉은 것까지 소스로 셌다')
+  assert.equal(a.recentSources, 0)
+})
+
+test('★ 하루에 몰린 건 "작업"이 아니라 "설치"라고 말한다', () => {
+  const files = Array.from({ length: 300 }, (_, i) => ({ path: `C:\\dev\\p\\src\\f${i}.py`, ageDays: 27 }))
+  files.push({ path: 'C:\\dev\\p\\src\\touched.py', ageDays: 0 })
+  const a = activityForRoot(dirs(files), 'C:\\dev\\p')!
+
+  assert.equal(a.recentPercent, 100, '센 값 자체는 100%가 맞다')
+  assert.equal(looksLikeOneShot(a), true, '하루에 몰린 것을 못 알아본다')
+  const s = activitySentence(a)
+  assert.match(s, /27일 전 하루에 300개가 한꺼번에/, '설치 한 번이라는 사실을 안 말한다')
+  assert.doesNotMatch(s, /작업 중인 프로젝트/, '설치를 작업으로 읽는다')
+})
+
+test('여러 날에 걸쳐 고친 건 작업 중이라고 말한다', () => {
+  const files = Array.from({ length: 40 }, (_, i) => ({ path: `C:\\dev\\p\\src\\f${i}.ts`, ageDays: i % 12 }))
+  const a = activityForRoot(dirs(files), 'C:\\dev\\p')!
+  assert.equal(looksLikeOneShot(a), false)
+  assert.match(activitySentence(a), /12일에 걸쳐 소스를 고치셨어요/)
+})
+
+test('★ 퍼센트는 몇 개 중 몇 개인지 함께 쓴다 — 검증할 수 없는 숫자는 안 쓴다', () => {
+  const a = activityForRoot(
+    dirs([
+      { path: 'C:\\dev\\p\\a.py', ageDays: 1 },
+      { path: 'C:\\dev\\p\\b.py', ageDays: 400 },
+      { path: 'C:\\dev\\p\\c.py', ageDays: 400 },
+      { path: 'C:\\dev\\p\\d.py', ageDays: 400 },
+    ]),
+    'C:\\dev\\p'
+  )!
+  assert.equal(a.recentPercent, 25)
+  // 분모와 분자가 문장에 있어야 사용자가 탐색기를 열어 확인할 수 있다.
+  assert.match(activitySentence(a), /소스 4개 중 최근 30일에 바뀐 것 1개 · 25%/)
+})
+
+test('셀 게 없으면 아무 말도 안 한다 — 빈칸을 지어내지 않는다', () => {
+  assert.equal(activitySentence(undefined), '')
+  assert.equal(activityForRoot(new Map(), 'C:\\dev\\p'), null)
+})
+
+test('데이터 폴더는 "쌓인다"로 말하고 결론이 반대다 — 옮기기 전에 닫으라고 한다', () => {
+  const items = Array.from({ length: 30 }, (_, i) => ({
+    path: `C:\\Users\\me\\AppData\\Local\\app\\tmp\\api_audio\\a${i}.wav`,
+    size: 200 * 1024 * 1024,
+    ageDays: i % 10,
+  }))
+  const [c] = folderCandidates(items)
+  assert.equal(c.activity?.scope, 'folder')
+  assert.match(activitySentence(c.activity), /지금도 쌓이는 중이에요/)
+  assert.match(activitySentence(c.activity), /먼저 닫아주세요/)
 })
 
 test('나이를 모르면 모른다고 한다', () => {

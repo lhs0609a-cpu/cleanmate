@@ -131,7 +131,16 @@ import {
 } from './relocate.ts'
 import { stampMtime } from './quarantine.ts'
 import { findDuplicates, DUP_MIN_BYTES } from './dupes.ts'
-import { foldIntoUnits, folderCandidates, lastTouched } from './units.ts'
+import {
+  foldIntoUnits,
+  folderCandidates,
+  lastTouched,
+  noteSourceFile,
+  attachActivity,
+  activitySentence,
+  looksLikeOneShot,
+  type SourceDirs,
+} from './units.ts'
 import {
   cloudRoots,
   buildBackupIndex,
@@ -703,6 +712,8 @@ async function scanPlan(paths: string[]) {
   const keptMap = new Map<string, number>()
   /** 어디를 봤는지도 돌려준다 — "어디까지 봤나"를 숨기면 신뢰가 안 생긴다. */
   const roots: { path: string; files: number; bytes: number }[] = []
+  /** 폴더별 활동 장부 — '아직 쓰는 프로젝트인가'의 관측 근거(units.ts) */
+  const sourceDirs: SourceDirs = new Map()
 
   /* 진행률의 근거 — 지난번 이 폴더들에 파일이 몇 개였나. 없으면 폴더 개수로 센다. */
   const weights = await readScanStats()
@@ -736,6 +747,12 @@ async function scanPlan(paths: string[]) {
     roots.push({ path, files: scanned.files.length, bytes: scanned.totalBytes })
 
     for (const f of scanned.files) {
+      /* ★ 지나가는 김에 '이 프로젝트를 아직 쓰나'를 센다.
+         .venv 파일의 수정일은 '쓴 날'이 아니라 '설치한 날'이라, 그것만 보면
+         "26일 전에 손댔어요"가 "26일 전에 pip install 했다"는 뜻이 된다.
+         진짜 신호는 표시 폴더 **바깥의 소스**가 언제 바뀌었나다. */
+      noteSourceFile(sourceDirs, f.path, f.ageDays)
+
       const c = classifyOne(f)
       const z = c.verdict.zone
       if (z === 'LOCKED') {
@@ -804,7 +821,16 @@ async function scanPlan(paths: string[]) {
         age: b.age,
         // 문장은 여기서 만든다 — 화면이 "몇 개월"을 다시 계산하게 두면
         // 같은 숫자가 두 곳에서 다르게 읽힌다(units.ts의 lastTouched).
-        units: [...folded.units, ...moveCards].map((u) => ({ ...u, lastTouched: lastTouched(u.newestDays) })),
+        units: attachActivity([...folded.units, ...moveCards], sourceDirs).map((u) => ({
+          ...u,
+          lastTouched: lastTouched(u.newestDays),
+          // 문장은 여기서 만든다 — 화면이 %를 다시 계산하면 두 곳에서 달라진다.
+          activityNote: activitySentence(u.activity),
+          /* '지금 쓰는 중'의 판단도 여기서 한다. 화면이 "며칠 이내면 빨강"으로
+             다시 계산하면 설치 한 번(하루에 몰린 것)까지 빨강이 된다 — 정확히
+             우리가 방금 가른 그 차이를 화면에서 도로 뭉개는 셈이다. */
+          activeNow: !!u.activity && !looksLikeOneShot(u.activity) && u.activity.spreadDays >= 3,
+        })),
         looseCount: folded.looseCount,
         looseBytes: folded.looseBytes,
         samples: b.samples.map(withOwner),
