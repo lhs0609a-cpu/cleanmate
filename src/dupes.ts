@@ -24,6 +24,7 @@
  */
 
 import { extname } from 'node:path'
+import { stat } from 'node:fs/promises'
 import { groupBySize, contentHash, buildDupGroups, pickKeeper, type PhotoFile, type DupGroup } from './photos.ts'
 
 export type DupFile = PhotoFile
@@ -140,6 +141,67 @@ export function buildFileDupGroups(hashed: { file: DupFile; hash: string }[]): D
   })
 }
 
+/* ────────────────────────────────────────────────────────────
+   이미 합쳐진 것을 "낭비"라고 하지 않는다
+
+   ★ 실측에서 나온 오보 (2026-08-18)
+     이 PC의 AI 모델 폴더를 훑었더니 "낭비 58.86GB"라고 나왔다. 그중
+     sd_xl_base_1.0.safetensors는 6.46GB짜리가 **6벌**로 잡혀 32.31GB가
+     낭비라고 했다. 그런데 fsutil로 확인하니 링크수가 6이었다 —
+     여섯 경로가 **이미 같은 실물 하나**를 나눠 쓰고 있었고, 실제로 차지하는
+     건 6.46GB, 회수할 수 있는 건 **0바이트**였다.
+
+     내용이 같다는 것과 자리를 따로 차지한다는 것은 다른 문제다. 해시만 보면
+     구분이 안 된다. 파일시스템에 물어봐야 안다.
+
+     "58.86GB를 아낄 수 있어요"라고 해놓고 눌렀더니 아무것도 안 비면, 그건
+     경쟁 도구가 하는 짓이고 이 제품이 하지 않기로 한 짓이다.
+     (실제 회수 가능액은 19.7GB였다 — Ollama 모델 쪽만 진짜 중복이었다)
+   ──────────────────────────────────────────────────────────── */
+
+/**
+ * 파일의 '실물 신원'. 같은 값이면 이미 같은 실물을 나눠 쓰는 중이다(하드링크).
+ * 윈도우에서는 볼륨 일련번호 + 파일 인덱스, 그 외에는 dev + ino가 그 역할을 한다.
+ */
+export type FileIdentity = string
+
+/**
+ * 이미 링크된 사본을 낭비에서 뺀다 — 순수 함수라 디스크 없이 시험할 수 있다.
+ *
+ * @param identityOf 경로 → 실물 신원. 모르면 null(그때는 **낭비로 센다** —
+ *                   모른다고 0으로 깎으면 진짜 중복을 놓친다. 보수적인 쪽은
+ *                   "회수 가능하다"가 아니라 "회수량을 부풀리지 않는다"이므로,
+ *                   신원을 모를 때는 따로 차지한다고 보는 게 맞다)
+ */
+export function markAlreadyLinked(
+  groups: DupGroup[],
+  identityOf: (path: string) => FileIdentity | null
+): DupGroup[] {
+  return groups.map((g) => {
+    /* 이미 센 신원들. 키퍼의 신원으로 시작한다 — 키퍼와 같은 실물인 사본은
+       치워봐야 1바이트도 안 빈다. 사본끼리 서로 링크된 경우도 한 번만 센다. */
+    const seen = new Set<FileIdentity>()
+    const kid = identityOf(g.keeper.path)
+    if (kid) seen.add(kid)
+
+    let wasted = 0
+    const copies = g.copies.map((c) => {
+      const id = identityOf(c.path)
+      const linked = id !== null && seen.has(id)
+      if (id) seen.add(id)
+      if (!linked) wasted += c.size
+      return linked ? { ...c, alreadyLinked: true } : c
+    })
+
+    return { ...g, copies, wastedBytes: wasted }
+  })
+}
+
+/** 이 묶음에서 실제로 회수할 게 남았나. 0이면 화면에 올릴 이유가 없다. */
+export function hasRealWaste(g: DupGroup): boolean {
+  return g.wastedBytes > 0
+}
+
 export interface DupScanResult {
   groups: DupGroup[]
   /** 사본을 치우면 비는 용량 */
@@ -190,7 +252,27 @@ export async function hashAndGroup(candidates: DupFile[]): Promise<Omit<DupScanR
     }
   }
 
-  const groups = buildFileDupGroups(hashed)
+  const raw = buildFileDupGroups(hashed)
+
+  /* ★ 여기서 파일시스템에 한 번 더 물어본다.
+     내용이 같아도 **이미 같은 실물**이면 치워봐야 용량이 안 빈다. stat은 중복으로
+     확정된 것에만 부르므로(수십 개 수준) 비용이 안 보인다. */
+  const ids = new Map<string, FileIdentity | null>()
+  for (const g of raw) {
+    for (const f of [g.keeper, ...g.copies]) {
+      if (ids.has(f.path)) continue
+      try {
+        const st = await stat(f.path)
+        /* nlink가 1이면 자기 혼자다 — 신원을 만들 필요도 없다. 2 이상일 때만
+           누구와 같은 실물인지 따진다. ino는 윈도우에서도 파일 인덱스로 채워진다. */
+        ids.set(f.path, st.nlink > 1 ? `${st.dev}:${st.ino}` : null)
+      } catch {
+        ids.set(f.path, null) // 못 읽으면 모르는 것 — 낭비로 센다(부풀리지 않는 쪽)
+      }
+    }
+  }
+
+  const groups = markAlreadyLinked(raw, (p) => ids.get(p) ?? null).filter(hasRealWaste)
   return {
     groups,
     wastedBytes: groups.reduce((s, g) => s + g.wastedBytes, 0),

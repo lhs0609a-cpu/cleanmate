@@ -1915,16 +1915,41 @@ async function main() {
        * 정상이고, 지우면 그냥 고장이다(dupes.ts의 NOT_DUPLICATES).
        */
       case 'dupes-scan': {
+        /* ★ 모델 폴더를 기본으로 함께 훑는다 (2026-08-18 실측에서 나온 구멍)
+         *
+         *   여태 기본 범위는 relocateRoots(다운로드·영상·사진·문서)뿐이었다.
+         *   그래서 이 PC를 훑었을 때 2,538개만 보고 "중복 0.16GB"라고 했다.
+         *   실제로는 AI 모델이 ComfyUI 4벌·Ollama 2곳에 흩어져 있었고, 그중
+         *   Ollama 쪽만 해도 19.7GB가 진짜 중복이었다.
+         *
+         *   찾는 함수는 이미 있었다(findModelRoots — model-roots 명령이 쓴다).
+         *   화면에서 사용자가 직접 골라 넣어야만 보이는 상태였을 뿐이다.
+         *   사용자가 "AI 모델이 어디 있는지" 알아내서 눌러줘야 하는 기능은
+         *   있는 것과 없는 것의 중간이다.
+         *
+         *   AppData 안의 모델도 여기서 걸린다 — dupes.ts의 NOT_DUPLICATES가
+         *   모델 파일에는 modelOk로 길을 열어두고 있다. */
         const roots = args.length
           ? args.map((p) => ({ label: p, path: p }))
-          : relocateRoots({ platform: process.platform, home: homedir() })
+          : [
+              ...relocateRoots({ platform: process.platform, home: homedir() }),
+              ...(await findModelRoots()),
+            ]
         const files: { path: string; name: string; size: number; mtimeMs: number }[] = []
+        /* 같은 파일을 두 번 담지 않는다.
+           기본 범위에 모델 폴더가 들어오면서 범위가 겹칠 수 있게 됐다(예: 다운로드
+           폴더 안의 models). 같은 파일이 두 줄로 들어가면 **자기 자신과 중복**으로
+           잡혀서 "6.46GB 낭비"라는 유령이 생긴다. */
+        const seenPath = new Set<string>()
 
         for (const [i, r] of roots.entries()) {
           progress({ t: 'dupes-scan', rootIndex: i, rootCount: roots.length, root: r.path, label: r.label })
           try {
             const scanned = await scan(r.path)
             for (const f of scanned.files) {
+              const key = f.path.toLowerCase()
+              if (seenPath.has(key)) continue
+              seenPath.add(key)
               files.push({
                 path: f.path,
                 name: f.path.slice(Math.max(f.path.lastIndexOf('\\'), f.path.lastIndexOf('/')) + 1),

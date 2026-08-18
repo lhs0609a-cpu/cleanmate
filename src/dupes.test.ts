@@ -16,6 +16,8 @@ import {
   findDuplicates,
   hashAndGroup,
   buildFileDupGroups,
+  markAlreadyLinked,
+  hasRealWaste,
   isModelFile,
   findInstallCauses,
   DUP_MIN_BYTES,
@@ -169,4 +171,64 @@ test('뺀 개수를 보고한다 — 조용히 빼면 "왜 안 나오지"가 된
   ])
   assert.equal(r.excluded, 2)
   assert.equal(r.groups.length, 0)
+})
+
+/* ────────────────────────────────────────────────────────────
+   이미 합쳐진 것을 "낭비"라고 하지 않는다
+
+   ★ 실측 오보 (2026-08-18): AI 모델 폴더를 훑고 "낭비 58.86GB"라고 했다.
+     그중 sd_xl_base_1.0.safetensors 6.46GB짜리가 6벌로 잡혀 32.31GB가
+     낭비라고 나왔는데, fsutil로 보니 링크수가 6이었다 — 여섯 경로가 이미 같은
+     실물 하나를 나눠 쓰고 있었고 회수 가능액은 0바이트였다.
+     실제 회수 가능액은 19.7GB(Ollama 모델 쪽)뿐이었다.
+
+     "58.86GB를 아낄 수 있어요"라고 해놓고 눌렀더니 아무것도 안 비는 건
+     경쟁 도구가 하는 짓이다.
+   ──────────────────────────────────────────────────────────── */
+
+/** 테스트용 파일 한 줄. 실제 디스크를 안 쓴다 — 신원은 주입한다. */
+const dupFile = (path: string, size = 1000) => ({ path, name: path.split('/').pop()!, size, mtimeMs: 0 })
+
+function group(keeper: string, copies: string[], size = 1000) {
+  return {
+    hash: 'h',
+    keeper: dupFile(keeper, size),
+    copies: copies.map((c) => dupFile(c, size)),
+    wastedBytes: copies.length * size,
+    keeperReason: '테스트',
+  }
+}
+
+test('★ 이미 하드링크된 사본은 낭비로 세지 않는다 — 치워도 1바이트도 안 빈다', () => {
+  const g = group('/a/model.bin', ['/b/model.bin', '/c/model.bin'], 6_460_000_000)
+  // 셋 다 같은 실물(링크수 3)
+  const out = markAlreadyLinked([g], () => 'vol:1234')
+  assert.equal(out[0].wastedBytes, 0, '이미 같은 실물인데 회수 가능하다고 말한다')
+  assert.ok(out[0].copies.every((c: any) => c.alreadyLinked), '이미 링크됐다고 표시하지 않는다')
+})
+
+test('★ 진짜로 따로 차지하는 사본은 그대로 센다 — 링크 인식이 진짜 중복까지 지우면 안 된다', () => {
+  const g = group('/a/m.bin', ['/b/m.bin'], 8_640_000_000)
+  const out = markAlreadyLinked([g], (p) => (p === '/a/m.bin' ? 'vol:1' : null))
+  assert.equal(out[0].wastedBytes, 8_640_000_000, '진짜 중복인데 낭비에서 뺐다')
+})
+
+test('신원을 모르면 낭비로 센다 — 모른다고 회수량을 0으로 깎지 않는다', () => {
+  const g = group('/a/m.bin', ['/b/m.bin'])
+  const out = markAlreadyLinked([g], () => null)
+  assert.equal(out[0].wastedBytes, 1000, '못 읽었다고 중복이 없는 셈 쳤다')
+})
+
+test('사본끼리 서로 링크된 것도 한 번만 센다', () => {
+  // 키퍼는 따로, 사본 둘은 서로 같은 실물 → 회수되는 건 한 벌치뿐이다.
+  const g = group('/a/m.bin', ['/b/m.bin', '/c/m.bin'])
+  const ids: Record<string, string> = { '/a/m.bin': 'v:1', '/b/m.bin': 'v:2', '/c/m.bin': 'v:2' }
+  const out = markAlreadyLinked([g], (p) => ids[p] ?? null)
+  assert.equal(out[0].wastedBytes, 1000, '서로 링크된 사본을 두 번 셌다')
+})
+
+test('회수할 게 없는 묶음은 목록에서 뺀다 — 눌러도 0바이트인 줄을 내밀지 않는다', () => {
+  const g = group('/a/m.bin', ['/b/m.bin'])
+  const out = markAlreadyLinked([g], () => 'same')
+  assert.equal(out.filter(hasRealWaste).length, 0, '회수액 0인 묶음이 화면에 올라간다')
 })
