@@ -15,16 +15,15 @@
  * 사용: teraclean-engine <command> [json-args]
  *   default-roots                    이 PC에서 기본으로 훑을 폴더 목록
  *   scan-plan      <path...>         스캔(여러 곳 가능) → 3-존 + 정리 계획 + 질문
- *   apply-sweep    <path...> [--quarantine]  존 A 자동 정리. 기본은 즉시 삭제 —
- *                                    --quarantine을 붙이면 30일 격리에서 멈춘다
- *   quar-list                        격리함 목록 (전 드라이브)
- *   restore        <id|--all>        되돌리기
- *   purge                            유예 30일이 지난 것만 실제 삭제
+ *   apply-sweep    <path...>         존 A 자동 정리 — 곧바로 지운다
+ *   quar-list                        지우다 남은 것 목록 (+ 옛 버전 보관함에 남은 것)
+ *   restore        <id|--all>        남은 것을 원래 자리로 되돌리기
+ *   purge                            남은 것 중 30일 지난 것 삭제 (옛 약속의 만료분)
  *   probe                            숨은 공간(hiberfil·휴지통·업데이트 캐시)
  *   answer-plan    <unknown> [path...]        그 질문에 걸린 항목 미리보기
- *   answer-apply   <unknown> <outcome> [path...] 답변 실행(정리는 격리로)
- *   quarantine-paths <path...>       고른 파일만 격리 (묶음이 아니라 낱개)
- *   quarantine-folders <path...>     폴더째 격리 (.venv·node_modules 같은 결정 단위)
+ *   answer-apply   <unknown> <outcome> [path...] 답변 실행 — 정리는 곧바로 삭제
+ *   quarantine-paths <path...>       고른 파일만 삭제 (묶음이 아니라 낱개)
+ *   quarantine-folders <path...>     폴더째 삭제 (.venv·node_modules 같은 결정 단위)
  *   startup                          시작프로그램 목록 + 판정
  *   startup-tasks                    로그온 예약작업 개수 (느려서 목록과 분리)
  *   startup-set    <id> <on|off>     시작프로그램 켜기/끄기 (되돌릴 수 있음)
@@ -53,6 +52,11 @@
  *
  * ★ 프로그램 '제거'는 여기 없다. 정식 언인스톨러를 띄우는 건 셸(Tauri)이 한다 —
  *   엔진은 파일도 프로그램도 임의로 지우지 않는다.
+ *
+ * ★ 보관함(30일 격리)은 없앴다. 같은 드라이브 안으로 옮기는 것이라 그동안
+ *   용량이 하나도 안 빴기 때문이다. 격리 모듈은 그대로 쓰지만 **삭제의 앞 단계**로만
+ *   쓴다(deleteNow) — 옮기고 나서 곧바로 지운다. quar-list·restore·purge가 남아
+ *   있는 건 옛 버전이 보관해둔 것을 되돌리거나 마저 지우기 위해서다.
  */
 
 import { stat, readFile, writeFile, mkdir, appendFile } from 'node:fs/promises'
@@ -73,6 +77,7 @@ import {
   listQuarantineRoots,
   purgeExpired,
   purgeNow,
+  purgeEntries,
   GRACE_DAYS,
 } from './quarantine.ts'
 import { defaultRoots } from './presets.ts'
@@ -95,7 +100,7 @@ import {
   tidyFolderName,
   type FolderEntry,
 } from './tidyfolder.ts'
-import { quarantine } from './quarantine.ts'
+import { quarantine, type QuarantineRequest } from './quarantine.ts'
 import {
   isPhoto,
   groupBySize,
@@ -529,7 +534,7 @@ function appDataFile(name: string): string {
      이미 계산한다. 즉 지울 목록은 **이미 만들어졌다가 버려지고 있었다.**
      버리지 말고 적어두면 두 번째 스캔이 통째로 사라진다.
 
-   ★ 그래도 다시 확인한다: 캐시는 '무엇을 지울지'의 후보일 뿐이고, 실제 격리는
+   ★ 그래도 다시 확인한다: 캐시는 '무엇을 지울지'의 후보일 뿐이고, 실제 삭제는
      파일마다 크기·수정일을 대조한 뒤에만 한다(quarantine의 expect).
      캐시가 낡았으면 그 파일들이 조용히 건너뛰어질 뿐, 엉뚱한 게 지워지지 않는다.
 
@@ -938,6 +943,39 @@ async function scanPlan(paths: string[]) {
 }
 
 /**
+ * 지운다 — **보관하지 않는다.**
+ *
+ * ── 왜 보관함이 없어졌나 ────────────────────────────────────
+ * 보관함(격리)은 같은 드라이브 안 `.teraclean` 폴더로 파일을 **옮기는** 것이라,
+ * 그것만으로는 용량이 1바이트도 안 빈다. 용량이 없어서 이 앱을 연 사람에게
+ * "30일 뒤에 12.7GB가 빕니다"는 답이 아니었다. 같은 항의를 여러 번 들었고
+ * 매번 맞는 말이었다. 그래서 이제 모든 정리는 **지금 지운다.**
+ *
+ * ── 그래도 지름길은 내지 않는다 ─────────────────────────────
+ * 새 삭제 루틴을 따로 파지 않고 quarantine()을 그대로 지난다. 안전장치가 전부
+ * 거기 들어 있기 때문이다 — 실행 직전 재확인(expect: 크기·수정시각이 그대로인가),
+ * 잠금(존 C) 거절, 드라이브별 장부. 그 검사를 다 지난 뒤 **방금 옮긴 것만**
+ * 지운다(purgeEntries). purgeNow를 쓰면 옛 버전이 남긴 것까지 함께 사라진다.
+ *
+ * ── 못 지운 것은 없어진 척하지 않는다 ───────────────────────
+ * 옮기기는 됐는데 지우다 실패한 것(대개 다른 프로그램이 잡고 있는 파일)은 장부에
+ * 그대로 남는다. leftover로 세어서 돌려주고, 화면은 '남은 것' 칸에서 되돌리기나
+ * 다시 지우기를 준다. 조용히 사라진 셈 치면 그 파일은 영영 안 보이는 용량이 된다.
+ */
+async function deleteNow(requests: QuarantineRequest[]) {
+  const q = await quarantine(requests)
+  const gone = q.quarantined.length ? await purgeEntries(q.quarantined) : null
+  const deletedCount = gone?.purged.length ?? 0
+  return {
+    deletedCount,
+    deletedBytes: gone?.bytes ?? 0,
+    /** 옮기긴 했는데 못 지운 것. 장부에 남아 있고 '남은 것' 칸에서 처리한다. */
+    leftover: q.quarantined.length - deletedCount,
+    failed: q.failed,
+  }
+}
+
+/**
  * 명령·인자를 argv에서 뽑는다.
  * ★ 실물에서 터진 버그(2026-08-03): 설치된 앱의 모든 기능이 죽어 있었다.
  *   엔진을 어떤 명령으로 부르든 "알 수 없는 명령: D:\...\teraclean-engine.exe"만 돌아왔다.
@@ -988,16 +1026,14 @@ async function main() {
       }
       case 'apply-sweep': {
         /**
-         * 기본은 **곧바로 지운다** — 용량이 지금 빈다.
+         * **곧바로 지운다** — 용량이 지금 빈다.
          *
          * 격리에서 멈추던 게 기본이었는데, 격리함은 같은 드라이브에 있어서
          * 용량이 하나도 안 줬다. "지금 정리 가능 7.0GB"를 보고 누른 사람에게
          * "용량은 아직 그대로입니다"는 버튼이 약속을 깬 것이다.
          *
-         * 30일 격리를 원하면 --quarantine을 붙인다. 없애지 않고 남겨둔다 —
-         * 되돌릴 수 있다는 선택지를 뺏지는 않는다.
+         * 보관에서 멈추던 갈래는 없앴다. 보관은 이제 이 앱의 동작이 아니다.
          */
-        const keep = args.includes('--quarantine')
         const rest = args.filter((a) => !a.startsWith('--'))
         const paths = rest.length ? rest : (await presentDefaultRoots()).map((r) => r.path)
         if (!paths.length) fail('정리할 폴더를 찾지 못했습니다.')
@@ -1046,7 +1082,7 @@ async function main() {
           { items, bytes: items.reduce((s, i) => s + i.size, 0), scannedFiles: 0, elapsedMs: 0,
             skipped: { locked: { count: 0, bytes: 0 }, needsAsking: { count: 0, bytes: 0 }, inferredNotAuto: { count: 0, bytes: 0 } } },
           {
-            purge: !keep,
+            purge: true,
             onProgress: (done, all, bytes) => {
               const elapsed = Date.now() - startedApply
               // 남은 시간은 지금까지의 속도로만 잰다 — 지어내지 않는다.
@@ -1061,10 +1097,10 @@ async function main() {
         await removePlanCache()
 
         out({
-          quarantinedCount: result.quarantinedCount,
-          purgedCount: result.purgedCount,
-          purged: !keep,
-          bytesAfterGrace: result.bytesAfterGrace,
+          deletedCount: result.purgedCount,
+          deletedBytes: result.bytesAfterGrace,
+          // 옮기긴 했는데 못 지운 것 — '남은 것' 칸이 이걸 받아 처리한다.
+          leftover: result.quarantinedCount - result.purgedCount,
           failed: result.failed,
           planned: total,
         })
@@ -1113,12 +1149,12 @@ async function main() {
         break
       }
       /**
-       * 유예가 끝난 것만 실제로 지운다 — 이 제품이 파일을 영구히 없애는 유일한 명령.
+       * **옛 보관함의 만료분만** 지운다. 앱이 켜질 때 조용히 돈다.
        *
-       * ★ 이게 없으면 격리는 '영원한 보관'이 된다. 옮기기만 했으니 용량은 그대로고,
-       *   앱은 "30일 뒤 확보됩니다"라고 말해놓고 그 약속을 아무도 지키지 않는다.
-       *   판단(30일 지났나)은 purgeExpired 안에 갇혀 있어서, 여기서 "지금 지워줘"라고
-       *   요청할 방법은 없다.
+       * 보관은 없앴지만, 예전 버전이 30일 약속으로 맡아둔 것은 남의 디스크에
+       * 그대로 있다. 그 약속은 지킨다 — 30일이 지난 것만 여기서 실제로 지운다.
+       * 판단(30일 지났나)은 purgeExpired 안에 갇혀 있어서 여기서 앞당길 방법이
+       * 없다. 새로 보관되는 것은 없으므로 이 목록은 시간이 지나면 저절로 빈다.
        */
       case 'purge': {
         let purgedCount = 0, bytes = 0
@@ -1133,11 +1169,11 @@ async function main() {
         break
       }
       /**
-       * 유예를 기다리지 않고 지금 비운다. **되돌릴 수 없다.**
+       * 장부에 남은 것을 지금 전부 지운다. **되돌릴 수 없다.**
        *
-       * 격리 폴더는 같은 드라이브에 있어서 격리만으로는 용량이 하나도 안 준다.
-       * 디스크가 꽉 찬 사람에게 "30일 뒤에 빕니다"는 답이 아니다.
-       * UI가 명시적으로 확인을 받은 뒤에만 부른다.
+       * 여기 남는 건 두 가지다 — 지우려다 사용 중이라 못 지운 것, 그리고 옛
+       * 버전이 보관해둔 것. 둘 다 원래 자리엔 없는데 용량은 그대로라, 안 지우면
+       * 영영 안 보이는 용량이 된다. UI가 명시적으로 확인을 받은 뒤에만 부른다.
        */
       case 'quar-purge-now': {
         let purgedCount = 0, bytes = 0
@@ -1291,7 +1327,7 @@ async function main() {
           out({ unknown, action, count: items.length, bytes, needsDestination: true, items: items.slice(0, 200) })
         }
 
-        const q = await quarantine(
+        const r = await deleteNow(
           items.map((i) => ({
             path: i.path,
             reason: `질문에 "정리해도 된다"고 답하신 것 — ${i.meaning}`,
@@ -1299,25 +1335,18 @@ async function main() {
             expect: { size: i.size, mtimeMs: i.mtimeMs },
           }))
         )
-        out({
-          unknown,
-          action,
-          quarantinedCount: q.quarantined.length,
-          bytesAfterGrace: q.bytes,
-          failed: q.failed,
-        })
+        out({ unknown, action, ...r })
         break
       }
       /**
-       * 고른 파일만 격리한다 — **묶음이 아니라 낱개.**
+       * 고른 파일만 지운다 — **묶음이 아니라 낱개.**
        *
        * ── 왜 필요했나 ────────────────────────────────────────────
        * 여태 실행 단위는 항상 '묶음 전체'였다(answer-apply는 unknown 하나에 걸린
        * 걸 전부 격리한다). 그런데 화면은 파일을 낱개로 보여준다. 그래서 사용자는
        * 낱개로 판단하는데 버튼은 전부-아니면-전무만 준다 —
        * **판단의 해상도와 실행의 해상도가 안 맞았다.**
-       * 격리함에는 개별 되돌리기가 처음부터 있었는데(restore <id>), 지우는 쪽엔
-       * 낱개 경로가 엔진에조차 없었다. 그 비대칭을 여기서 없앤다.
+       * 낱개로 보여주면 낱개로 지울 수 있어야 한다 — 그 비대칭을 여기서 없앤다.
        *
        * ── 밖에서 온 경로를 그냥 믿지 않는다 ──────────────────────
        * 이건 파일을 지우는 명령이라 경로를 받는 것 자체가 위험 통로다. 그래서
@@ -1326,8 +1355,11 @@ async function main() {
        * (같은 이유·같은 방식 — probes/programs.ts의 isStillInstalled)
        */
       case 'quarantine-paths': {
-        const paths = args.filter(Boolean)
-        if (!paths.length) fail('격리할 파일 경로가 필요합니다.')
+        /* 이름은 옛날 것 그대로지만 하는 일은 **삭제**다(deleteNow).
+           보관은 없앴다 — 옛 화면이 아직 --purge를 붙여 부를 수 있으니 받아만 주고
+           버린다. 안전장치(재분류·잠금 거절·expect)는 하나도 안 건너뛴다. */
+        const paths = args.filter((a) => a && !a.startsWith('--'))
+        if (!paths.length) fail('지울 파일 경로가 필요합니다.')
 
         const requests = []
         const refused: { path: string; reason: string }[] = []
@@ -1358,16 +1390,11 @@ async function main() {
         }
 
         if (!requests.length) {
-          out({ quarantinedCount: 0, bytesAfterGrace: 0, failed: [], refused })
+          out({ deletedCount: 0, deletedBytes: 0, leftover: 0, failed: [], refused })
           break
         }
-        const q = await quarantine(requests)
-        out({
-          quarantinedCount: q.quarantined.length,
-          bytesAfterGrace: q.bytes,
-          failed: q.failed,
-          refused,
-        })
+        // 지우다 실패한 것은 장부에 그대로 남는다 — 없어진 척하지 않고 leftover로 센다.
+        out({ ...(await deleteNow(requests)), refused })
         break
       }
       case 'startup': {
@@ -1394,7 +1421,7 @@ async function main() {
       /**
        * 바탕화면·다운로드 정리 — 미리보기가 기본이다.
        * tidy-folder-plan  <desktop|downloads>  무엇을 옮길지 보여주기만 한다
-       * tidy-folder-apply <desktop|downloads>  실제로 옮긴다(깨진 바로가기는 격리)
+       * tidy-folder-apply <desktop|downloads>  실제로 옮긴다(깨진 바로가기는 삭제)
        * tidy-folder-undo  <desktop|downloads>  전부 원래 자리로
        */
       case 'tidy-folder-plan':
@@ -1420,9 +1447,10 @@ async function main() {
         }
 
         const moved = await applyFolderTidy(plan)
-        // 깨진 바로가기는 옮겨봐야 쓰레기가 이동할 뿐이라 격리로 보낸다(30일 되돌리기).
+        // 깨진 바로가기는 옮겨봐야 쓰레기가 이동할 뿐이라 지운다. 가리키던 대상이
+        // 이미 없어서 되살릴 것도 없다 — 보관할 이유가 애초에 없던 종류다.
         const q = plan.broken.length
-          ? await quarantine(
+          ? await deleteNow(
               plan.broken.map((b) => ({
                 path: b.path,
                 reason: '대상이 사라진 바로가기',
@@ -1430,14 +1458,14 @@ async function main() {
                 expect: { size: b.size, mtimeMs: b.mtimeMs },
               }))
             )
-          : { quarantined: [], failed: [] as { path: string; reason: string }[] }
+          : { deletedCount: 0, failed: [] as { path: string; reason: string }[] }
 
         out({
           folder,
           destFolder: moved.destFolder,
           movedCount: moved.movedCount,
           movedBytes: moved.movedBytes,
-          brokenQuarantined: q.quarantined.length,
+          brokenDeleted: q.deletedCount,
           failed: [...moved.failed, ...q.failed],
         })
         break
@@ -1464,9 +1492,9 @@ async function main() {
         break
       }
       /**
-       * 실행. 둘 다 지우지 않는다 —
-       *   스크린샷은 사진 폴더 안의 '정리-YYYY-MM'으로 옮기고(장부로 되돌리기),
-       *   중복 사본은 격리로 보낸다(30일 되돌리기). 원본은 절대 건드리지 않는다.
+       * 실행 —
+       *   스크린샷은 지우지 않고 사진 폴더 안 '정리-YYYY-MM'으로 옮긴다(장부로 되돌리기).
+       *   중복 사본은 지운다. **원본은 절대 건드리지 않는다** — 그게 되돌리기 대신이다.
        */
       case 'photos-apply': {
         const what = args[0] ?? 'all' // screenshots | duplicates | all
@@ -1498,9 +1526,9 @@ async function main() {
           }
         }
 
-        let quarantinedCount = 0, quarantinedBytes = 0
+        let deletedCount = 0, deletedBytes = 0
         if ((what === 'all' || what === 'duplicates') && plan.dupGroups.length) {
-          const q = await quarantine(
+          const q = await deleteNow(
             plan.dupGroups.flatMap((g) =>
               g.copies.map((c) => ({
                 path: c.path,
@@ -1510,12 +1538,12 @@ async function main() {
               }))
             )
           )
-          quarantinedCount = q.quarantined.length
-          quarantinedBytes = q.bytes
+          deletedCount = q.deletedCount
+          deletedBytes = q.deletedBytes
           for (const f of q.failed) failed.push(f)
         }
 
-        out({ movedCount, movedBytes, destFolder, quarantinedCount, quarantinedBytes, failed })
+        out({ movedCount, movedBytes, destFolder, deletedCount, deletedBytes, failed })
         break
       }
       case 'tidy-folder-undo': {
@@ -1771,14 +1799,11 @@ async function main() {
         }
 
         if (!requests.length) {
-          out({ quarantinedCount: 0, bytesAfterGrace: 0, failed: [], refused, refusedCount: refused.length })
+          out({ deletedCount: 0, deletedBytes: 0, leftover: 0, failed: [], refused, refusedCount: refused.length })
           break
         }
-        const q = await quarantine(requests)
         out({
-          quarantinedCount: q.quarantined.length,
-          bytesAfterGrace: q.bytes,
-          failed: q.failed,
+          ...(await deleteNow(requests)),
           // 폴더째면 거절이 수천 개일 수 있다. 개수는 정확히 주고 목록은 앞부분만.
           refused: refused.slice(0, 20),
           refusedCount: refused.length,

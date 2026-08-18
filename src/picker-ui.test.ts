@@ -184,29 +184,47 @@ test('★ "두시는 게 안전합니다"를 고르면 한 번 더 묻는다 —
   assert.doesNotMatch(body, /risky\.length\)\s*return\b/, '고른 것을 조용히 막아버린다')
 })
 
-test('★ 격리가 용량을 바로 비운다고 말하지 않는다 — 격리함은 같은 드라이브에 있다', () => {
+test('★ 정리 결과를 "지금 빈 용량"으로 말한다 — 보관은 없앴다', () => {
   const src = app()
   const start = src.indexOf('function spaceHint(')
   assert.ok(start > 0, 'spaceHint를 찾지 못했다')
   const body = src.slice(start, start + 900)
-  assert.match(body, /지금은 용량이 안 빕니다/, '격리해도 용량이 안 빈다는 사실을 안 말한다')
-  assert.match(body, /immediate/, '격리와 이동의 문장이 갈려 있지 않다')
+  /* 보관함이 있던 시절엔 "지금은 용량이 안 빕니다"라는 변명 갈래가 필요했다.
+     같은 드라이브로 옮기는 것이라 실제로 안 빴기 때문이다. 이제는 지우므로
+     그 갈래가 있으면 안 된다 — 있으면 화면이 동작과 다른 말을 하는 것이다. */
+  assert.doesNotMatch(body, /지금은 용량이 안 빕니다/, '보관 시절 문구가 남아 있다')
+  assert.match(body, /남은 공간 \$\{fmtBytes\(lastDisk\.free\)\} → /, '전후 여유 공간을 안 보여준다')
 })
 
-test('★ 옮긴 것도 격리함 화면에서 되돌린다 — 어느 드라이브였는지 기억하게 하지 않는다', () => {
+test('★ 지우기 전 확인창은 되돌릴 수 없다는 말을 먼저 놓는다', () => {
+  const body = pickerSource(app())
+  const start = body.indexOf("engine('quarantine-paths'")
+  assert.ok(start > 0, '낱개 삭제 실행부를 찾지 못했다')
+  const before = body.slice(Math.max(0, start - 1200), start)
+  assert.match(before, /confirm\(/, '확인 없이 지운다')
+  assert.match(before, /되돌릴 수 없습니다/, '되돌릴 수 없다는 말을 안 한다')
+  // 사람들이 아는 삭제는 대개 휴지통을 거친다. 안 적으면 "꺼내면 되지"로 읽는다.
+  assert.match(before, /휴지통에도 안 남아요/, '휴지통에도 안 남는다는 걸 안 말한다')
+  // 30일 보관을 약속하던 문구가 남아 있으면 그건 지금 거짓말이다.
+  assert.doesNotMatch(before, /30일/, '지우면서 30일 보관을 약속한다')
+})
+
+test('★ 옮긴 것·합친 것은 되돌리기 화면에 남는다 — 보관함을 없애면서 같이 없애지 않는다', () => {
   const src = app()
   assert.match(src, /function renderMovedUndo\(/, '옮긴 것 되돌리기 목록이 없다')
-  assert.match(src, /engine\('undo-list'\)/, '격리와 이동을 한 목록으로 읽지 않는다')
-  // 격리함이 비어 있어도 옮긴 게 있으면 보여야 한다.
-  const empty = src.indexOf('아직 보관 중인 게 없어요')
-  assert.match(src.slice(empty, empty + 400), /renderMovedUndo\(/, '보관함이 비면 되돌릴 길이 사라진다')
+  assert.match(src, /function renderMergedUndo\(/, '합친 것 따로 떼기 목록이 없다')
+  assert.match(src, /engine\('undo-list'\)/, '옮긴 목록을 읽지 않는다')
+  // 못 지운 것이 없어도 옮기거나 합친 게 있으면 보여야 한다.
+  const empty = src.indexOf('되돌릴 것이 없어요')
+  assert.ok(empty > 0, '빈 상태 문구를 찾지 못했다')
+  assert.match(src.slice(empty - 600, empty), /renderMovedUndo\(/, '남은 게 없으면 되돌릴 길이 사라진다')
 })
 
 /* ────────────────────────────────────────────────────────────
    끝났다는 걸 알 수 있는가
 
    실물 화면: 폴더째 정리를 눌렀더니 그 버튼이 회색으로 바뀌고 글씨만
-   "2,380개를 보관함에 넣었어요"가 됐다. **버튼 모양 그대로**라 아직 처리
+   "2,380개를 정리했어요"가 됐다. **버튼 모양 그대로**라 아직 처리
    중인지 다 된 건지 구분이 안 됐고, 사용자가 "다 된 거냐"고 물어야 했다.
    완료는 버튼이 아니라 칸으로 보여야 한다.
    ──────────────────────────────────────────────────────────── */
@@ -221,19 +239,21 @@ test('★ 처리가 끝나면 "완료"라고 말한다 — 버튼 글씨만 바�
   const after = body.slice(start, start + 1200)
 
   assert.match(after, /doneBlock\(/, '끝난 뒤 완료 칸을 안 그린다')
-  assert.match(after, /정리 완료/, '"완료"라는 말이 없다')
+  assert.match(after, /삭제 완료/, '"완료"라는 말이 없다')
   assert.match(after, /unit-done/, '끝난 카드를 표시하지 않는다 — 남은 것과 섞인다')
   // 버튼 글씨만 바꾸고 끝내던 옛 방식으로 돌아가지 않게.
-  assert.doesNotMatch(after, /btn\.textContent = `\$\{r\.quarantinedCount/, '버튼 글씨만 바꾸고 끝낸다')
+  assert.doesNotMatch(after, /btn\.textContent = `\$\{r\.deletedCount/, '버튼 글씨만 바꾸고 끝낸다')
 })
 
-test('★ 격리 완료 문구는 "용량이 아직 그대로"라는 사실을 함께 말한다', () => {
+test('★ 완료 문구는 "지금 비었다"고 말한다 — 보관 시절의 유예 문구를 남기지 않는다', () => {
   const body = pickerSource(app())
   const start = body.indexOf("engine('quarantine-folders'")
   const after = body.slice(start, start + 1200)
-  // 여기서 안 말하면 "정리했는데 왜 용량이 그대로냐"가 된다. 그리고 바로 비울 통로도 준다.
-  assert.match(after, /아직 용량은 그대로/, '보관함은 용량을 안 비운다는 사실을 안 말한다')
-  assert.match(after, /mountPurgeNow\(/, '지금 비울 통로를 옆에 안 둔다')
+  assert.match(after, /가 지금 비었습니다/, '용량이 언제 비는지 말하지 않는다')
+  assert.doesNotMatch(after, /아직 용량은 그대로/, '보관 시절 문구가 남아 있다')
+  assert.doesNotMatch(after, /mountPurgeNow\(/, '없앤 보관함을 비우는 버튼이 아직 붙는다')
+  // 옮기긴 했는데 못 지운 것은 없어진 척하지 않는다.
+  assert.match(after, /leftoverNote\(/, '못 지우고 남은 것을 말하지 않는다')
 })
 
 test('★ 낱개 격리는 실행 직전에 엔진이 다시 분류한다 — 화면 말을 그냥 믿지 않는다', () => {
@@ -260,6 +280,74 @@ test('★ 거절한 것을 숨기지 않는다 — 왜 안 됐는지가 신뢰�
   const pstart = ui.indexOf('function renderPicker(')
   const pbody = ui.slice(pstart, ui.indexOf('\nfunction renderKept', pstart))
   assert.match(pbody, /refused/, '화면이 거절 사유를 안 보여준다')
+})
+
+/* ────────────────────────────────────────────────────────────
+   한 번에 고르기 · 보관 없이 바로 삭제
+
+   실물 화면: 40줄짜리 목록에 "큰 것 10개 고르기"만 있었다. 나머지 30개를 지우려면
+   체크박스를 서른 번 눌러야 했다 — 고르라고 해놓고 고를 방법을 안 준 셈이다.
+   그리고 버튼은 늘 "(30일 보관)"이었다. 이미 지울 걸 다 정한 사람에게도
+   30일을 기다리게 하고, 그동안 용량은 1바이트도 안 빴다. 보관함이 같은
+   드라이브에 있었기 때문이다.
+
+   ★ 그래서 전체 선택을 더하고, 보관은 없앴다. 그래도 **기본값은 안 건드린다** —
+     목록은 여전히 아무것도 안 골라진 채로 열린다. 켜져 있는 걸 빼게 하는 것과,
+     직접 눌러서 켜는 것은 실수했을 때 결과가 다르다.
+   ──────────────────────────────────────────────────────────── */
+
+test('★ 전체 선택이 있다 — 그래도 켜져 있는 채로 시작하지는 않는다', () => {
+  const body = pickerSource(app())
+  assert.match(body, /data-pick-every/, '목록을 한 번에 고르는 버튼이 없다 — 40줄을 하나씩 누르게 한다')
+  assert.match(body, /전체 선택/, '전체 선택이라고 적혀 있지 않다')
+  // 다시 누르면 풀려야 한다. 한 번 누르면 못 무르는 버튼이면 무서워서 못 누른다.
+  assert.match(body, /전체 해제/, '전체 선택이 해제로 돌아가지 않는다')
+  // '전체'는 화면에 보이는 목록까지다. 개수를 안 적으면 703개를 다 골랐다고 읽는다.
+  assert.match(body, /samples\.length\}개\)`/, '버튼에 몇 개를 고르는지 안 적는다')
+  // 체크박스에 checked를 박아두면 그건 다시 일괄 삭제다.
+  assert.doesNotMatch(body, /data-pick="\$\{esc\(s\.path\)\}"\s+checked/, '기본으로 다 골라져 있다')
+})
+
+test('★ 보관 선택지가 화면에 남아 있지 않다 — 없앤 기능을 스위치로 남기지 않는다', () => {
+  const body = pickerSource(app())
+  assert.doesNotMatch(body, /data-pick-purge/, '보관/삭제를 고르는 체크박스가 아직 있다')
+  assert.doesNotMatch(body, /30일 보관/, '버튼이 아직 30일 보관을 약속한다')
+  // 실행 버튼은 무슨 일이 일어나는지 그 자리에서 말해야 한다.
+  assert.match(body, /고른 \$\{picked\.size\}개 지우기/, '실행 버튼이 지운다고 말하지 않는다')
+  assert.match(body, /goBtn\.classList\.toggle\('danger'/, '되돌릴 수 없는 실행인데 버튼이 평범해 보인다')
+})
+
+test('★ 삭제도 격리와 똑같은 안전장치를 지난다 — 지름길을 내지 않는다', () => {
+  const src = engine()
+  const start = src.indexOf('async function deleteNow(')
+  assert.ok(start > 0, '삭제 통로(deleteNow)가 없다')
+  const body = src.slice(start, start + 900)
+  /* 재분류·잠금 거절·expect는 위 테스트가 이미 못 박았다. 여기서 보는 건
+     그걸 **거치고 나서** 지우느냐다. 별도 삭제 루틴을 새로 파면 그 검사를 안 지난다. */
+  assert.match(body, /await quarantine\(/, '검증된 통로를 안 지나고 지운다')
+  assert.match(body, /purgeEntries\(/, '방금 옮긴 것만 지우지 않는다')
+  // purgeNow는 그 드라이브의 장부를 통째로 비운다 — 옛 버전이 맡아둔 것까지 사라진다.
+  assert.doesNotMatch(body, /purgeNow\(/, '장부를 통째로 비운다 — 옛 약속까지 깬다')
+  // 못 지운 것은 없어진 척하지 않는다.
+  assert.match(body, /leftover/, '옮기고 못 지운 것을 세지 않는다')
+})
+
+test('★ 정리하는 통로는 하나도 보관에서 멈추지 않는다 — 남겨두면 그게 새 보관함이 된다', () => {
+  const src = engine()
+  /* quarantine()을 직접 부르는 자리가 남아 있으면 그 통로만 조용히 보관에서 멈춘다.
+     화면은 "지웠다"고 하는데 파일은 .teraclean에 쌓이고 용량은 안 빈다 —
+     정확히 없애려던 상태다. 실제 삭제(deleteNow) 안의 한 번만 허용한다. */
+  const calls = src.match(/await quarantine\(/g) ?? []
+  assert.equal(calls.length, 1, `quarantine()을 직접 부르는 자리가 ${calls.length}곳이다 — deleteNow 안의 한 번만 있어야 한다`)
+
+  // apply-sweep의 '보관에서 멈추기' 선택지도 없어야 한다.
+  const sweep = src.slice(src.indexOf("case 'apply-sweep'"), src.indexOf("case 'quar-list'"))
+  assert.doesNotMatch(sweep, /--quarantine/, '원클릭에 보관 갈래가 남아 있다')
+  assert.match(sweep, /purge: true/, '원클릭이 지우지 않고 멈춘다')
+
+  // 옛 버전이 남긴 것을 되돌리는 길은 지운다고 같이 없애면 안 된다.
+  assert.match(src, /case 'restore'/, '남은 것을 되돌릴 길이 사라졌다')
+  assert.match(src, /case 'quar-list'/, '남은 것을 볼 길이 사라졌다')
 })
 
 test('★ 전부 되돌리기도 실패를 말한다 — 조용히 끝나면 격리함의 존재 이유가 깨진다', () => {
