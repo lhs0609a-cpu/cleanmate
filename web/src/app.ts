@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.14.0'
+const APP_VERSION = '0.15.0'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -82,6 +82,27 @@ interface Report {
     askBytes: number; askCount: number
     lockBytes: number; lockCount: number
     inferredBytes: number
+  }
+  /**
+   * 순위 — "뭐부터 누르면 되나". 엔진(priority.ts)이 매겨서 보낸다.
+   *
+   * 브라우저 체험판에는 없다(엔진을 안 거치므로). 그래서 optional이고,
+   * renderTiers는 없으면 칸을 통째로 비운다 — 빈 순위표를 그리지 않는다.
+   */
+  priority?: {
+    tiers: {
+      id: 1 | 2 | 3
+      label: string
+      title: string
+      because: string
+      bytes: number
+      count: number
+      reversible: boolean
+      groups: { meaning: string; bytes: number; count: number }[]
+      cautionCount: number
+      cautionBytes: number
+    }[]
+    untouched: { bytes: number; count: number; groups: { meaning: string; bytes: number; count: number }[] }
   }
   questions: Question[]
   kept: { meaning: string; bytes: number }[]
@@ -263,6 +284,7 @@ function renderReport(r: Report) {
     ? `“아마 임시 파일일” ${fmtBytes(r.plan.inferredBytes)}는 자동에서 뺐어요. “아마”로는 안 지웁니다.`
     : '자동으로 치우는 건 전부 임시 파일이에요. 지워도 다시 생기는 것들입니다.')
 
+  renderTiers(r.priority)
   renderQuestions(r.questions)
   renderKept(r.kept, r.plan.lockBytes)
 
@@ -276,6 +298,118 @@ function renderReport(r: Report) {
   document.querySelectorAll<HTMLElement>('#s-home .pill.desk').forEach((p) => { p.hidden = inTauri })
   // 버튼이 무슨 일을 하는지 그대로 쓴다. '정리하기'는 옮기는 것도 지우는 것도 될 수 있다.
   applyBtn.textContent = inTauri ? `임시 파일 ${fmtBytes(r.plan.autoBytes)} 지금 지우기` : '확실한 임시 파일 정리하기'
+}
+
+/* ── 순위 ──────────────────────────────────────────────────────
+   ★ 왜 만들었나 (2026-08-18, 실측 PC에서 나온 문제)
+
+   디스크가 99% 찬 PC를 훑었더니 화면이 이렇게 말했다:
+       존A 5.72GB · 존B 285.18GB · 존C 9.25GB
+   285GB짜리 더미 하나를 내밀고 "물어볼게요"라고 하는 건 답이 아니다. 그 안에는
+   한 번 보면 바로 지울 수 있는 것(앱이 만든 임시 폴더)과 사람만 아는 것(직접
+   만든 영상)이 섞여 있었고, 섞어두면 둘 다 못 지운다 — 무서워서.
+
+   존 막대는 **안전도**를 말한다. 순위는 **행동 순서**를 말한다.
+   용량이 없어서 이 앱을 연 사람이 알고 싶은 건 후자다: "뭐부터 누르면 되는데?" */
+
+function tierHtml(t: any): string {
+  const groups = t.groups
+    .map((g: any) => `${esc(g.meaning)} <b>${fmtBytes(g.bytes)}</b>`)
+    .join(' · ')
+  /* 순위마다 버튼이 다르다.
+     1순위는 되돌릴 걱정이 없으니 바로 누르는 버튼,
+     2순위는 되돌릴 수 없어서 한 번 보고 누르는 자리(ghost),
+     3순위는 버튼이 아니라 **질문으로** 간다 — 여기에 일괄 실행을 놓으면
+     "물어보고 정합니다"라는 약속이 그 자리에서 깨진다. */
+  const act =
+    t.id === 1 ? `<button class="btn" data-tier="1">${fmtBytes(t.bytes)} 바로 지우기</button>`
+    : t.id === 2 ? `<button class="btn ghost" data-tier="2">${fmtBytes(t.bytes)} 지우기</button>`
+    : `<button class="opt" data-tier-ask="1">질문 보기 ↓</button>`
+  return `
+    <div class="tier tier-${t.id}">
+      <div class="tier-no">${t.id}</div>
+      <div class="tier-body">
+        <div class="tier-h">
+          <span class="tier-amt">${fmtBytes(t.bytes)}</span>
+          <span class="tier-title">${esc(t.title)}</span>
+          <span class="tier-cnt">${t.count.toLocaleString()}개</span>
+        </div>
+        <div class="tier-why">${esc(t.because)}</div>
+        ${groups ? `<div class="tier-groups">${groups}</div>` : ''}
+        ${t.cautionCount ? `<div class="tier-why tier-caution">이 중 ${t.cautionCount.toLocaleString()}개는 저희가 "두시는 게 안전합니다"로 봤어요 — 목록에서 표시해드립니다.</div>` : ''}
+      </div>
+      <div class="tier-act">${act}</div>
+    </div>`
+}
+
+function renderTiers(p: any) {
+  const host = $('tiers')
+  if (!p?.tiers?.length) { host.innerHTML = ''; return }
+  const u = p.untouched
+  host.innerHTML = `
+    <div style="margin-top:16px">
+      ${p.tiers.map(tierHtml).join('')}
+      ${u?.count ? `<div class="tier" style="opacity:.75">
+        <div class="tier-no">—</div>
+        <div class="tier-body">
+          <div class="tier-h">
+            <span class="tier-amt" style="color:var(--muted)">${fmtBytes(u.bytes)}</span>
+            <span class="tier-title">안 건드립니다</span>
+            <span class="tier-cnt">${u.count.toLocaleString()}개</span>
+          </div>
+          <div class="tier-why">지우면 뭔가 깨지는 것들이에요. 목록에도 안 올립니다.</div>
+          ${u.groups?.length ? `<div class="tier-groups">${u.groups.map((g: any) => `${esc(g.meaning)} <b>${fmtBytes(g.bytes)}</b>`).join(' · ')}</div>` : ''}
+        </div>
+      </div>` : ''}
+    </div>`
+
+  // 1순위는 이미 있는 '지금 정리하기'와 같은 일을 한다. 실행 경로를 두 벌로 만들지 않는다.
+  host.querySelector<HTMLButtonElement>('[data-tier="1"]')?.addEventListener('click', () => {
+    ;($('apply-btn') as HTMLButtonElement).click()
+  })
+  host.querySelector<HTMLButtonElement>('[data-tier-ask]')?.addEventListener('click', () => {
+    document.getElementById('questions')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+  host.querySelector<HTMLButtonElement>('[data-tier="2"]')?.addEventListener('click', (ev) => {
+    runTier2(ev.currentTarget as HTMLButtonElement, p.tiers.find((t: any) => t.id === 2))
+  })
+}
+
+/**
+ * 2순위 실행 — 되돌릴 수 없으므로 **무엇을** 지우는지 이름을 대고 확인받는다.
+ *
+ * 개수와 용량만 보여주고 확인받는 건 확인이 아니다. "0.93GB 3,789개를 지울까요?"에
+ * 답할 수 있는 사람은 없다. 무엇이 들어 있는지를 먼저 놓는다.
+ */
+async function runTier2(btn: HTMLButtonElement, tier: any) {
+  if (!inTauri) {
+    toast('실제 삭제는 데스크톱 앱에서 실행됩니다. 브라우저는 보안상 파일을 지울 수 없어요.', 'bad')
+    return
+  }
+  const what = (tier?.groups ?? []).slice(0, 4).map((g: any) => `· ${g.meaning} — ${fmtBytes(g.bytes)}`).join('\n')
+  if (!confirm(
+    `2순위 ${tier.count.toLocaleString()}개(${fmtBytes(tier.bytes)})를 지울까요?\n\n${what}\n\n` +
+    `되돌릴 수 없습니다 — 휴지통에도 안 남아요.\n다시 받거나 다시 만드는 데 시간이 걸릴 수 있어요.\n\n${spaceHint(tier.bytes)}`
+  )) return
+  btn.disabled = true
+  btn.textContent = '지우는 중…'
+  try {
+    const r = await engine('tier-apply', ['2'])
+    const left = leftoverNote(r.leftover)
+    btn.parentElement!.innerHTML = `<span class="t-small" style="color:var(--safe);font-weight:var(--w-em)">
+      ✓ ${r.deletedCount.toLocaleString()}개 · ${fmtBytes(r.deletedBytes)} 삭제</span>`
+    toast(`${r.deletedCount.toLocaleString()}개를 지웠어요 — ${fmtBytes(r.deletedBytes)}가 비었습니다.`, 'good')
+    // 건너뛴 것·못 지운 것을 조용히 넘기지 않는다.
+    if (r.failed?.length || left) {
+      $('apply-note').innerHTML += `<div class="t-small" style="color:var(--muted);margin-top:6px">2순위 정리: ${
+        r.failed?.length ? `${r.failed.length}개는 사용 중이라 건너뛰었어요. ` : ''}${left}</div>`
+    }
+    refreshDisk(true)
+  } catch (err) {
+    toast('지우지 못했어요: ' + errText(err), 'bad')
+    btn.disabled = false
+    btn.textContent = `${fmtBytes(tier.bytes)} 지우기`
+  }
 }
 
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p

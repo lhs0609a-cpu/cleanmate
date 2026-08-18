@@ -176,11 +176,37 @@ const SAFE_RULES: PathRule[] = [
   },
   {
     id: 'app.cache',
-    // [R] AppData 안에서는 Cache/Temp/GPUCache 하위만 안전.
-    test: /\/(cache|caches|gpucache|code cache|cachestorage)\//,
+    /* [R] AppData 안에서는 Cache/Temp/GPUCache 하위만 안전.
+     *
+     * ★ 앞의 점(.)을 빼먹어서 37.6GB를 못 봤다 (2026-08-18, 실측)
+     *   실물 경로: AppData\Local\MusicFactory\ACE-Step-1.5\**.cache**\acestep\tmp\api_audio
+     *   여기 WAV 633개(37.6GB)가 7월부터 쌓여 있었고, 작업 폴더의 gen.src.wav와
+     *   SHA-256까지 같은 완전 중복이었다. 그런데 규칙이 `/cache/`만 봐서
+     *   `/.cache/`는 안 걸렸다 — 점 하나 차이로 존B(물어볼 것)에 묻혔다.
+     *
+     *   `.cache`는 관례다. .cache · .npm · .gradle · .pytest_cache 전부 그렇게 쓴다.
+     *   점을 선택적으로 만든다. 규칙을 넓히는 게 아니라 원래 잡으려던 걸 잡는 것이다. */
+    test: /\/\.?(cache|caches|gpucache|code cache|cachestorage)\//,
     zone: 'SAFE',
     meaning: '앱 캐시',
     reason: '인터넷이나 원본에서 다시 받을 수 있는 임시 저장본입니다.',
+  },
+  {
+    id: 'app.tmp',
+    /* 앱이 자기 폴더 안에 만든 임시 자리.
+     *
+     * ★ 왜 따로 필요했나: win.temp는 AppData\Local\Temp와 Windows\Temp **딱 두 곳**만
+     *   본다. 그런데 요즘 앱은 자기 데이터 폴더 안에 tmp를 따로 판다
+     *   (…\ACE-Step-1.5\.cache\acestep\**tmp**\api_audio). 그 자리는 아무도 안 치운다.
+     *
+     * ★ 왜 그냥 `/tmp/`로 안 하나: 그러면 ~/projects/tmp/작업본.psd 같은
+     *   **사람이 만든 파일**까지 "지워도 됩니다"가 된다. 그건 이 제품이 절대
+     *   하면 안 되는 종류의 실수다. 그래서 appdata 아래로만 한정한다 —
+     *   거기 있는 tmp는 앱이 만들고 앱이 버리는 자리다. */
+    test: /\/appdata\/(local|locallow|roaming)\/.*\/(tmp|temp)\//,
+    zone: 'SAFE',
+    meaning: '앱이 만든 임시 파일',
+    reason: '프로그램이 작업 중에 잠깐 쓰는 자리예요. 결과물은 따로 저장되고 여긴 남은 찌꺼기입니다.',
   },
   {
     id: 'browser.cache',

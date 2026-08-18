@@ -604,6 +604,34 @@
   .pick-bk.warn{color:var(--lock)}
   .pick-foot{display:flex;align-items:center;gap:var(--s-3);flex-wrap:wrap;margin-top:var(--s-3)}
   .pick-foot span{color:var(--muted)}
+  /* ── 순위 카드 ──────────────────────────────────────────────
+     한 순위 = 한 줄 = 한 결정. 세로로 쌓아서 위에서부터 누르면 되게 만든다.
+     번호를 크게 다는 이유: "1순위"라는 말보다 순서가 먼저 읽혀야 한다. */
+  .tier{display:flex;align-items:flex-start;gap:var(--s-3);padding:var(--s-3) 0;
+        border-top:1px solid var(--line)}
+  .tier:first-child{border-top:0}
+  .tier-no{flex:none;width:30px;height:30px;border-radius:var(--r-full);display:flex;
+           align-items:center;justify-content:center;font-weight:var(--w-num);
+           font-size:var(--t-small);background:var(--surface-2);color:var(--muted)}
+  /* 1순위만 색을 준다. 셋 다 칠하면 어디부터 누를지가 다시 안 보인다. */
+  .tier-1 .tier-no{background:var(--accent);color:var(--accent-ink)}
+  .tier-body{flex:1;min-width:0}
+  .tier-h{display:flex;align-items:baseline;gap:var(--s-2);flex-wrap:wrap}
+  .tier-amt{font-weight:var(--w-num);font-size:var(--t-h2);line-height:1.2}
+  .tier-1 .tier-amt{color:var(--safe)}
+  .tier-title{font-weight:var(--w-em);color:var(--ink-2)}
+  .tier-cnt{font-size:var(--t-caption);color:var(--muted)}
+  .tier-why{font-size:var(--t-caption);line-height:var(--lh-caption);color:var(--muted);margin-top:2px}
+  .tier-groups{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px;
+               font-size:var(--t-caption);color:var(--ink-2)}
+  .tier-groups b{font-weight:var(--w-num);color:var(--muted)}
+  .tier-caution{color:var(--lock)}
+  .tier-act{flex:none;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+  @media (max-width:640px){
+    .tier{flex-wrap:wrap}
+    .tier-act{width:100%;align-items:stretch;margin-top:var(--s-2)}
+  }
+
   .pick-dest{font:inherit;font-size:var(--t-caption);line-height:var(--lh-caption);
              padding:6px var(--s-2);border:1px solid var(--line);border-radius:var(--r-sm);
              background:var(--surface);color:var(--ink-2)}
@@ -972,6 +1000,9 @@
           <span class="pill live" style="margin-left:auto">실시간 분석</span></div>
         <p class="lede" id="plan-lede"></p>
         <div class="split3" id="plan3" style="margin-top:14px"></div>
+        <!-- 순위 — "그래서 뭐부터 누르면 되나". 존 막대는 안전도를 말하고
+             여기는 행동 순서를 말한다. 사용자가 알고 싶은 건 후자다. -->
+        <div id="tiers"></div>
         <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <button class="btn" id="apply-btn" disabled>확실한 임시 파일 지우기</button>
           <span class="pill desk">데스크톱 앱에서 실행</span>

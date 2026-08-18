@@ -93,6 +93,46 @@ test('확실한 캐시만 존 A로 — 자동 처리 자격', () => {
   expectZone('C:\\Users\\me\\proj\\logs\\app.log', 'SAFE', '로그')
 })
 
+/* ────────────────────────────────────────────────────────────
+   점 하나 때문에 37.6GB를 못 봤다 (2026-08-18, 실측)
+
+   실물 경로:
+     AppData/Local/MusicFactory/ACE-Step-1.5/.cache/acestep/tmp/api_audio/*.wav
+   여기 WAV 633개(37.6GB)가 7월부터 쌓여 있었다. 작업 폴더의 gen.src.wav와
+   SHA-256까지 같은 완전 중복이었는데, app.cache 규칙이 /cache/만 봐서
+   /.cache/는 안 걸렸다. 디스크가 99% 찬 PC에서 가장 확실한 한 방이
+   "물어봐야 할 것" 285GB 더미에 묻혀 있었다.
+
+   경로는 슬래시로 적는다 — normalizePath가 구분자를 정규화하므로 결과가 같고,
+   역슬래시 이스케이프를 세다가 틀리는 일이 없다.
+   ──────────────────────────────────────────────────────────── */
+
+test('★ 앞에 점이 붙은 캐시 폴더도 캐시다 — .cache / .npm 은 관례다', () => {
+  expectZone('C:/Users/me/AppData/Local/App/.cache/blob/x.bin', 'SAFE', '점 붙은 캐시')
+  expectZone('C:/Users/me/AppData/Local/App/.caches/x.bin', 'SAFE', '복수형도')
+  // 점 없는 원래 경우가 깨지지 않았는지도 같이 본다.
+  expectZone('C:/Users/me/AppData/Local/App/Cache/x.bin', 'SAFE', '점 없는 캐시')
+})
+
+test('★ 앱이 자기 폴더에 판 tmp도 임시다 — Temp 두 곳만 보면 놓친다', () => {
+  // 실물에서 37.6GB가 쌓여 있던 바로 그 자리.
+  expectZone(
+    'C:/Users/me/AppData/Local/MusicFactory/ACE-Step-1.5/.cache/acestep/tmp/api_audio/a.wav',
+    'SAFE',
+    '앱이 만든 임시 파일'
+  )
+  expectZone('C:/Users/me/AppData/Roaming/App/temp/y.dat', 'SAFE', 'Roaming 아래 temp')
+})
+
+test('★ 그래도 사람이 만든 tmp 폴더는 건드리지 않는다 — 규칙을 넓히다 삼키면 안 된다', () => {
+  /* /tmp/를 무턱대고 SAFE로 잡으면 이런 게 "지워도 됩니다"가 된다.
+     되돌릴 수 없는 손해라서, appdata 밖의 tmp는 여전히 물어봐야 한다. */
+  const c1 = classifyOne(entry('D:/projects/myapp/tmp/작업본.psd'))
+  assert.notEqual(c1.verdict.zone, 'SAFE', '사용자 폴더의 tmp를 자동 삭제 대상으로 본다')
+  const c2 = classifyOne(entry('C:/Users/me/Documents/tmp/초안.docx'))
+  assert.notEqual(c2.verdict.zone, 'SAFE', '문서 폴더의 tmp를 자동 삭제 대상으로 본다')
+})
+
 test('모르는 파일은 절대 SAFE로 추측하지 않는다 — R1 안전장치', () => {
   const c = classifyOne(entry('D:\\뭔가\\알수없는파일.xyz'))
   assert.equal(c.verdict.zone, 'AMBIG', '모르면 물어본다')

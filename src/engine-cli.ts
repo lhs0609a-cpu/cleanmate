@@ -24,6 +24,7 @@
  *   answer-apply   <unknown> <outcome> [path...] 답변 실행 — 정리는 곧바로 삭제
  *   quarantine-paths <path...>       고른 파일만 삭제 (묶음이 아니라 낱개)
  *   quarantine-folders <path...>     폴더째 삭제 (.venv·node_modules 같은 결정 단위)
+ *   tier-apply     <2>               그 순위를 통째로 삭제 (스캔 때 적어둔 계획을 씀)
  *   startup                          시작프로그램 목록 + 판정
  *   startup-tasks                    로그온 예약작업 개수 (느려서 목록과 분리)
  *   startup-set    <id> <on|off>     시작프로그램 켜기/끄기 (되돌릴 수 있음)
@@ -85,6 +86,7 @@ import { buildBreakdown } from './breakdown.ts'
 import { groupByKind, describeMix, kindOf } from './kinds.ts'
 import { ownerOf, ownerHeadline } from './owners.ts'
 import { computeProgress, type RootWeight } from './progress.ts'
+import { buildTiers } from './priority.ts'
 import { UNKNOWN_EXPLAIN } from './content/unknowns.ts'
 import { gatherFacts } from './probes/facts.ts'
 import { probeHiberfil } from './probes/hiberfil.ts'
@@ -541,7 +543,7 @@ function appDataFile(name: string): string {
    ★ 사유 문자열은 사전으로 접는다. 9만 개 항목이 같은 문장 수십 개를 나눠 쓰므로
      그대로 적으면 파일이 수십 MB가 된다. 규칙 수만큼만 적고 번호로 가리킨다. */
 
-const PLAN_CACHE_VERSION = 1
+const PLAN_CACHE_VERSION = 2 // v2: 2순위 목록을 같은 파일에 함께 적는다
 /** 이보다 오래된 계획은 안 쓴다. 오래 묵은 목록으로 지우기 시작하면 안 된다. */
 const PLAN_CACHE_MAX_AGE_MS = 60 * 60 * 1000
 
@@ -551,14 +553,22 @@ interface CachedPlan {
   roots: string[]
   /** [meaning, reason] 쌍 — 항목이 번호로 가리킨다 */
   kinds: [string, string][]
-  /** [path, size, mtimeMs, kindIndex] */
+  /** 1순위 — [path, size, mtimeMs, kindIndex] */
   items: [string, number, number, number][]
+  /**
+   * 2순위 — 같은 형식, 같은 파일.
+   *
+   * 왜 파일을 따로 안 만드나: 두 목록은 **같은 스캔에서 나온 한 벌**이다.
+   * 파일을 나누면 1순위만 새것이고 2순위는 헌것인 상태가 생기는데, 그때 화면은
+   * 그 차이를 알 방법이 없다. 같이 쓰고 같이 만료시킨다.
+   */
+  tier2?: [string, number, number, number][]
 }
 
-async function writePlanCache(roots: string[], items: SweepItem[]): Promise<void> {
+async function writePlanCache(roots: string[], items: SweepItem[], tier2: SweepItem[] = []): Promise<void> {
   const kindIds = new Map<string, number>()
   const kinds: [string, string][] = []
-  const rows: CachedPlan['items'] = items.map((i) => {
+  const encode = (list: SweepItem[]): CachedPlan['items'] => list.map((i) => {
     const key = i.meaning + ' ' + i.reason
     let id = kindIds.get(key)
     if (id === undefined) {
@@ -573,7 +583,8 @@ async function writePlanCache(roots: string[], items: SweepItem[]): Promise<void
     createdAt: Date.now(),
     roots,
     kinds,
-    items: rows,
+    items: encode(items),
+    tier2: encode(tier2),
   }
   try {
     const file = appDataFile('sweep-plan.json')
@@ -584,17 +595,27 @@ async function writePlanCache(roots: string[], items: SweepItem[]): Promise<void
   }
 }
 
-/** 같은 폴더들에 대한 신선한 계획이 있으면 돌려준다. 없으면 null. */
-async function readPlanCache(roots: string[]): Promise<SweepItem[] | null> {
+/**
+ * 같은 폴더들에 대한 신선한 계획이 있으면 돌려준다. 없으면 null.
+ *
+ * @param roots 훑었던 폴더들. null이면 '신선하기만 하면 쓴다' — 순위 실행은 방금
+ *              본 그 화면에서 바로 누르는 것이라, 화면이 폴더 목록을 다시 들고
+ *              오게 만들지 않는다.
+ * @param tier  1이면 자동 정리 목록, 2면 '한 번만 보고 지우세요' 목록.
+ */
+async function readPlanCache(roots: string[] | null, tier: 1 | 2 = 1): Promise<SweepItem[] | null> {
   try {
     const raw = JSON.parse(await readFile(appDataFile('sweep-plan.json'), 'utf8')) as CachedPlan
     if (raw.version !== PLAN_CACHE_VERSION) return null
     if (Date.now() - raw.createdAt > PLAN_CACHE_MAX_AGE_MS) return null
     // 훑은 폴더가 다르면 남의 계획이다. 순서까지 같아야 한다고 하진 않는다.
-    const a = [...raw.roots].sort().join('|')
-    const b = [...roots].sort().join('|')
-    if (a !== b) return null
-    return raw.items.map(([path, size, mtimeMs, k]) => ({
+    if (roots) {
+      const a = [...raw.roots].sort().join('|')
+      const b = [...roots].sort().join('|')
+      if (a !== b) return null
+    }
+    const rows = tier === 2 ? (raw.tier2 ?? []) : raw.items
+    return rows.map(([path, size, mtimeMs, k]) => ({
       path,
       size,
       mtimeMs,
@@ -787,7 +808,11 @@ async function scanPlan(paths: string[]) {
   const ambig: Classified[] = []
   /** 자동 정리 대상 — 그대로 캐시해서 '지금 정리하기'가 재스캔 없이 쓴다. */
   const autoItems: SweepItem[] = []
+  /** 2순위 대상 — owners가 '지워도 프로그램이 안 깨진다'고 본 것. 같은 캐시에 함께 적는다. */
+  const tier2Items: SweepItem[] = []
   const keptMap = new Map<string, number>()
+  /** 존C의 개수도 센다 — 순위 화면이 "몇 개를 지켰나"를 말하려면 용량만으론 부족하다. */
+  const keptCount = new Map<string, number>()
   /** 어디를 봤는지도 돌려준다 — "어디까지 봤나"를 숨기면 신뢰가 안 생긴다. */
   const roots: { path: string; files: number; bytes: number }[] = []
   /** 폴더별 활동 장부 — '아직 쓰는 프로젝트인가'의 관측 근거(units.ts) */
@@ -836,8 +861,22 @@ async function scanPlan(paths: string[]) {
       if (z === 'LOCKED') {
         lockB += f.size; lockC++
         keptMap.set(c.verdict.meaning, (keptMap.get(c.verdict.meaning) ?? 0) + f.size)
+        keptCount.set(c.verdict.meaning, (keptCount.get(c.verdict.meaning) ?? 0) + 1)
       } else if (z === 'AMBIG') {
         ambB += f.size; ambC++; ambig.push(c)
+        /* ★ 2순위 목록을 여기서 같이 만든다. buildTiers가 나중에 또 ownerOf를
+           부르긴 하지만, 그건 집계용이고 이건 실행용 경로다. 나중에 다시 훑으면
+           그 사이 바뀐 파일을 지우게 된다 — 판단한 순간의 목록을 그대로 들고 간다. */
+        const o2 = ownerOf(f.path)
+        if (o2.verdict === 'safe') {
+          tier2Items.push({
+            path: f.path,
+            size: f.size,
+            meaning: o2.role || c.verdict.meaning,
+            reason: o2.onDelete || c.verdict.reason,
+            mtimeMs: stampMtime(f.mtime.getTime()),
+          })
+        }
       } else {
         safeB += f.size; safeC++
         if (isAutoEligible(c)) {
@@ -859,7 +898,7 @@ async function scanPlan(paths: string[]) {
   /* 다음 스캔의 진행률을 위해 이번 개수를 남긴다. 이번 스캔 결과에는 영향이 없다. */
   await writeScanStats(roots.map((r) => ({ path: r.path, files: r.files })))
   /* 지울 목록을 적어둔다 — '지금 정리하기'가 이걸 쓰면 재스캔이 통째로 사라진다. */
-  await writePlanCache(paths, autoItems)
+  await writePlanCache(paths, autoItems, tier2Items)
 
   /* 분류·질문 계산이 남았다 — 파일이 14만 개면 이 구간도 몇 초 걸린다.
      여기서 막대가 멈추면 "다 됐는데 왜 안 뜨나"가 된다. 그래서 마지막 단계를 알린다. */
@@ -937,6 +976,20 @@ async function scanPlan(paths: string[]) {
       lockBytes: lockB, lockCount: lockC,
       inferredBytes: inferB,
     },
+    /* ★ 순위 — "그래서 뭐부터 누르면 되나"에 답한다.
+       존(A/B/C)은 안전도를 말하고 순위는 행동 순서를 말한다. 사용자가 알고 싶은
+       건 후자인데, 여태 화면은 "물어봐야 할 것 285GB" 한 덩어리만 내밀었다. */
+    priority: buildTiers(
+      autoItems.map((i) => ({ meaning: i.meaning, size: i.size })),
+      ambig,
+      {
+        bytes: lockB,
+        count: lockC,
+        groups: [...keptMap.entries()].map(([meaning, bytes]) => ({
+          meaning, bytes, count: keptCount.get(meaning) ?? 0,
+        })),
+      }
+    ),
     questions,
     kept,
   }
@@ -1104,6 +1157,50 @@ async function main() {
           failed: result.failed,
           planned: total,
         })
+        break
+      }
+      /**
+       * 순위 하나를 통째로 실행한다 — "2순위 지우기" 버튼의 뒷면.
+       *
+       * ── 왜 필요한가 ────────────────────────────────────────────
+       * 순위를 매겨놓고 실행할 방법을 안 주면 그건 목록이지 기능이 아니다.
+       * 그렇다고 경로 3,789개를 인자로 넘길 수도 없다 — 명령줄 길이 제한에 걸린다.
+       * 그래서 apply-sweep과 같은 방식을 쓴다: 스캔할 때 적어둔 계획을 꺼내 쓴다.
+       *
+       * ── 다시 훑지 않는 이유 ────────────────────────────────────
+       * 여기서 재스캔하면 **판단한 목록과 지우는 목록이 달라진다.** 화면은
+       * "0.93GB 3,789개"를 보여주고 눌렀는데 그 사이 늘어난 파일까지 지우는 셈이다.
+       * 사용자가 본 그 목록을 그대로 지운다. 대신 계획이 1시간을 넘으면 거절한다.
+       *
+       * ★ 안전장치는 하나도 안 건너뛴다 — deleteNow가 quarantine()을 지나면서
+       *   크기·수정시각을 다시 대조하므로(expect), 그 사이 바뀐 파일은 조용히
+       *   건너뛴다. 낡은 목록으로 엉뚱한 걸 지우는 일이 없다.
+       */
+      case 'tier-apply': {
+        const tier = Number(args[0])
+        if (tier !== 2) fail('지금은 2순위만 이 명령으로 실행합니다. 1순위는 apply-sweep을 쓰세요.')
+
+        const items = await readPlanCache(null, 2)
+        if (!items) {
+          fail('정리 계획이 없거나 오래됐어요. 검사를 다시 하면 목록이 새로 만들어집니다.')
+        }
+        if (!items.length) {
+          out({ tier, deletedCount: 0, deletedBytes: 0, leftover: 0, failed: [], planned: 0 })
+          break
+        }
+
+        const started = Date.now()
+        progress({ t: 'tier', tier, total: items.length, done: 0, pct: 0 })
+        const r = await deleteNow(
+          items.map((i) => ({
+            path: i.path,
+            reason: `${tier}순위로 고르신 것 — ${i.meaning}`,
+            zone: 'AMBIG' as const,
+            expect: { size: i.size, mtimeMs: i.mtimeMs },
+          }))
+        )
+        progress({ t: 'tier', tier, total: items.length, done: items.length, pct: 100 })
+        out({ tier, ...r, planned: items.length, elapsedMs: Date.now() - started })
         break
       }
       case 'quar-list': {
