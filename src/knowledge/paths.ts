@@ -40,6 +40,25 @@ const LOCKED_RULES: PathRule[] = [
     reason: '지우면 부팅이 안 되거나 시스템이 망가집니다.',
   },
   {
+    /* ★ 윈도우 폴더 **바로 아래** 파일 (2026-08-19 실측에서 뚫림)
+     *
+     *   win.system은 system32·syswow64·boot·fonts·servicing '하위'만 봤다.
+     *   그래서 C:\Windows\explorer.exe, notepad.exe, regedit.exe가 전부
+     *   AMBIG였다 — "물어보면 지울 수 있는 것"으로 잡혔다는 뜻이다.
+     *
+     *   조작된 목록으로 explorer.exe를 지우게 해봤더니 실제로 잠금에 안 걸렸고,
+     *   막아준 건 TOCTOU 검사(크기·수정시각 불일치)였다. 그건 우연한 방어지
+     *   설계된 방어가 아니다 — 값을 맞춰 넣으면 통과한다.
+     *
+     *   Windows\Temp와 Windows\Logs는 위 SAFE 규칙이 잡아야 하므로 **폴더는
+     *   건드리지 않고** 이 폴더 바로 아래 '파일'만 잠근다([^/]+$). */
+    id: 'win.root-file',
+    test: /^[a-z]:\/windows\/[^/]+$/,
+    zone: 'LOCKED',
+    meaning: 'Windows 폴더의 시스템 파일',
+    reason: '윈도우가 직접 쓰는 파일이에요. 지우면 로그인이 안 되거나 시스템이 망가집니다.',
+  },
+  {
     id: 'win.winsxs',
     // [R] 수동 삭제 시 부팅 불능·업데이트 불가. DISM으로만.
     test: /^[a-z]:\/windows\/winsxs\//,

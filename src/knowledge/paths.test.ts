@@ -81,6 +81,22 @@ test('앱 설정은 캐시처럼 보여도 잠근다 — 오삭제의 실제 피
   expectZone('/Users/me/Library/Application Support/Alfred/workflows/x.plist', 'LOCKED', '워크플로 손실')
 })
 
+test('★ 윈도우 폴더 바로 아래 파일도 잠근다 — 하위 폴더만 보면 뚫린다', () => {
+  /* 실측(2026-08-19): win.system이 system32·boot·fonts '하위'만 봐서
+     C:/Windows/explorer.exe가 AMBIG였다. 조작된 목록으로 지우게 해봤더니
+     잠금에 안 걸렸고, 막아준 건 TOCTOU 검사였다 — 그건 우연한 방어지
+     설계된 방어가 아니다. 값을 맞춰 넣으면 통과한다. */
+  expectZone('C:/Windows/explorer.exe', 'LOCKED', '로그인 셸')
+  expectZone('C:/Windows/notepad.exe', 'LOCKED', '윈도우 기본 프로그램')
+  expectZone('C:/Windows/regedit.exe', 'LOCKED', '레지스트리 편집기')
+})
+
+test('★ 그렇다고 Windows\Temp까지 잠그지 않는다 — 규칙을 넓히다 정리할 것을 막으면 안 된다', () => {
+  // 루트 '파일'만 잠근다. 하위 폴더는 원래 규칙들이 그대로 판단한다.
+  expectZone('C:/Windows/Temp/x.tmp', 'SAFE', '임시 파일')
+  expectZone('C:/Windows/Logs/CBS/CBS.log', 'SAFE', '로그')
+})
+
 test('시스템 팽창 범인은 파일 삭제가 아니라 전용 경로로', () => {
   expectZone('C:\\Windows\\WinSxS\\amd64_something\\file.dll', 'LOCKED', '수동 삭제 시 부팅 불능')
   expectZone('C:\\hiberfil.sys', 'LOCKED', 'powercfg로만 제거 가능', 6000)

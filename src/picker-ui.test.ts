@@ -256,18 +256,68 @@ test('★ 완료 문구는 "지금 비었다"고 말한다 — 보관 시절의 
   assert.match(after, /leftoverNote\(/, '못 지우고 남은 것을 말하지 않는다')
 })
 
-test('★ 낱개 격리는 실행 직전에 엔진이 다시 분류한다 — 화면 말을 그냥 믿지 않는다', () => {
-  const src = engine()
-  const start = src.indexOf("case 'quarantine-paths'")
-  assert.ok(start > 0, 'quarantine-paths 명령이 없다')
-  const body = src.slice(start, src.indexOf("case 'startup'", start))
+/* ────────────────────────────────────────────────────────────
+   지우는 길은 전부 같은 문을 지난다
 
-  // 밖에서 온 경로를 그대로 격리하면 임의 파일 삭제 통로가 된다.
+   ★ 이 테스트가 원래 quarantine-paths 한 통로만 보고 있었다. 그래서
+     카드 실행(proposal-apply)을 새로 만들면서 재분류·잠금 거절을 **통째로
+     빠뜨렸는데도 초록불이었다.** zone을 'AMBIG'으로 박아 넣고 지우는 통로가
+     생겼고, 카드 목록 파일만 건드리면 시스템 파일도 지워지는 상태였다.
+
+     안전장치를 한 통로 안에 적어두면 통로가 늘 때 따라오지 않는다.
+     그래서 이제 '통로마다'가 아니라 '전부'를 본다.
+   ──────────────────────────────────────────────────────────── */
+
+test('★ 재확인 문이 존재하고, 봐야 할 것을 다 본다', () => {
+  const src = engine()
+  const i = src.indexOf('async function recheckForDelete(')
+  assert.ok(i > 0, '지우기 전 재확인 함수가 없다')
+  const body = src.slice(i, i + 1800)
+
+  // 밖에서 온 경로를 그대로 지우면 임의 파일 삭제 통로가 된다.
   assert.match(body, /classifyOne\(/, '받은 경로를 다시 분류하지 않는다')
   assert.match(body, /zone === 'LOCKED'/, '잠근 항목을 거절하지 않는다')
   assert.match(body, /isFile\(\)/, '폴더가 들어와도 막지 않는다')
-  // 계획 시점과 달라졌으면 격리가 건너뛰도록 expect를 넘겨야 한다(TOCTOU).
-  assert.match(body, /expect:/, 'expect 없이 격리하면 그 사이 바뀐 파일을 그대로 가져간다')
+  // 계획 시점과 달라졌으면 건너뛰도록 expect를 넘겨야 한다(TOCTOU).
+  assert.match(body, /expect:/, 'expect 없이 지우면 그 사이 바뀐 파일을 그대로 가져간다')
+  assert.match(body, /refused/, '거절한 것을 안 돌려준다 — 왜 안 됐는지가 신뢰의 근거다')
+})
+
+test('★ deleteNow를 부르는 모든 통로가 재확인을 지난다', () => {
+  const src = engine()
+
+  /* deleteNow를 부르는 case 블록을 전부 찾아, 그 블록 안에서 재확인을 지나는지
+     본다. 지나지 않는 통로가 하나라도 있으면 그게 곧 우회로다. */
+  const cases = [...src.matchAll(/case '([a-z-]+)': \{/g)]
+  const offenders: string[] = []
+  for (let i = 0; i < cases.length; i++) {
+    const from = cases[i].index!
+    const to = i + 1 < cases.length ? cases[i + 1].index! : src.length
+    const block = src.slice(from, to)
+    if (!/await deleteNow\(/.test(block)) continue
+    const name = cases[i][1]
+
+    /* 지키는 방법은 둘 중 하나면 된다.
+         · 공유 문을 지나거나 (recheckForDelete)
+         · 자기 자리에서 다시 분류하고 잠금을 거절하거나
+           (quarantine-folders·photos-apply는 scan + classifyOne으로 그렇게 한다)
+       둘 다 아니면 '목록에 적힌 대로 지우는' 통로다 — 그게 우회로다. */
+    const usesSharedGate = /recheckForDelete\(/.test(block)
+    /* 자기 자리에서 지키는 방법도 둘이다.
+         · 잠금을 명시적으로 거절하거나 (quarantine-folders)
+         · **애매(AMBIG)한 것만 통과시키거나** — 잠금은 애초에 못 지나간다
+           (answer-apply는 질문에 걸린 AMBIG만 모은다) */
+    const refusesLocked = /classifyOne\(/.test(block) && /zone === 'LOCKED'/.test(block)
+    const onlyAmbig = /classifyOne\(/.test(block) && /zone !== 'AMBIG'/.test(block)
+    if (!usesSharedGate && !refusesLocked && !onlyAmbig) offenders.push(name)
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `재분류·잠금 거절 없이 지우는 통로: ${offenders.join(', ')}
+` +
+      '— 목록에 적힌 대로 지우면, 그 목록만 건드려도 시스템 파일이 지워진다.'
+  )
 })
 
 test('★ 거절한 것을 숨기지 않는다 — 왜 안 됐는지가 신뢰의 근거다', () => {

@@ -1108,6 +1108,61 @@ async function scanPlan(paths: string[]) {
  * 그대로 남는다. leftover로 세어서 돌려주고, 화면은 '남은 것' 칸에서 되돌리기나
  * 다시 지우기를 준다. 조용히 사라진 셈 치면 그 파일은 영영 안 보이는 용량이 된다.
  */
+/**
+ * 지우기 전 재확인 — **밖에서 온 경로를 그냥 믿지 않는다.**
+ *
+ * ── 왜 함수로 뽑았나 (2026-08-19) ──────────────────────────
+ * 이 검사는 원래 quarantine-paths 안에만 있었다. 그래서 카드 실행(proposal-apply)을
+ * 새로 만들면서 **통째로 빠뜨렸다.** 그 통로는 zone을 'AMBIG'으로 박아 넣고
+ * 재분류 없이 지웠다 — 카드 목록 파일(proposals.json)만 건드리면 시스템 파일도
+ * 지워지는 상태였다.
+ *
+ * 안전장치가 한 통로 안에 적혀 있으면, 통로가 늘 때 따라오지 않는다.
+ * 그래서 지우는 길은 전부 이 문을 지나게 한다.
+ *
+ * ── 무엇을 보나 ────────────────────────────────────────────
+ *   · 지금 실제로 있는 파일인가 (stat)
+ *   · 파일인가 (폴더를 낱개로 지우지 않는다)
+ *   · **지금 다시 분류해서** 잠금(존 C)이면 거절
+ *   · 계획 시점과 크기·수정시각이 같은가 (expect — quarantine이 대조한다)
+ *
+ * 화면이 뭐라고 했든, 목록에 뭐라고 적혀 있든 여기서 다시 본다.
+ * 거절한 것은 숨기지 않고 이유와 함께 돌려준다 — 왜 안 됐는지가 신뢰의 근거다.
+ */
+async function recheckForDelete(
+  paths: string[],
+  reasonFor: (meaning: string) => string
+): Promise<{ requests: QuarantineRequest[]; refused: { path: string; reason: string }[] }> {
+  const requests: QuarantineRequest[] = []
+  const refused: { path: string; reason: string }[] = []
+  for (const p of paths) {
+    let st
+    try {
+      st = await stat(p)
+    } catch {
+      refused.push({ path: p, reason: '파일을 찾지 못했어요' })
+      continue
+    }
+    if (!st.isFile()) {
+      refused.push({ path: p, reason: '파일이 아니에요 — 폴더는 낱개로 다루지 않습니다' })
+      continue
+    }
+    const c = classifyOne(fileEntryOf(p, st))
+    if (c.verdict.zone === 'LOCKED') {
+      // 화면이 보여준 적 없는 경로가 들어왔거나, 그 사이 판단이 바뀐 것이다.
+      refused.push({ path: p, reason: `잠근 항목이라 건드리지 않았어요 (${c.verdict.meaning})` })
+      continue
+    }
+    requests.push({
+      path: p,
+      reason: reasonFor(c.verdict.meaning),
+      zone: c.verdict.zone,
+      expect: { size: st.size, mtimeMs: stampMtime(st.mtimeMs) },
+    })
+  }
+  return { requests, refused }
+}
+
 async function deleteNow(
   requests: QuarantineRequest[],
   onProgress?: (done: number, total: number, bytes: number) => void
@@ -1294,17 +1349,30 @@ async function main() {
 
         const started = Date.now()
         progress({ t: 'proposal', id, total: card.items.length, done: 0, pct: 0, etaSec: null })
+
+        /* ★ 목록에 적힌 대로 지우지 않는다 — **지금 다시 본다.**
+           카드 목록은 파일(proposals.json)이고, 스캔한 지 시간이 지났을 수도,
+           밖에서 손댔을 수도 있다. 재분류·잠금 거절을 여기서 다시 지난다.
+           expect는 계획 시점의 크기·시각을 쓰므로 그 사이 바뀐 파일은 건너뛴다. */
+        const { requests, refused } = await recheckForDelete(
+          card.items.map(([p]) => p),
+          () => `정리 목록에서 고르신 것 — ${card.title}`
+        )
+        const stampFor = new Map(card.items.map(([p, size, mtimeMs]) => [p, { size, mtimeMs }]))
+        for (const q of requests) {
+          const st = stampFor.get(q.path)
+          if (st) q.expect = st // 계획 시점의 값으로 대조한다
+        }
+        if (!requests.length) {
+          out({ id, title: card.title, deletedCount: 0, deletedBytes: 0, leftover: 0, failed: [], refused })
+          break
+        }
+
         /* 진행 보고는 눌러 담는다 — 파일마다 한 줄씩 내보내면 초당 수천 줄이 되고,
            그걸 받아 그리는 화면이 삭제보다 느려진다(스캔 쪽과 같은 이유). */
         let lastEmit = 0
         const r = await deleteNow(
-          card.items.map(([p, size, mtimeMs]) => ({
-            path: p,
-            reason: `정리 목록에서 고르신 것 — ${card.title}`,
-            zone: 'AMBIG' as const,
-            // 계획 세운 그 파일이 맞는지 실행 직전에 대조한다. 바뀌었으면 건너뛴다.
-            expect: { size, mtimeMs },
-          })),
+          requests,
           (done, total, bytes) => {
             const now = Date.now()
             if (now - lastEmit < 250) return
@@ -1315,8 +1383,8 @@ async function main() {
             progress({ t: 'proposal', id, done, total, bytes, etaSec, pct: total ? Math.round((done / total) * 100) : 100 })
           }
         )
-        progress({ t: 'proposal', id, total: card.items.length, done: card.items.length, pct: 100, etaSec: 0 })
-        out({ id, title: card.title, ...r, planned: card.items.length, elapsedMs: Date.now() - started })
+        progress({ t: 'proposal', id, total: requests.length, done: requests.length, pct: 100, etaSec: 0 })
+        out({ id, title: card.title, ...r, refused, planned: card.items.length, elapsedMs: Date.now() - started })
         break
       }
       case 'quar-list': {
@@ -1574,33 +1642,10 @@ async function main() {
         const paths = args.filter((a) => a && !a.startsWith('--'))
         if (!paths.length) fail('지울 파일 경로가 필요합니다.')
 
-        const requests = []
-        const refused: { path: string; reason: string }[] = []
-        for (const p of paths) {
-          let st
-          try {
-            st = await stat(p)
-          } catch {
-            refused.push({ path: p, reason: '파일을 찾지 못했어요' })
-            continue
-          }
-          if (!st.isFile()) {
-            refused.push({ path: p, reason: '파일이 아니에요 — 폴더는 낱개로 다루지 않습니다' })
-            continue
-          }
-          const c = classifyOne(fileEntryOf(p, st))
-          if (c.verdict.zone === 'LOCKED') {
-            // 화면이 보여준 적 없는 경로가 들어왔거나, 그 사이 판단이 바뀐 것이다.
-            refused.push({ path: p, reason: `잠근 항목이라 건드리지 않았어요 (${c.verdict.meaning})` })
-            continue
-          }
-          requests.push({
-            path: p,
-            reason: `목록에서 직접 고르신 것 — ${c.verdict.meaning}`,
-            zone: c.verdict.zone,
-            expect: { size: st.size, mtimeMs: stampMtime(st.mtimeMs) },
-          })
-        }
+        const { requests, refused } = await recheckForDelete(
+          paths,
+          (meaning) => `목록에서 직접 고르신 것 — ${meaning}`
+        )
 
         if (!requests.length) {
           out({ deletedCount: 0, deletedBytes: 0, leftover: 0, failed: [], refused })
@@ -1662,16 +1707,15 @@ async function main() {
         const moved = await applyFolderTidy(plan)
         // 깨진 바로가기는 옮겨봐야 쓰레기가 이동할 뿐이라 지운다. 가리키던 대상이
         // 이미 없어서 되살릴 것도 없다 — 보관할 이유가 애초에 없던 종류다.
-        const q = plan.broken.length
-          ? await deleteNow(
-              plan.broken.map((b) => ({
-                path: b.path,
-                reason: '대상이 사라진 바로가기',
-                zone: 'SAFE' as const,
-                expect: { size: b.size, mtimeMs: b.mtimeMs },
-              }))
-            )
+        /* 깨진 바로가기도 재확인 문을 지난다. 좁은 통로라 위험이 작아 보여도,
+           '이건 안전하니까 건너뛰자'가 쌓이면 결국 문이 없는 것과 같아진다. */
+        const broken = plan.broken.length
+          ? await recheckForDelete(plan.broken.map((b) => b.path), () => '대상이 사라진 바로가기')
+          : { requests: [], refused: [] as { path: string; reason: string }[] }
+        const q = broken.requests.length
+          ? await deleteNow(broken.requests)
           : { deletedCount: 0, failed: [] as { path: string; reason: string }[] }
+        for (const r of broken.refused) moved.failed.push(r)
 
         out({
           folder,
@@ -1741,16 +1785,15 @@ async function main() {
 
         let deletedCount = 0, deletedBytes = 0
         if ((what === 'all' || what === 'duplicates') && plan.dupGroups.length) {
-          const q = await deleteNow(
-            plan.dupGroups.flatMap((g) =>
-              g.copies.map((c) => ({
-                path: c.path,
-                reason: `같은 사진이 여러 벌 — 원본(${basename(g.keeper.path)})은 그대로 뒀어요`,
-                zone: 'SAFE' as const,
-                expect: { size: c.size, mtimeMs: c.mtimeMs },
-              }))
-            )
+          /* ★ 사본이라도 지우기 전에 재확인 문을 지난다.
+             클라우드 동기화 폴더의 사진은 여기서 지우면 클라우드에서도 지워진다 —
+             그건 존 C라 거절돼야 한다. 사진이라는 이유로 문을 건너뛰지 않는다. */
+          const { requests: dupReqs, refused: dupRefused } = await recheckForDelete(
+            plan.dupGroups.flatMap((g) => g.copies.map((c) => c.path)),
+            () => '같은 사진이 여러 벌 — 원본은 그대로 뒀어요'
           )
+          for (const r of dupRefused) failed.push(r)
+          const q = await deleteNow(dupReqs)
           deletedCount = q.deletedCount
           deletedBytes = q.deletedBytes
           for (const f of q.failed) failed.push(f)
