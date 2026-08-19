@@ -267,8 +267,26 @@ const AMBIG_RULES: PathRule[] = [
     unknown: 'U2_PROJECT_ACTIVE',
   },
   {
+    /* ★ 가상환경을 빌드 산출물과 갈랐다 (2026-08-19)
+     *
+     *   전에는 한 규칙이 (target|build|dist|out|.next|.venv|venv)를 다 잡았다.
+     *   그랬더니 판정 사다리가 .venv를 "다시 빌드하면 만들어집니다"로 안내했다.
+     *   실측에서 걸린 건 ACE-Step의 .venv/torch/lib 5.31GB였다 — 가상환경은
+     *   빌드가 아니라 pip install이고, 락파일이 없으면 **같은 게 다시 안 깔린다.**
+     *   CUDA 빌드가 걸린 torch는 특히 그렇다.
+     *
+     *   dist는 소스만 있으면 언제든 다시 나온다. .venv는 아니다. 되살리는
+     *   확실성이 다르면 같은 규칙에 두면 안 된다. */
+    id: 'dev.venv',
+    test: /\/(\.venv|venv)\//,
+    zone: 'AMBIG',
+    meaning: '파이썬 가상환경',
+    reason: '프로젝트가 쓰는 패키지들이에요. 다시 깔 수는 있지만, 버전이 고정돼 있지 않으면 똑같이 복원되지 않을 수 있어요.',
+    unknown: 'U2_PROJECT_ACTIVE',
+  },
+  {
     id: 'dev.build',
-    test: /\/(target|build|dist|out|\.next|\.venv|venv)\//,
+    test: /\/(target|build|dist|out|\.next)\//,
     zone: 'AMBIG',
     meaning: '빌드 산출물',
     reason: '다시 빌드하면 되지만, 이 프로젝트가 살아있는지는 확인이 필요해요.',
