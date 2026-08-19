@@ -55,10 +55,9 @@ test('★ 스캔이 만든 목록을 버리지 않는다', () => {
   // scanPlan은 이미 모든 파일에 isAutoEligible을 돌린다. 그 결과가 곧 지울 목록이다.
   assert.match(src, /autoItems\.push\(/, 'scanPlan이 자동 정리 대상을 모으지 않는다')
   assert.match(src, /writePlanCache\(paths, autoItems/, '모아놓고 저장하지 않는다')
-  /* 2순위도 같은 자리에서 같이 적는다. 나중에 다시 훑으면 화면이 보여준 목록과
-     실제로 지우는 목록이 달라진다 — 사용자가 본 그 목록을 그대로 들고 간다. */
-  assert.match(src, /tier2Items\.push\(/, '2순위 실행 목록을 안 모은다')
-  assert.match(src, /writePlanCache\(paths, autoItems, tier2Items\)/, '2순위를 같이 저장하지 않는다')
+  /* 제안 카드도 같은 자리에서 같이 적는다. 나중에 다시 훑으면 화면이 보여준
+     목록과 실제로 지우는 목록이 달라진다 — 사용자가 본 그 목록을 그대로 들고 간다. */
+  assert.match(src, /writeProposalCache\(/, '카드의 실행 목록을 안 적어둔다')
 })
 
 test('★ 캐시는 오래되면 안 쓴다 — 묵은 목록으로 지우기 시작하면 안 된다', () => {

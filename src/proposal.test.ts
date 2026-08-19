@@ -81,6 +81,23 @@ test('★ 카드 하나가 곧 실행 단위다 — 경로를 들고 있어야 �
   assert.deepEqual(proposals[0].paths.sort(), ['C:/app/cache/a.bin', 'C:/app/cache/b.bin'])
 })
 
+test('★ 실행할 수 있는 카드가 실행 못 하는 카드에 밀려나지 않는다', () => {
+  /* 실측에서 이걸 놓쳤다: 용량순으로 12장을 자르니 1순위 카드가 한 장도 안
+     남았다. 지워도 되는 게 16.43GB 있는데 더 큰 3순위(19GB짜리 모델·영상)가
+     자리를 다 가져갔다. 3순위는 눌러도 안 지워지는 카드다 — 그게 목록을
+     채우면 사용자가 할 수 있는 일이 사라진다. */
+  const files = [
+    v('C:/small/a.bin', 300 * MB), // 1순위, 작음
+    ...Array.from({ length: 20 }, (_, i) =>
+      v(`C:/big${i}/x.bin`, 9000 * MB, { action: 'ask' as const, recovery: 'none' as const, because: '되살릴 수 없어요.' })
+    ),
+  ]
+  const spots = [spot('C:/small'), ...Array.from({ length: 20 }, (_, i) => spot(`C:/big${i}`))]
+  const { proposals } = propose(files, spots, { limit: 5, minBytes: 1 })
+  assert.ok(proposals.some((p) => p.tier === 1), '실행 가능한 1순위가 통째로 밀려났다')
+  assert.equal(proposals[0].tier, 1, '순위가 앞서야 한다')
+})
+
 test('작은 묶음은 카드로 안 만든다 — 목록만 길어진다', () => {
   const { proposals, rest } = propose([v('C:/a/x.bin', 1024)], [spot('C:/a')], { minBytes: 100 * MB })
   assert.equal(proposals.length, 0)

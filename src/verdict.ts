@@ -39,6 +39,16 @@ export type Recovery =
   /** 클라우드나 다른 드라이브에도 있다 */
   | 'backed-up'
   /**
+   * 그 프로그램이 다시 만들거나 다시 받아온다 — owners.ts가 '지워도 안 깨진다'로
+   * 본 것. (내려받아 둔 업데이트 설치 파일, 미리 그려둔 화면 밑그림 등)
+   *
+   * ★ 이 칸은 priority.ts를 흡수하면서 들어왔다. 순위 체계가 두 벌이던 시절,
+   *   화면에 "1순위 11.46GB"와 "1순위 9.69GB"가 나란히 떴다. 근거가 다른 두
+   *   체계가 같은 이름으로 다른 숫자를 말하면 둘 다 못 믿는다.
+   *   owners의 판정은 버릴 게 아니라 **사다리의 한 칸**이었다.
+   */
+  | 'app-remakes'
+  /**
    * 명령 한 번이면 다시 만들어진다 — 다만 시간이 걸린다.
    * (node_modules는 npm install, dist/build는 다시 빌드)
    *
@@ -68,6 +78,13 @@ export interface VerdictFile {
   ino?: string
   /** 어느 규칙이 걸렸나. 'dev.build'처럼 다시 만들 수 있는 것을 여기서 가른다 */
   ruleId?: string
+  /**
+   * owners.ts의 판정이 'safe'인가 — "지워도 그 프로그램은 안 깨진다".
+   * 어느 프로그램 것인지까지 확인하고 내린 판정이라 추측이 아니다.
+   */
+  ownerSafe?: boolean
+  /** owners가 본 이 파일의 역할. 근거 문장에 쓴다 */
+  ownerRole?: string
 }
 
 /**
@@ -251,7 +268,20 @@ export function judge(input: VerdictInput): FileVerdict[] {
       continue
     }
 
-    // ── 7단 · 되살릴 방법을 못 찾았다 ────────────────────
+    /* ── 7단 · 그 프로그램이 다시 만든다 ──────────────────
+       owners.ts가 어느 프로그램 것인지까지 보고 '지워도 안 깨진다'고 한 것.
+       규칙 DB(2단)보다 약한 근거라 아래에 두고, 되살리는 데 품이 든다고 말한다. */
+    if (f.ownerSafe && !inProtected) {
+      out.push(base({
+        action: 'delete',
+        recovery: 'app-remakes',
+        effort: 'takes-time',
+        because: `${f.ownerRole || '이 파일'}은 지워도 그 프로그램이 안 깨져요. 필요하면 다시 만들거나 다시 받아옵니다.`,
+      }))
+      continue
+    }
+
+    // ── 8단 · 되살릴 방법을 못 찾았다 ────────────────────
     out.push(base({
       action: 'ask',
       recovery: 'none',
@@ -290,6 +320,7 @@ const RECOVERY_LABEL: Record<Recovery, string> = {
   'sibling-copy': '폴더마다 복사돼 들어온 것',
   'backed-up': '클라우드에도 있는 것',
   rebuildable: '다시 받거나 빌드하면 되는 것',
+  'app-remakes': '그 프로그램이 다시 만드는 것',
   none: '되살릴 수 없는 것',
 }
 

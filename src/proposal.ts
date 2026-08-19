@@ -203,7 +203,14 @@ export function propose(
     b.paths.push(v.path)
   }
 
-  const all = [...buckets.values()].sort((a, b) => b.bytes - a.bytes)
+  /* ★ 자르는 순서가 곧 쓸모를 가른다 (2026-08-19 실측에서 잡음)
+     처음엔 용량순으로 12장을 잘랐다. 그랬더니 이 PC에서 **1순위 카드가 한 장도
+     안 남았다** — 지워도 되는 게 16.43GB나 있는데, 더 큰 3순위 묶음들(모델·영상
+     19GB짜리)이 열두 자리를 다 가져갔기 때문이다.
+     3순위는 눌러도 안 지워지는 카드다(물어보는 쪽). 실행할 수 있는 것이 실행할
+     수 없는 것에 밀려나면 목록이 있으나 마나다. 순위 먼저, 그 안에서 용량순. */
+  const byTier = (x: Bucket) => tierOf(x.action, x.effort)
+  const all = [...buckets.values()].sort((a, b) => byTier(a) - byTier(b) || b.bytes - a.bytes)
   const big = all.filter((b) => b.bytes >= minBytes)
   const chosen = big.slice(0, limit)
   const dropped = [...big.slice(limit), ...all.filter((b) => b.bytes < minBytes)]

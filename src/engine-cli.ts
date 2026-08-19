@@ -24,7 +24,7 @@
  *   answer-apply   <unknown> <outcome> [path...] 답변 실행 — 정리는 곧바로 삭제
  *   quarantine-paths <path...>       고른 파일만 삭제 (묶음이 아니라 낱개)
  *   quarantine-folders <path...>     폴더째 삭제 (.venv·node_modules 같은 결정 단위)
- *   tier-apply     <2>               그 순위를 통째로 삭제 (스캔 때 적어둔 계획을 씀)
+ *   proposal-apply <id>              정리 목록의 카드 하나를 삭제 (스캔 때 적어둔 목록)
  *   startup                          시작프로그램 목록 + 판정
  *   startup-tasks                    로그온 예약작업 개수 (느려서 목록과 분리)
  *   startup-set    <id> <on|off>     시작프로그램 켜기/끄기 (되돌릴 수 있음)
@@ -86,7 +86,6 @@ import { buildBreakdown } from './breakdown.ts'
 import { groupByKind, describeMix, kindOf } from './kinds.ts'
 import { ownerOf, ownerHeadline } from './owners.ts'
 import { computeProgress, type RootWeight } from './progress.ts'
-import { buildTiers } from './priority.ts'
 import { analyze, type AnalyzeFile } from './analyze.ts'
 import { UNKNOWN_EXPLAIN } from './content/unknowns.ts'
 import { gatherFacts } from './probes/facts.ts'
@@ -852,8 +851,6 @@ async function scanPlan(paths: string[]) {
   const ambig: Classified[] = []
   /** 자동 정리 대상 — 그대로 캐시해서 '지금 정리하기'가 재스캔 없이 쓴다. */
   const autoItems: SweepItem[] = []
-  /** 2순위 대상 — owners가 '지워도 프로그램이 안 깨진다'고 본 것. 같은 캐시에 함께 적는다. */
-  const tier2Items: SweepItem[] = []
   /* 관측 패스가 쓸 전체 목록.
      ★ 존별로 나눠 담은 것만으로는 부족하다 — 크기 트리·반복 구조·판정은
        **모든 파일**을 한 번에 봐야 한다. 42만 개 기준 메모리가 붙지만,
@@ -928,14 +925,11 @@ async function scanPlan(paths: string[]) {
            부르긴 하지만, 그건 집계용이고 이건 실행용 경로다. 나중에 다시 훑으면
            그 사이 바뀐 파일을 지우게 된다 — 판단한 순간의 목록을 그대로 들고 간다. */
         const o2 = ownerOf(f.path)
-        if (o2.verdict === 'safe') {
-          tier2Items.push({
-            path: f.path,
-            size: f.size,
-            meaning: o2.role || c.verdict.meaning,
-            reason: o2.onDelete || c.verdict.reason,
-            mtimeMs: stampMtime(f.mtime.getTime()),
-          })
+        // 사다리(verdict.ts)가 쓸 수 있게 판정을 실어준다.
+        const mine = allFiles[allFiles.length - 1]
+        if (mine && mine.path === f.path) {
+          mine.ownerSafe = o2.verdict === 'safe'
+          mine.ownerRole = o2.role
         }
       } else {
         safeB += f.size; safeC++
@@ -958,7 +952,7 @@ async function scanPlan(paths: string[]) {
   /* 다음 스캔의 진행률을 위해 이번 개수를 남긴다. 이번 스캔 결과에는 영향이 없다. */
   await writeScanStats(roots.map((r) => ({ path: r.path, files: r.files })))
   /* 지울 목록을 적어둔다 — '지금 정리하기'가 이걸 쓰면 재스캔이 통째로 사라진다. */
-  await writePlanCache(paths, autoItems, tier2Items)
+  await writePlanCache(paths, autoItems)
 
   /* 분류·질문 계산이 남았다 — 파일이 14만 개면 이 구간도 몇 초 걸린다.
      여기서 막대가 멈추면 "다 됐는데 왜 안 뜨나"가 된다. 그래서 마지막 단계를 알린다. */
@@ -1089,20 +1083,6 @@ async function scanPlan(paths: string[]) {
     /** 모든 파일에 답이 붙었나 — 합계가 전체와 맞는지 화면이 확인할 수 있게 */
     verdictSummary: analysis?.summary ?? null,
     hotspots: analysis?.hotspots ?? [],
-    /* ★ 순위 — "그래서 뭐부터 누르면 되나"에 답한다.
-       존(A/B/C)은 안전도를 말하고 순위는 행동 순서를 말한다. 사용자가 알고 싶은
-       건 후자인데, 여태 화면은 "물어봐야 할 것 285GB" 한 덩어리만 내밀었다. */
-    priority: buildTiers(
-      autoItems.map((i) => ({ meaning: i.meaning, size: i.size })),
-      ambig,
-      {
-        bytes: lockB,
-        count: lockC,
-        groups: [...keptMap.entries()].map(([meaning, bytes]) => ({
-          meaning, bytes, count: keptCount.get(meaning) ?? 0,
-        })),
-      }
-    ),
     questions,
     kept,
   }
@@ -1270,89 +1250,6 @@ async function main() {
           failed: result.failed,
           planned: total,
         })
-        break
-      }
-      /**
-       * 순위 하나를 통째로 실행한다 — "2순위 지우기" 버튼의 뒷면.
-       *
-       * ── 왜 필요한가 ────────────────────────────────────────────
-       * 순위를 매겨놓고 실행할 방법을 안 주면 그건 목록이지 기능이 아니다.
-       * 그렇다고 경로 3,789개를 인자로 넘길 수도 없다 — 명령줄 길이 제한에 걸린다.
-       * 그래서 apply-sweep과 같은 방식을 쓴다: 스캔할 때 적어둔 계획을 꺼내 쓴다.
-       *
-       * ── 다시 훑지 않는 이유 ────────────────────────────────────
-       * 여기서 재스캔하면 **판단한 목록과 지우는 목록이 달라진다.** 화면은
-       * "0.93GB 3,789개"를 보여주고 눌렀는데 그 사이 늘어난 파일까지 지우는 셈이다.
-       * 사용자가 본 그 목록을 그대로 지운다. 대신 계획이 1시간을 넘으면 거절한다.
-       *
-       * ★ 안전장치는 하나도 안 건너뛴다 — deleteNow가 quarantine()을 지나면서
-       *   크기·수정시각을 다시 대조하므로(expect), 그 사이 바뀐 파일은 조용히
-       *   건너뛴다. 낡은 목록으로 엉뚱한 걸 지우는 일이 없다.
-       */
-      case 'tier-apply': {
-        const tier = Number(args[0])
-        if (tier !== 2) fail('지금은 2순위만 이 명령으로 실행합니다. 1순위는 apply-sweep을 쓰세요.')
-
-        const items = await readPlanCache(null, 2)
-        if (!items) {
-          fail('정리 계획이 없거나 오래됐어요. 검사를 다시 하면 목록이 새로 만들어집니다.')
-        }
-        if (!items.length) {
-          out({ tier, deletedCount: 0, deletedBytes: 0, leftover: 0, failed: [], planned: 0 })
-          break
-        }
-
-        const started = Date.now()
-        progress({ t: 'tier', tier, total: items.length, done: 0, pct: 0 })
-        const r = await deleteNow(
-          items.map((i) => ({
-            path: i.path,
-            reason: `${tier}순위로 고르신 것 — ${i.meaning}`,
-            zone: 'AMBIG' as const,
-            expect: { size: i.size, mtimeMs: i.mtimeMs },
-          }))
-        )
-        progress({ t: 'tier', tier, total: items.length, done: items.length, pct: 100 })
-        out({ tier, ...r, planned: items.length, elapsedMs: Date.now() - started })
-        break
-      }
-      /**
-       * 제안 카드 하나를 실행한다 — 화면의 카드에 달린 버튼의 뒷면.
-       *
-       * 카드가 곧 실행 단위다. 경로는 스캔할 때 적어둔 것을 쓴다(재스캔 없음) —
-       * 다시 훑으면 화면이 보여준 목록과 지우는 목록이 달라진다.
-       *
-       * ★ action이 'delete'인 카드만 실행한다. 'ask' 카드는 사용자가 필요한지
-       *   답해야 하는 것이라, 버튼 한 번으로 지우면 그게 무단 삭제다.
-       */
-      case 'proposal-apply': {
-        const id = args[0]
-        if (!id) fail('실행할 카드가 필요합니다.')
-        const cache = await readProposalCache()
-        if (!cache) fail('정리 목록이 없거나 오래됐어요. 검사를 다시 하면 목록이 새로 만들어집니다.')
-        const card = cache.cards.find((c) => c.id === id)
-        if (!card) fail('그 카드를 찾지 못했어요. 검사를 다시 해주세요.')
-        if (card.action !== 'delete') {
-          fail('이 카드는 여쭤보고 정하는 것이라 한 번에 지우지 않습니다.')
-        }
-        if (!card.items.length) {
-          out({ id, title: card.title, deletedCount: 0, deletedBytes: 0, leftover: 0, failed: [] })
-          break
-        }
-
-        const started = Date.now()
-        progress({ t: 'proposal', id, total: card.items.length, done: 0, pct: 0 })
-        const r = await deleteNow(
-          card.items.map(([p, size, mtimeMs]) => ({
-            path: p,
-            reason: `정리 목록에서 고르신 것 — ${card.title}`,
-            zone: 'AMBIG' as const,
-            // 계획 세운 그 파일이 맞는지 실행 직전에 대조한다. 바뀌었으면 건너뛴다.
-            expect: { size, mtimeMs },
-          }))
-        )
-        progress({ t: 'proposal', id, total: card.items.length, done: card.items.length, pct: 100 })
-        out({ id, title: card.title, ...r, planned: card.items.length, elapsedMs: Date.now() - started })
         break
       }
       case 'quar-list': {
