@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.17.3'
+const APP_VERSION = '0.18.0'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -629,6 +629,58 @@ function moreLabel(ev: any): string {
   return bits.length ? ` (${bits.join(' · ')})` : ''
 }
 
+/**
+ * 옮겨도 되나 — **누르기 전에** 답한다.
+ *
+ * ★ 왜 필요한가 (2026-08-19, 실물에서 나옴)
+ *   질문 카드가 "아주 큰 파일 18개(65.8GB)가 있어요. 지울까요, 다른 드라이브로
+ *   옮길까요?"라고 묻고 [다른 드라이브로 옮길래요] 버튼을 내밀었다.
+ *
+ *   그런데 그 18개는 **하나도 옮길 수 없었다.** 전부 AppData 안이라
+ *   "앱 설정 — 옮기면 설정이 초기화됩니다", "프로그램이 저장한 자료 — 옮기면
+ *   그 앱이 못 찾습니다"로 이미 판정돼 있었다. 판정은 엔진이 진작 내려서
+ *   samples[].move에 실어 보내고 있었는데, 화면이 그걸 안 읽고 선택지만 내밀었다.
+ *   누르면 다음 화면에서 "옮길 수 있는 게 없었어요"를 보게 되는 막다른 길이다.
+ *
+ *   ★ 다만 "못 옮긴다"로 끝나면 그것도 틀린 말이다. 낱개로는 못 옮겨도
+ *     **폴더째로는 옮길 수 있다** — 원래 자리에 안내판(정션)을 남기면 프로그램은
+ *     예전 주소로 찾아가도 그대로 열린다. 실측에서 낱개는 0/17이었지만
+ *     폴더째는 21.9GB가 가능했다. 둘을 갈라서 말해야 선택지가 진짜 선택지가 된다.
+ */
+function moveOutlook(ev: any): { movable: number; total: number; folderBytes: number; folders: number } {
+  const samples: any[] = ev?.samples ?? []
+  const units: any[] = ev?.units ?? []
+  // 엔진이 폴더째 옮길 수 있다고 표시한 것만 센다(정션이 막힌 곳은 이미 걸러져 온다).
+  const movableFolders = units.filter((u) => u?.moveOnly || u?.canMove)
+  return {
+    movable: samples.filter((s) => s?.move?.ok === true).length,
+    total: samples.length,
+    folderBytes: movableFolders.reduce((n, u) => n + (u.bytes ?? 0), 0),
+    folders: movableFolders.length,
+  }
+}
+
+/** 질문 카드에 붙일 한 줄. 옮기기 선택지가 없는 질문에는 아무것도 안 붙인다. */
+function moveOutlookHtml(q: any): string {
+  const hasMove = (q.options ?? []).some((o: any) => o.outcome === 'MOVE')
+  if (!hasMove) return ''
+  const o = moveOutlook(q.evidence)
+  if (!o.total) return ''
+
+  if (o.movable > 0) {
+    return `<div class="q-move ok"><i>⇄</i>큰 파일 ${o.total}개 중 <b>${o.movable}개</b>는 다른 드라이브로 옮겨도 그대로 열려요.</div>`
+  }
+  /* 낱개로는 못 옮긴다. 그래도 폴더째 길이 있으면 그걸 말한다 —
+     "안 됩니다"로 끝내면 사용자는 방법이 없는 줄 안다. */
+  if (o.folders) {
+    return `<div class="q-move warn"><i>⇄</i>낱개로는 옮길 수 없어요 —
+      <b>프로그램이 저장한 자료</b>라 자리를 바꾸면 그 앱이 못 찾습니다.
+      대신 <b>폴더째 ${fmtBytes(o.folderBytes)}</b>는 옮길 수 있어요. 원래 자리에 안내판을 남겨서 앱은 그대로 열립니다.</div>`
+  }
+  return `<div class="q-move warn"><i>⇄</i>이건 <b>옮길 수 없어요</b> —
+    프로그램이 저장한 자료라 자리를 바꾸면 그 앱이 못 찾습니다. 지우거나 그대로 두는 것 중에 고르셔야 해요.</div>`
+}
+
 function renderQuestions(questions: Question[]) {
   lastQuestions = questions // 낱개 목록이 근거를 다시 찾는다(renderPicker)
   const qEl = $('questions')
@@ -644,6 +696,7 @@ function renderQuestions(questions: Question[]) {
       </div>
       <div class="q-text">${esc(q.text)}</div>
       ${gistHtml((q as any).evidence)}
+      ${moveOutlookHtml(q)}
       <div class="opts">${q.options.map((o) => `<button class="opt${o.outcome === 'KEEP' ? ' keep' : ''}"
         data-outcome="${o.outcome}" data-unknown="${esc(q.unknown)}"
         data-preview="${esc(o.preview)}">${esc(o.label)}</button>`).join('')}</div>

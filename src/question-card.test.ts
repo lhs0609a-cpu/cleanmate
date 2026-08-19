@@ -80,3 +80,57 @@ test('★ 걸린 용량이 답하기 전에 보인다', () => {
   // 전에는 카드 맨 아래에 있어서, 판단에 제일 중요한 숫자를 답한 뒤에야 봤다.
   assert.ok(stake > 0 && stake < opts, '걸린 용량이 답변 버튼보다 아래에 있다')
 })
+
+
+/* ────────────────────────────────────────────────────────────
+   옮겨도 되나 — 누르기 전에 답한다
+
+   ★ 실물에서 나온 문제 (2026-08-19)
+     질문 카드가 "아주 큰 파일 18개(65.8GB)가 있어요. 지울까요, 다른 드라이브로
+     옮길까요?"라고 묻고 [다른 드라이브로 옮길래요]를 내밀었다.
+
+     그 18개는 **하나도 옮길 수 없었다.** 전부 AppData 안이라 "앱 설정 — 옮기면
+     설정이 초기화됩니다"로 이미 판정돼 있었고, 그 판정은 엔진이 진작
+     samples[].move에 실어 보내고 있었다. 화면이 안 읽었을 뿐이다.
+     누르면 다음 화면에서 "옮길 수 있는 게 없었어요"를 보는 막다른 길이었다.
+
+     ★ 그렇다고 "못 옮긴다"로 끝내도 틀렸다. 낱개는 0/17이었지만 폴더째로는
+       21.9GB가 옮겨진다(정션을 남기면 앱은 그대로 열린다). 둘을 갈라 말해야
+       선택지가 진짜 선택지가 된다.
+   ──────────────────────────────────────────────────────────── */
+
+test('★ 옮기기를 묻기 전에 옮길 수 있는지부터 말한다', () => {
+  const src = read('web/src/app.ts')
+  assert.match(src, /function moveOutlookHtml\(/, '옮기기 가능 여부를 말하는 자리가 없다')
+  // 선택지보다 **위**에 있어야 한다. 누른 뒤에 알려주면 늦다.
+  const note = src.indexOf('${moveOutlookHtml(q)}')
+  const opts = src.indexOf('<div class="opts">')
+  assert.ok(note > 0 && opts > 0, '질문 카드에서 두 자리를 못 찾았다')
+  assert.ok(note < opts, '옮기기 안내가 선택지보다 아래에 있다 — 누른 뒤에 알려주는 셈이다')
+})
+
+test('★ 엔진이 이미 내린 판정을 읽는다 — 화면이 다시 추측하지 않는다', () => {
+  const src = read('web/src/app.ts')
+  const i = src.indexOf('function moveOutlook(')
+  const body = src.slice(i, src.indexOf('function renderQuestions(', i))
+  assert.match(body, /move\?\.ok === true/, 'samples의 이동 판정을 안 읽는다')
+  assert.match(body, /units/, '폴더째 옮기기 후보를 안 본다')
+})
+
+test('★ "못 옮긴다"로 끝내지 않는다 — 폴더째 길이 있으면 그걸 말한다', () => {
+  const src = read('web/src/app.ts')
+  const i = src.indexOf('function moveOutlookHtml(')
+  const body = src.slice(i, i + 1400)
+  assert.match(body, /폴더째/, '낱개가 막혔을 때 다른 길을 안 알려준다')
+  assert.match(body, /안내판/, '정션으로 앱이 그대로 열린다는 사실을 안 말한다')
+  // 이유 없는 거절은 고장으로 읽힌다 — 왜 못 옮기는지 말해야 한다.
+  assert.match(body, /그 앱이 못 찾습니다/, '왜 못 옮기는지 이유를 안 말한다')
+})
+
+test('옮기기 선택지가 없는 질문에는 아무것도 안 붙인다 — 없는 걱정을 만들지 않는다', () => {
+  const src = read('web/src/app.ts')
+  const i = src.indexOf('function moveOutlookHtml(')
+  const body = src.slice(i, i + 400)
+  assert.match(body, /outcome === 'MOVE'/, '옮기기 선택지 유무를 안 본다')
+  assert.match(body, /return ''/, '해당 없는 질문에도 줄을 붙인다')
+})

@@ -353,6 +353,13 @@
   .opt.danger{border-color:var(--lock);color:var(--lock)}
   .opt.danger:hover{border-color:var(--lock);color:#fff;background:var(--lock)}
   .opt:disabled{opacity:.5;cursor:default}
+  /* 옮겨도 되나 — 선택지 위에 둔다. 누른 뒤에 알려주면 늦다. */
+  .q-move{display:flex;gap:6px;align-items:flex-start;margin-top:var(--s-3);
+          font-size:var(--t-caption);line-height:var(--lh-caption)}
+  .q-move i{font-style:normal;flex:none;opacity:.8}
+  .q-move.ok{color:var(--safe)}
+  .q-move.warn{color:var(--lock)}
+  .q-move b{font-weight:var(--w-em)}
   .q-answered{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);color:var(--safe);font-weight:var(--w-em);margin-top:var(--s-3)}
   .q-stake{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);color:var(--muted);margin-top:var(--s-3)}
 
