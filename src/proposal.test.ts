@@ -87,6 +87,23 @@ test('작은 묶음은 카드로 안 만든다 — 목록만 길어진다', () =
   assert.equal(rest.count, 1, '뺀 것을 안 세었다')
 })
 
+test('★ 하드링크는 카드 사이에서도 한 번만 센다 — 세 장 다 지워도 한 벌만 빈다', () => {
+  /* 실측: 같은 모델(하드링크)이 앱 세 곳에 있어서 "6.46GB" 카드가 세 장 나왔다.
+     합치면 19.38GB지만 실제로 비는 건 6.46GB다. 눌러본 사람이 속는다. */
+  const files = [
+    v('C:/a/m.bin', 900 * MB, { ino: 'vol:9' }),
+    v('C:/b/m.bin', 900 * MB, { ino: 'vol:9' }),
+    v('C:/c/m.bin', 900 * MB, { ino: 'vol:9' }),
+  ]
+  const { proposals } = propose(files, [spot('C:/a'), spot('C:/b'), spot('C:/c')], { minBytes: 1 })
+  const total = proposals.reduce((n, p) => n + p.bytes, 0)
+  assert.equal(total, 900 * MB, `같은 실물을 여러 카드가 나눠 셌다: ${total / MB}MB`)
+  /* ★ 그리고 링크 셋이 **한 카드에** 모여야 한다. 흩어두면 그 카드를 눌러도
+     다른 링크가 남아서 1바이트도 안 빈다 — "900MB 지우기"가 거짓말이 된다. */
+  assert.equal(proposals.length, 1, '링크가 여러 카드로 흩어졌다')
+  assert.equal(proposals[0].paths.length, 3, '한 카드가 링크를 다 안 들고 있다')
+})
+
 /* ── 제목 ─────────────────────────────────────────────────── */
 
 test('★ 제목이 누구 것인지 말한다 — "lib"만으로는 아무도 못 알아본다', () => {

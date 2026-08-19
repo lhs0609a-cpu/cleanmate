@@ -87,6 +87,7 @@ import { groupByKind, describeMix, kindOf } from './kinds.ts'
 import { ownerOf, ownerHeadline } from './owners.ts'
 import { computeProgress, type RootWeight } from './progress.ts'
 import { buildTiers } from './priority.ts'
+import { analyze, type AnalyzeFile } from './analyze.ts'
 import { UNKNOWN_EXPLAIN } from './content/unknowns.ts'
 import { gatherFacts } from './probes/facts.ts'
 import { probeHiberfil } from './probes/hiberfil.ts'
@@ -627,6 +628,49 @@ async function readPlanCache(roots: string[] | null, tier: 1 | 2 = 1): Promise<S
   }
 }
 
+/* ── 제안 카드 캐시 ──────────────────────────────────────────
+   카드 하나가 곧 실행 단위다. 그런데 카드가 들고 있는 경로가 14만 개라
+   화면으로 보낼 수도, 명령줄 인자로 넘길 수도 없다. 그래서 스캔할 때 적어두고
+   실행할 때 id로 되짚는다 — apply-sweep이 계획을 쓰는 방식과 같다. */
+const PROPOSAL_CACHE_VERSION = 1
+
+interface CachedProposals {
+  version: number
+  createdAt: number
+  roots: string[]
+  /* [path, size, mtimeMs] — 크기·시각까지 적는 이유는 실행할 때 대조하기 위해서다.
+     경로만 적어두면 계획을 세운 뒤 바뀐 파일을 그대로 가져간다(TOCTOU). */
+  cards: { id: string; title: string; tier: number; action: string; bytes: number; items: [string, number, number][] }[]
+}
+
+async function writeProposalCache(roots: string[], cards: CachedProposals['cards']): Promise<void> {
+  try {
+    const file = appDataFile('proposals.json')
+    await mkdir(dirname(file), { recursive: true })
+    const payload: CachedProposals = {
+      version: PROPOSAL_CACHE_VERSION,
+      createdAt: Date.now(),
+      roots,
+      cards,
+    }
+    await writeFile(file, JSON.stringify(payload), 'utf8')
+  } catch {
+    /* 못 적어도 스캔 결과는 그대로 쓴다 — 카드 실행만 안 될 뿐이다. */
+  }
+}
+
+async function readProposalCache(): Promise<CachedProposals | null> {
+  try {
+    const raw = JSON.parse(await readFile(appDataFile('proposals.json'), 'utf8')) as CachedProposals
+    if (raw.version !== PROPOSAL_CACHE_VERSION) return null
+    // 오래된 목록으로 지우기 시작하면 안 된다 — 계획 캐시와 같은 유효기간.
+    if (Date.now() - raw.createdAt > PLAN_CACHE_MAX_AGE_MS) return null
+    return raw
+  } catch {
+    return null
+  }
+}
+
 /** 다 쓴 계획은 지운다. 이미 지운 파일 목록을 들고 있어봐야 혼란만 만든다. */
 async function removePlanCache(): Promise<void> {
   try {
@@ -810,6 +854,11 @@ async function scanPlan(paths: string[]) {
   const autoItems: SweepItem[] = []
   /** 2순위 대상 — owners가 '지워도 프로그램이 안 깨진다'고 본 것. 같은 캐시에 함께 적는다. */
   const tier2Items: SweepItem[] = []
+  /* 관측 패스가 쓸 전체 목록.
+     ★ 존별로 나눠 담은 것만으로는 부족하다 — 크기 트리·반복 구조·판정은
+       **모든 파일**을 한 번에 봐야 한다. 42만 개 기준 메모리가 붙지만,
+       스캔 결과를 두 번 만드는 것보다 싸다(스캔은 4분, 이건 3.5초). */
+  const allFiles: AnalyzeFile[] = []
   const keptMap = new Map<string, number>()
   /** 존C의 개수도 센다 — 순위 화면이 "몇 개를 지켰나"를 말하려면 용량만으론 부족하다. */
   const keptCount = new Map<string, number>()
@@ -858,6 +907,17 @@ async function scanPlan(paths: string[]) {
 
       const c = classifyOne(f)
       const z = c.verdict.zone
+      allFiles.push({
+        path: f.path,
+        size: f.size,
+        mtimeMs: f.mtime.getTime(),
+        ino: f.ino, // 하드링크를 두 번 세지 않으려고 — 스캐너가 공짜로 준다
+        zone: z,
+        ruleBacked: c.verdict.ruleBacked,
+        meaning: c.verdict.meaning,
+        ruleId: c.verdict.ruleId,
+      })
+
       if (z === 'LOCKED') {
         lockB += f.size; lockC++
         keptMap.set(c.verdict.meaning, (keptMap.get(c.verdict.meaning) ?? 0) + f.size)
@@ -903,6 +963,40 @@ async function scanPlan(paths: string[]) {
   /* 분류·질문 계산이 남았다 — 파일이 14만 개면 이 구간도 몇 초 걸린다.
      여기서 막대가 멈추면 "다 됐는데 왜 안 뜨나"가 된다. 그래서 마지막 단계를 알린다. */
   progress({ t: 'plan', pct: 99, etaSec: null, basis: 'learned', files: scannedFiles })
+
+  /* ── 관측 네 패스 ───────────────────────────────────────────
+     스캔 한 번 위에 얹는다. 디스크를 다시 안 읽으므로(해시 후보 몇십 개 제외)
+     비용이 거의 없다 — 실측 42만 개에 6초. */
+  progress({ t: 'plan', pct: 97, etaSec: null, basis: 'learned', files: scannedFiles })
+  let analysis: Awaited<ReturnType<typeof analyze>> | null = null
+  try {
+    analysis = await analyze(allFiles, roots.reduce((n, r) => n + r.bytes, 0))
+    /* 제안 카드의 '경로 목록'은 캐시에만 적는다.
+       ★ 화면으로 보내면 안 된다 — 카드 하나가 14만 경로를 들고 있어서 JSON이
+         수십 MB가 된다. 화면은 개수·용량·예시만 있으면 결정할 수 있고,
+         실행할 때 카드 id로 캐시를 되짚으면 된다. */
+    /* 카드에 크기·수정시각을 붙여서 적는다 — 실행 직전 대조(expect)에 쓴다. */
+    const stampOf = new Map<string, [number, number]>()
+    for (const f of allFiles) stampOf.set(f.path, [f.size, stampMtime(f.mtimeMs)])
+    await writeProposalCache(
+      paths,
+      analysis.proposals.map((p) => ({
+        id: p.id,
+        title: p.title,
+        tier: p.tier,
+        action: p.action,
+        bytes: p.bytes,
+        items: p.paths.map((fp) => {
+          const st = stampOf.get(fp) ?? [0, 0]
+          return [fp, st[0], st[1]] as [string, number, number]
+        }),
+      }))
+    )
+  } catch (err) {
+    /* 관측이 실패해도 기존 결과(존·질문)는 그대로 나가야 한다. 새 기능 하나
+       때문에 되던 것까지 못 쓰게 만들지 않는다. */
+    progress({ t: 'analyze-failed', reason: err instanceof Error ? err.message : String(err) })
+  }
 
   const report = runEngine(ambig)
 
@@ -976,6 +1070,25 @@ async function scanPlan(paths: string[]) {
       lockBytes: lockB, lockCount: lockC,
       inferredBytes: inferB,
     },
+    /* ★ 제안 카드 — 42만 개의 판정을 사람이 볼 수 있는 몇 장으로.
+       경로 배열은 뺀다(캐시에 있다). 화면은 개수·용량·예시로 결정한다. */
+    proposals: (analysis?.proposals ?? []).map((p) => ({
+      id: p.id,
+      title: p.title,
+      where: p.where,
+      bytes: p.bytes,
+      count: p.count,
+      action: p.action,
+      recovery: p.recovery,
+      effort: p.effort,
+      because: p.because,
+      tier: p.tier,
+      samples: p.samples,
+    })),
+    proposalRest: analysis?.rest ?? { bytes: 0, count: 0, cards: 0 },
+    /** 모든 파일에 답이 붙었나 — 합계가 전체와 맞는지 화면이 확인할 수 있게 */
+    verdictSummary: analysis?.summary ?? null,
+    hotspots: analysis?.hotspots ?? [],
     /* ★ 순위 — "그래서 뭐부터 누르면 되나"에 답한다.
        존(A/B/C)은 안전도를 말하고 순위는 행동 순서를 말한다. 사용자가 알고 싶은
        건 후자인데, 여태 화면은 "물어봐야 할 것 285GB" 한 덩어리만 내밀었다. */
@@ -1201,6 +1314,45 @@ async function main() {
         )
         progress({ t: 'tier', tier, total: items.length, done: items.length, pct: 100 })
         out({ tier, ...r, planned: items.length, elapsedMs: Date.now() - started })
+        break
+      }
+      /**
+       * 제안 카드 하나를 실행한다 — 화면의 카드에 달린 버튼의 뒷면.
+       *
+       * 카드가 곧 실행 단위다. 경로는 스캔할 때 적어둔 것을 쓴다(재스캔 없음) —
+       * 다시 훑으면 화면이 보여준 목록과 지우는 목록이 달라진다.
+       *
+       * ★ action이 'delete'인 카드만 실행한다. 'ask' 카드는 사용자가 필요한지
+       *   답해야 하는 것이라, 버튼 한 번으로 지우면 그게 무단 삭제다.
+       */
+      case 'proposal-apply': {
+        const id = args[0]
+        if (!id) fail('실행할 카드가 필요합니다.')
+        const cache = await readProposalCache()
+        if (!cache) fail('정리 목록이 없거나 오래됐어요. 검사를 다시 하면 목록이 새로 만들어집니다.')
+        const card = cache.cards.find((c) => c.id === id)
+        if (!card) fail('그 카드를 찾지 못했어요. 검사를 다시 해주세요.')
+        if (card.action !== 'delete') {
+          fail('이 카드는 여쭤보고 정하는 것이라 한 번에 지우지 않습니다.')
+        }
+        if (!card.items.length) {
+          out({ id, title: card.title, deletedCount: 0, deletedBytes: 0, leftover: 0, failed: [] })
+          break
+        }
+
+        const started = Date.now()
+        progress({ t: 'proposal', id, total: card.items.length, done: 0, pct: 0 })
+        const r = await deleteNow(
+          card.items.map(([p, size, mtimeMs]) => ({
+            path: p,
+            reason: `정리 목록에서 고르신 것 — ${card.title}`,
+            zone: 'AMBIG' as const,
+            // 계획 세운 그 파일이 맞는지 실행 직전에 대조한다. 바뀌었으면 건너뛴다.
+            expect: { size, mtimeMs },
+          }))
+        )
+        progress({ t: 'proposal', id, total: card.items.length, done: card.items.length, pct: 100 })
+        out({ id, title: card.title, ...r, planned: card.items.length, elapsedMs: Date.now() - started })
         break
       }
       case 'quar-list': {

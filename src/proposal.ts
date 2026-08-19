@@ -83,6 +83,13 @@ export function ownerLabel(path: string): string {
 
   /* 주인이 시작되는 자리 — 이 표지 **다음** 칸이 앱·프로젝트 이름이다. */
   const marks = ['local', 'roaming', 'locallow', 'program files', 'program files (x86)', 'programdata']
+
+  /* ★ 자리 자체가 표지면 주인이 없다.
+     C:/Users/me/AppData/Local 이 통째로 핫스팟이면 마지막 칸이 'Local'인데,
+     그걸 그대로 쓰면 "AppData · Local"이라는 제목이 나온다(실측). 그건 앱 이름이
+     아니라 그냥 윈도우 폴더라서 사용자에게 아무 말도 안 한다. */
+  if (marks.includes(last.toLowerCase())) return '여러 앱'
+
   let owner = ''
   for (let i = low.length - 2; i >= 0; i--) {
     if (marks.includes(low[i])) { owner = segs[i + 1]; break }
@@ -152,6 +159,15 @@ export function propose(
   }
   const buckets = new Map<string, Bucket>()
 
+  /* ★ 실물 신원은 **카드 전체에 걸쳐** 한 번만 센다.
+     묶음마다 따로 세면 실측에서 이렇게 나왔다 —
+       6.46GB  coupang-thumbnail-worker-desktop · checkpoints
+       6.46GB  megaload-desktop · checkpoints
+       6.46GB  @stockfactory · checkpoints
+     셋 다 같은 실물 하나(하드링크)라, 세 장을 다 지워도 6.46GB만 빈다.
+     19.38GB라고 적어두면 눌러본 사람이 속는다. */
+  const inoOwner = new Map<string, Bucket>()
+
   for (const v of verdicts) {
     // 안 건드리는 것은 제안이 아니다 — '지킨 것'으로 따로 보여준다.
     if (v.action === 'keep') continue
@@ -170,6 +186,18 @@ export function propose(
         paths: [],
       }
       buckets.set(key, b)
+    }
+    /* ★ 하드링크는 **한 카드가 링크를 전부 들고** 있어야 한다.
+       바이트만 한 번 세고 경로를 카드마다 흩어두면, 그 카드를 눌러도 다른 링크가
+       남아서 **1바이트도 안 빈다.** 처음 이 실물을 담은 카드가 나머지 링크까지
+       가져간다 — 그래야 "6.46GB 지우기"가 진짜 6.46GB를 비운다. */
+    if (v.ino) {
+      const owner = inoOwner.get(v.ino)
+      if (owner) {
+        owner.paths.push(v.path) // 용량은 이미 셌다. 경로만 주인에게 보낸다.
+        continue
+      }
+      inoOwner.set(v.ino, b)
     }
     b.bytes += v.size
     b.paths.push(v.path)

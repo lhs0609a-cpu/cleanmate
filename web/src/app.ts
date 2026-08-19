@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.16.0'
+const APP_VERSION = '0.17.0'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -104,6 +104,17 @@ interface Report {
     }[]
     untouched: { bytes: number; count: number; groups: { meaning: string; bytes: number; count: number }[] }
   }
+  /** 제안 카드 — 42만 개의 판정을 사람이 볼 수 있는 몇 장으로 접은 것.
+      경로 배열은 안 온다(엔진 캐시에 있다) — 실행은 id로 한다. */
+  proposals?: {
+    id: string; title: string; where: string
+    bytes: number; count: number
+    action: 'delete' | 'ask' | 'keep'
+    recovery: string; effort: string; because: string
+    tier: 1 | 2 | 3
+    samples: { path: string; size: number }[]
+  }[]
+  proposalRest?: { bytes: number; count: number; cards: number }
   questions: Question[]
   kept: { meaning: string; bytes: number }[]
 }
@@ -285,6 +296,7 @@ function renderReport(r: Report) {
     : '자동으로 치우는 건 전부 임시 파일이에요. 지워도 다시 생기는 것들입니다.')
 
   renderTiers(r.priority)
+  renderCards(r.proposals ?? [], r.proposalRest)
   renderQuestions(r.questions)
   renderKept(r.kept, r.plan.lockBytes)
 
@@ -298,6 +310,124 @@ function renderReport(r: Report) {
   document.querySelectorAll<HTMLElement>('#s-home .pill.desk').forEach((p) => { p.hidden = inTauri })
   // 버튼이 무슨 일을 하는지 그대로 쓴다. '정리하기'는 옮기는 것도 지우는 것도 될 수 있다.
   applyBtn.textContent = inTauri ? `임시 파일 ${fmtBytes(r.plan.autoBytes)} 지금 지우기` : '확실한 임시 파일 정리하기'
+}
+
+/* ── 제안 카드 ─────────────────────────────────────────────────
+   ★ 왜 카드인가 (2026-08-19)
+
+   엔진은 파일 647,083개 전부에 판정을 붙인다. 그런데 지워도 되는 것만 15만 개다.
+   체크박스 15만 개는 목록이 아니라 벽이다.
+
+   사용자가 원하는 건 이 대화의 모양이었다:
+       "C드라이브 꽉 찼어, 지워도 되는 거 찾아봐"
+     → 묶음 몇 개로 정리(용량·근거·순위)
+     → "1순위만 실행"
+     → 얼마 비었고 뭘 못 했는지 보고
+
+   그래서 카드 한 장 = 결정 하나 = 실행 단위 하나로 만든다. 카드가 들고 있는
+   경로 목록은 화면으로 안 온다(14만 개짜리도 있다) — 엔진이 스캔할 때 적어두고
+   카드 id로 되짚는다. */
+
+const TIER_HEAD: Record<number, string> = {
+  1: '1순위 — 바로 지워도 됩니다',
+  2: '2순위 — 지워도 되지만 다시 만드는 데 시간이 걸려요',
+  3: '3순위 — 되살릴 수 없어요. 필요하신지만 알려주세요',
+}
+
+function cardHtml(c: any): string {
+  const egs = (c.samples ?? [])
+    .map((s: any) => `<div>· ${fmtBytes(s.size)}  ${esc(s.path)}</div>`)
+    .join('')
+  /* 3순위에는 실행 버튼을 달지 않는다. 되살릴 수 없는 것을 버튼 한 번으로
+     지우면 그건 무단 삭제다 — 그건 낱개 목록에서 골라야 한다. */
+  const act =
+    c.action === 'delete'
+      ? `<button class="${c.tier === 1 ? 'btn' : 'btn ghost'}" data-card="${esc(c.id)}">${fmtBytes(c.bytes)} 지우기</button>`
+      : `<button class="opt" data-card-pick="${esc(c.id)}">하나씩 볼게요</button>`
+  return `
+    <div class="pcard t${c.tier}">
+      <div class="pcard-main">
+        <div class="pcard-h">
+          <span class="pcard-amt">${fmtBytes(c.bytes)}</span>
+          <span class="pcard-name">${esc(c.title)}</span>
+          <span class="pcard-cnt">${c.count.toLocaleString()}개</span>
+        </div>
+        <div class="pcard-why">${esc(c.because)}</div>
+        <div class="pcard-where">${esc(c.where)}</div>
+        ${egs ? `<div class="pcard-eg">${egs}</div>` : ''}
+      </div>
+      <div class="pcard-act">${act}</div>
+    </div>`
+}
+
+function renderCards(cards: any[], rest: any) {
+  const host = $('cards')
+  if (!cards?.length) { host.innerHTML = ''; return }
+
+  let html = ''
+  let tier = 0
+  for (const c of cards) {
+    if (c.tier !== tier) {
+      tier = c.tier
+      html += `<div class="t-small" style="font-weight:var(--w-head);color:var(--ink-2);margin-top:14px">${TIER_HEAD[tier] ?? ''}</div>`
+    }
+    html += cardHtml(c)
+  }
+  /* 자른 것을 반드시 말한다. 조용히 자르면 사용자는 이게 전부인 줄 안다. */
+  if (rest?.cards) {
+    html += `<div class="t-caption" style="color:var(--muted);margin-top:8px">
+      이 목록에 안 올린 것이 ${rest.cards}묶음 더 있어요 — ${fmtBytes(rest.bytes)} · ${rest.count.toLocaleString()}개.
+      작은 것부터라 목록이 길어지기만 해서 접어뒀습니다.</div>`
+  }
+  host.innerHTML = `<div class="card-list">${html}</div>`
+
+  host.querySelectorAll<HTMLButtonElement>('[data-card]').forEach((btn) => {
+    btn.addEventListener('click', () => runCard(btn, cards.find((c) => c.id === btn.dataset.card)))
+  })
+  /* '하나씩 볼게요'는 질문 쪽으로 보낸다 — 되살릴 수 없는 건 낱개로 골라야 한다. */
+  host.querySelectorAll<HTMLButtonElement>('[data-card-pick]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.getElementById('questions')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  })
+}
+
+/** 카드 하나 실행 — 무엇을 지우는지 이름을 대고 확인받는다. */
+async function runCard(btn: HTMLButtonElement, card: any) {
+  if (!card) return
+  if (!inTauri) {
+    toast('실제 삭제는 데스크톱 앱에서 실행됩니다. 브라우저는 보안상 파일을 지울 수 없어요.', 'bad')
+    return
+  }
+  const egs = (card.samples ?? []).slice(0, 3).map((s: any) => `· ${baseName(s.path)} (${fmtBytes(s.size)})`).join('\n')
+  if (!confirm(
+    `${card.title}\n${card.count.toLocaleString()}개 · ${fmtBytes(card.bytes)}\n\n${egs}\n\n` +
+    `${card.because}\n\n되돌릴 수 없습니다 — 휴지통에도 안 남아요.\n\n${spaceHint(card.bytes)}`
+  )) return
+
+  btn.disabled = true
+  btn.textContent = '지우는 중…'
+  try {
+    const r = await engine('proposal-apply', [card.id])
+    const left = leftoverNote(r.leftover)
+    btn.parentElement!.innerHTML = `<span class="t-small" style="color:var(--safe);font-weight:var(--w-em)">
+      ✓ ${r.deletedCount.toLocaleString()}개 · ${fmtBytes(r.deletedBytes)}</span>`
+    toast(`${r.deletedCount.toLocaleString()}개를 지웠어요 — ${fmtBytes(r.deletedBytes)}가 비었습니다.`, 'good')
+    // 건너뛴 것을 조용히 넘기지 않는다.
+    if (r.failed?.length || left) {
+      const note = document.createElement('div')
+      note.className = 't-caption'
+      note.style.color = 'var(--muted)'
+      note.style.marginTop = '4px'
+      note.textContent = `${r.failed?.length ? `${r.failed.length}개는 사용 중이라 건너뛰었어요. ` : ''}${left}`
+      btn.parentElement!.appendChild(note)
+    }
+    refreshDisk(true)
+  } catch (err) {
+    toast('지우지 못했어요: ' + errText(err), 'bad')
+    btn.disabled = false
+    btn.textContent = `${fmtBytes(card.bytes)} 지우기`
+  }
 }
 
 /* ── 순위 ──────────────────────────────────────────────────────

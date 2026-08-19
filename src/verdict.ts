@@ -64,6 +64,8 @@ export interface VerdictFile {
   zone: Zone
   ruleBacked: boolean
   meaning: string
+  /** 실물 신원. 여러 경로가 같으면 이미 같은 실물이다(하드링크) */
+  ino?: string
   /** 어느 규칙이 걸렸나. 'dev.build'처럼 다시 만들 수 있는 것을 여기서 가른다 */
   ruleId?: string
 }
@@ -93,6 +95,8 @@ export interface FileVerdict {
   action: Action
   recovery: Recovery
   effort: Effort
+  /** 실물 신원 — 합계가 같은 실물을 두 번 세지 않게 하는 데 쓴다 */
+  ino?: string
   /** 사람이 읽을 근거 한 줄. 근거 없는 판정은 강요다 */
   because: string
   meaning: string
@@ -151,8 +155,8 @@ export function judge(input: VerdictInput): FileVerdict[] {
   const out: FileVerdict[] = []
   for (const f of files) {
     const np = norm(f.path)
-    const base = (v: Omit<FileVerdict, 'path' | 'size' | 'meaning'>): FileVerdict => ({
-      path: f.path, size: f.size, meaning: f.meaning, ...v,
+    const base = (v: Omit<FileVerdict, 'path' | 'size' | 'meaning' | 'ino'>): FileVerdict => ({
+      path: f.path, size: f.size, meaning: f.meaning, ino: f.ino, ...v,
     })
 
     // ── 1단 · 지우면 고장난다 ──────────────────────────────
@@ -299,11 +303,32 @@ function roll(items: { key: string; size: number }[], top = 6): VerdictGroup[] {
   return [...m.values()].sort((a, b) => b.bytes - a.bytes).slice(0, top)
 }
 
+/**
+ * 용량을 더한다 — **같은 실물은 한 번만.**
+ *
+ * ★ 하드링크된 파일은 경로가 여러 개라도 디스크는 한 벌만 쓴다. 그냥 더하면
+ *   실측에서 6.46GB짜리 모델이 38.76GB로 부풀었다. "38GB를 지울 수 있어요"라고
+ *   해놓고 1바이트도 안 비는 게 정확히 그 상황이다(v0.16.0에서 같은 버그를
+ *   중복 찾기 쪽에서 고쳤다 — 합계 쪽에도 같은 규칙을 적용한다).
+ */
+export function sumBytes(items: { size: number; ino?: string }[]): number {
+  const seen = new Set<string>()
+  let n = 0
+  for (const it of items) {
+    if (it.ino) {
+      if (seen.has(it.ino)) continue
+      seen.add(it.ino)
+    }
+    n += it.size
+  }
+  return n
+}
+
 export function summarize(verdicts: FileVerdict[]): VerdictSummary {
   const del = verdicts.filter((v) => v.action === 'delete')
   const ask = verdicts.filter((v) => v.action === 'ask')
   const keep = verdicts.filter((v) => v.action === 'keep')
-  const sum = (a: FileVerdict[]) => a.reduce((n, v) => n + v.size, 0)
+  const sum = sumBytes
 
   return {
     deletable: {

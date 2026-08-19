@@ -182,6 +182,27 @@ test('★ 합계가 전체와 맞는다 — 어디로 샌 바이트가 없어야
   assert.equal(s.deletable.count + s.ask.count + s.keep.count, s.total.count, '개수가 샜다')
 })
 
+test('★ 하드링크된 파일을 두 번 세지 않는다 — 6.46GB가 38GB로 부푼 적이 있다', () => {
+  /* 실측: sd_xl_base_1.0.safetensors 6.46GB가 6개 경로에 있었는데 전부 같은
+     실물이었다. 그냥 더하면 38.76GB지만 디스크가 쓰는 건 6.46GB고, 하나를
+     지워도 1바이트도 안 빈다. "38GB 지울 수 있어요"는 거짓말이 된다. */
+  const v = judge({
+    files: [
+      file('C:/a/model.bin', { size: 1000, ino: 'vol:7' }),
+      file('C:/b/model.bin', { size: 1000, ino: 'vol:7' }),
+      file('C:/c/model.bin', { size: 1000, ino: 'vol:7' }),
+      file('C:/d/other.bin', { size: 500 }),
+    ],
+  })
+  const s = summarize(v)
+  assert.equal(s.total.bytes, 1500, `같은 실물을 여러 번 셌다: ${s.total.bytes}`)
+})
+
+test('신원이 없으면(링크 하나) 그냥 더한다 — 대부분의 파일이 그렇다', () => {
+  const v = judge({ files: [file('C:/a/x', { size: 100 }), file('C:/b/y', { size: 200 })] })
+  assert.equal(summarize(v).total.bytes, 300)
+})
+
 test('합계는 근거별로 나눈다 — "왜 지워도 되는지"가 숫자마다 붙어야 한다', () => {
   const v = judge({
     files: [

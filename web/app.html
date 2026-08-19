@@ -632,6 +632,32 @@
     .tier-act{width:100%;align-items:stretch;margin-top:var(--s-2)}
   }
 
+  /* ── 제안 카드 ──────────────────────────────────────────────
+     한 장 = 한 결정. 용량이 제일 먼저 읽히고, 그다음이 "왜 지워도 되나"다. */
+  .card-list{display:flex;flex-direction:column;gap:var(--s-2);margin-top:var(--s-3)}
+  .pcard{border:1px solid var(--line);border-radius:var(--r-md);padding:var(--s-3);
+         background:var(--surface);display:flex;gap:var(--s-3);align-items:flex-start}
+  .pcard.t1{border-left:3px solid var(--safe)}
+  .pcard.t2{border-left:3px solid var(--accent)}
+  .pcard.t3{border-left:3px solid var(--line-2)}
+  .pcard-main{flex:1;min-width:0}
+  .pcard-h{display:flex;align-items:baseline;gap:var(--s-2);flex-wrap:wrap}
+  .pcard-amt{font-weight:var(--w-num);font-size:var(--t-h2);line-height:1.2}
+  .pcard.t1 .pcard-amt{color:var(--safe)}
+  .pcard-name{font-weight:var(--w-em);color:var(--ink)}
+  .pcard-cnt{font-size:var(--t-caption);color:var(--muted)}
+  .pcard-why{font-size:var(--t-caption);line-height:var(--lh-caption);color:var(--muted);margin-top:3px}
+  .pcard-where{font-size:var(--t-caption);color:var(--muted);opacity:.8;
+               overflow-wrap:anywhere;margin-top:2px}
+  .pcard-eg{margin-top:6px;font-size:var(--t-caption);color:var(--ink-2)}
+  .pcard-eg div{overflow-wrap:anywhere;opacity:.85}
+  .pcard-act{flex:none}
+  @media (max-width:640px){
+    .pcard{flex-wrap:wrap}
+    .pcard-act{width:100%;margin-top:var(--s-2)}
+    .pcard-act .btn,.pcard-act .opt{width:100%}
+  }
+
   .pick-dest{font:inherit;font-size:var(--t-caption);line-height:var(--lh-caption);
              padding:6px var(--s-2);border:1px solid var(--line);border-radius:var(--r-sm);
              background:var(--surface);color:var(--ink-2)}
@@ -1003,6 +1029,9 @@
         <!-- 순위 — "그래서 뭐부터 누르면 되나". 존 막대는 안전도를 말하고
              여기는 행동 순서를 말한다. 사용자가 알고 싶은 건 후자다. -->
         <div id="tiers"></div>
+        <!-- 제안 카드 — 42만 개의 판정을 사람이 볼 수 있는 몇 장으로.
+             카드 하나가 곧 실행 단위다. -->
+        <div id="cards"></div>
         <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <button class="btn" id="apply-btn" disabled>확실한 임시 파일 지우기</button>
           <span class="pill desk">데스크톱 앱에서 실행</span>

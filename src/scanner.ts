@@ -95,6 +95,8 @@ export async function scan(root: string, opts: ScanOptions = {}): Promise<ScanRe
           atime: st.atime,
           ext,
           ageDays: Math.floor((now - st.mtime.getTime()) / DAY_MS),
+          // 링크가 둘 이상일 때만 신원을 만든다. 대부분은 하나라 비워둔다.
+          ino: st.nlink > 1 ? `${st.dev}:${st.ino}` : undefined,
         })
         totalBytes += st.size
       } catch (err) {
