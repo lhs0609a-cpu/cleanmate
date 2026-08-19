@@ -1252,6 +1252,50 @@ async function main() {
         })
         break
       }
+      /**
+       * 제안 카드 하나를 실행한다 — 화면의 카드에 달린 버튼의 뒷면.
+       *
+       * 카드가 곧 실행 단위다. 경로는 스캔할 때 적어둔 것을 쓴다(재스캔 없음) —
+       * 다시 훑으면 화면이 보여준 목록과 지우는 목록이 달라진다.
+       *
+       * ★ action이 'delete'인 카드만 실행한다. 'ask' 카드는 사용자가 필요한지
+       *   답해야 하는 것이라, 버튼 한 번으로 지우면 그게 무단 삭제다.
+       *
+       * ★ 이 명령을 한 번 잃어버린 적이 있다 (v0.17.1). 중복된 순위 체계를
+       *   걷어내면서 'tier-apply 시작 ~ quar-list'를 통째로 잘랐는데, 그 사이에
+       *   이 블록이 끼어 있었다. 화면은 멀쩡히 카드를 그렸고 누르니 "알 수 없는
+       *   명령"이 떴다 — 타입도 테스트도 안 잡는 종류라, 아래 test가 못 박는다.
+       */
+      case 'proposal-apply': {
+        const id = args[0]
+        if (!id) fail('실행할 카드가 필요합니다.')
+        const cache = await readProposalCache()
+        if (!cache) fail('정리 목록이 없거나 오래됐어요. 검사를 다시 하면 목록이 새로 만들어집니다.')
+        const card = cache.cards.find((c) => c.id === id)
+        if (!card) fail('그 카드를 찾지 못했어요. 검사를 다시 해주세요.')
+        if (card.action !== 'delete') {
+          fail('이 카드는 여쭤보고 정하는 것이라 한 번에 지우지 않습니다.')
+        }
+        if (!card.items.length) {
+          out({ id, title: card.title, deletedCount: 0, deletedBytes: 0, leftover: 0, failed: [] })
+          break
+        }
+
+        const started = Date.now()
+        progress({ t: 'proposal', id, total: card.items.length, done: 0, pct: 0 })
+        const r = await deleteNow(
+          card.items.map(([p, size, mtimeMs]) => ({
+            path: p,
+            reason: `정리 목록에서 고르신 것 — ${card.title}`,
+            zone: 'AMBIG' as const,
+            // 계획 세운 그 파일이 맞는지 실행 직전에 대조한다. 바뀌었으면 건너뛴다.
+            expect: { size, mtimeMs },
+          }))
+        )
+        progress({ t: 'proposal', id, total: card.items.length, done: card.items.length, pct: 100 })
+        out({ id, title: card.title, ...r, planned: card.items.length, elapsedMs: Date.now() - started })
+        break
+      }
       case 'quar-list': {
         // 드라이브마다 격리함이 따로 있다(원본과 같은 드라이브에 만든다).
         // 전부 모아서 보여주지 않으면 D에서 정리한 파일이 화면에서 사라진 것처럼 보인다.
