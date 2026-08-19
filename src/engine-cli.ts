@@ -1108,9 +1108,20 @@ async function scanPlan(paths: string[]) {
  * 그대로 남는다. leftover로 세어서 돌려주고, 화면은 '남은 것' 칸에서 되돌리기나
  * 다시 지우기를 준다. 조용히 사라진 셈 치면 그 파일은 영영 안 보이는 용량이 된다.
  */
-async function deleteNow(requests: QuarantineRequest[]) {
-  const q = await quarantine(requests)
-  const gone = q.quarantined.length ? await purgeEntries(q.quarantined) : null
+async function deleteNow(
+  requests: QuarantineRequest[],
+  onProgress?: (done: number, total: number, bytes: number) => void
+) {
+  /* 두 걸음(옮기기 → 지우기)을 하나의 진행률로 보여준다. 사용자에게는 '지우는
+     중' 한 가지 일이라, 0~100%가 두 번 도는 걸 보여주면 더 헷갈린다.
+     앞 걸음을 절반, 뒤 걸음을 나머지 절반으로 친다. */
+  const half = (base: number) => (d: number, t: number, b: number) =>
+    onProgress?.(Math.round(base * requests.length + (d / Math.max(1, t)) * requests.length * 0.5), requests.length, b)
+
+  const q = await quarantine(requests, { onProgress: onProgress ? half(0) : undefined })
+  const gone = q.quarantined.length
+    ? await purgeEntries(q.quarantined, { onProgress: onProgress ? half(0.5) : undefined })
+    : null
   const deletedCount = gone?.purged.length ?? 0
   return {
     deletedCount,
@@ -1282,7 +1293,10 @@ async function main() {
         }
 
         const started = Date.now()
-        progress({ t: 'proposal', id, total: card.items.length, done: 0, pct: 0 })
+        progress({ t: 'proposal', id, total: card.items.length, done: 0, pct: 0, etaSec: null })
+        /* 진행 보고는 눌러 담는다 — 파일마다 한 줄씩 내보내면 초당 수천 줄이 되고,
+           그걸 받아 그리는 화면이 삭제보다 느려진다(스캔 쪽과 같은 이유). */
+        let lastEmit = 0
         const r = await deleteNow(
           card.items.map(([p, size, mtimeMs]) => ({
             path: p,
@@ -1290,9 +1304,18 @@ async function main() {
             zone: 'AMBIG' as const,
             // 계획 세운 그 파일이 맞는지 실행 직전에 대조한다. 바뀌었으면 건너뛴다.
             expect: { size, mtimeMs },
-          }))
+          })),
+          (done, total, bytes) => {
+            const now = Date.now()
+            if (now - lastEmit < 250) return
+            lastEmit = now
+            const elapsed = now - started
+            // 남은 시간은 지금까지의 속도로만 잰다 — 지어내지 않는다.
+            const etaSec = done > 0 ? Math.round(((elapsed / done) * (total - done)) / 1000) : null
+            progress({ t: 'proposal', id, done, total, bytes, etaSec, pct: total ? Math.round((done / total) * 100) : 100 })
+          }
         )
-        progress({ t: 'proposal', id, total: card.items.length, done: card.items.length, pct: 100 })
+        progress({ t: 'proposal', id, total: card.items.length, done: card.items.length, pct: 100, etaSec: 0 })
         out({ id, title: card.title, ...r, planned: card.items.length, elapsedMs: Date.now() - started })
         break
       }

@@ -79,6 +79,12 @@ export function legacyQuarantineRoot(originalPath: string): string {
 
 export interface QuarantineOptions {
   rootFor?: (originalPath: string) => string
+  /**
+   * 몇 개까지 처리했나. 오래 걸리는 작업에서 화면이 "지우는 중…"만 띄우면
+   * 사용자는 멈춘 건지 도는 건지 알 수 없다 — 실측에서 7,279개에 46초였다.
+   * 부르는 쪽이 눌러 담는다(너무 자주 부르면 그리는 게 본 작업보다 느려진다).
+   */
+  onProgress?: (done: number, total: number, bytes: number) => void
 }
 
 const manifestPath = (root: string) => join(root, 'manifest.jsonl')
@@ -196,7 +202,10 @@ export async function quarantine(
   const failed: QuarantineResult['failed'] = []
   let bytes = 0
 
+  let seen = 0
   for (const item of items) {
+    seen++
+    opts.onProgress?.(seen, items.length, bytes)
     try {
       const st = await stat(item.path)
 
@@ -352,13 +361,17 @@ export interface PurgeResult {
 async function purgeChosen(
   root: string,
   manifest: QuarantineEntry[],
-  chosen: QuarantineEntry[]
+  chosen: QuarantineEntry[],
+  onProgress?: (done: number, total: number, bytes: number) => void
 ): Promise<PurgeResult> {
   const purged: QuarantineEntry[] = []
   const failed: PurgeResult['failed'] = []
   let bytes = 0
 
+  let seen = 0
   for (const entry of chosen) {
+    seen++
+    onProgress?.(seen, chosen.length, bytes)
     try {
       await rm(storePath(root, entry.id), { force: true })
       purged.push(entry)
@@ -435,7 +448,9 @@ export async function purgeEntries(
   for (const [root, mine] of byRoot) {
     const ids = new Set(mine.map((e) => e.id))
     const manifest = await readManifest(root)
-    const r = await purgeChosen(root, manifest, manifest.filter((e) => ids.has(e.id)))
+    const r = await purgeChosen(root, manifest, manifest.filter((e) => ids.has(e.id)), (d, t, b) =>
+      opts.onProgress?.(purged.length + d, entries.length, bytes + b)
+    )
     // ★ push(...배열)로 쓰면 안 된다. 인자로 펼치는 건 12만 개쯤에서 스택이 터진다 —
     //   원클릭이 4만~50만 개를 지우는 경로라 정확히 그 사례다(테스트가 잡았다).
     for (const p of r.purged) purged.push(p)

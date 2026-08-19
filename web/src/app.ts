@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.17.2'
+const APP_VERSION = '0.17.3'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -383,28 +383,51 @@ async function runCard(btn: HTMLButtonElement, card: any) {
     `${card.because}\n\n되돌릴 수 없습니다 — 휴지통에도 안 남아요.\n\n${spaceHint(card.bytes)}`
   )) return
 
+  /* ★ 자리를 먼저 잡아둔다.
+     전에는 btn.parentElement.innerHTML을 덮어썼다. 그러면 그 안에 있던 btn 자신이
+     DOM에서 빠지고, 그다음 btn.parentElement가 null이 되어 appendChild에서 터졌다
+     ("Cannot read properties of null" — 실물에서 나왔다). 부모를 미리 붙잡는다. */
+  const slot = btn.parentElement as HTMLElement
   btn.disabled = true
-  btn.textContent = '지우는 중…'
+
+  /* 진행 표시 — 실측에서 7,279개에 46초였다. "지우는 중…"만 띄우면 멈춘 건지
+     도는 건지 알 수 없다. 몇 %인지, 몇 개 중 몇 개인지, 얼마나 남았는지를 말한다.
+     남은 시간은 지금까지의 속도로만 잰다 — 없는 진행률을 지어내지 않는다. */
+  cardProgress.delete(card.id)
+  const started = Date.now()
+  const paint = () => {
+    const p = cardProgress.get(card.id)
+    const elapsed = fmtDuration((Date.now() - started) / 1000)
+    if (!p || !p.total) { btn.textContent = `지우는 중… · 경과 ${elapsed}`; return }
+    const parts = [`${p.pct ?? 0}%`]
+    parts.push(`${(p.done ?? 0).toLocaleString()} / ${p.total.toLocaleString()}개`)
+    if (p.etaSec !== null && p.etaSec !== undefined) parts.push(`남은 시간 약 ${fmtDuration(p.etaSec)}`)
+    else parts.push(`경과 ${elapsed}`)
+    btn.textContent = parts.join(' · ')
+  }
+  paint()
+  const timer = setInterval(paint, 400)
+
   try {
     const r = await engine('proposal-apply', [card.id])
     const left = leftoverNote(r.leftover)
-    btn.parentElement!.innerHTML = `<span class="t-small" style="color:var(--safe);font-weight:var(--w-em)">
-      ✓ ${r.deletedCount.toLocaleString()}개 · ${fmtBytes(r.deletedBytes)}</span>`
+    const skipped = r.failed?.length ? `${r.failed.length}개는 사용 중이라 건너뛰었어요. ` : ''
+    /* 완료 표시와 남은 이야기를 **한 번에** 넣는다. 덮어쓴 뒤에 appendChild를
+       부르면 붙일 자리가 이미 사라지고 없다 — 위에서 터졌던 그 자리다. */
+    slot.innerHTML =
+      `<span class="t-small" style="color:var(--safe);font-weight:var(--w-em)">✓ ${r.deletedCount.toLocaleString()}개 · ${fmtBytes(r.deletedBytes)}</span>` +
+      (skipped || left
+        ? `<div class="t-caption" style="color:var(--muted);margin-top:4px">${skipped}${left}</div>`
+        : '')
     toast(`${r.deletedCount.toLocaleString()}개를 지웠어요 — ${fmtBytes(r.deletedBytes)}가 비었습니다.`, 'good')
-    // 건너뛴 것을 조용히 넘기지 않는다.
-    if (r.failed?.length || left) {
-      const note = document.createElement('div')
-      note.className = 't-caption'
-      note.style.color = 'var(--muted)'
-      note.style.marginTop = '4px'
-      note.textContent = `${r.failed?.length ? `${r.failed.length}개는 사용 중이라 건너뛰었어요. ` : ''}${left}`
-      btn.parentElement!.appendChild(note)
-    }
     refreshDisk(true)
   } catch (err) {
     toast('지우지 못했어요: ' + errText(err), 'bad')
     btn.disabled = false
     btn.textContent = `${fmtBytes(card.bytes)} 지우기`
+  } finally {
+    clearInterval(timer)
+    cardProgress.delete(card.id)
   }
 }
 
@@ -1306,6 +1329,8 @@ interface SweepProgress {
 
 let lastProgress: ScanProgress | null = null
 let lastSweep: SweepProgress | null = null
+/** 카드 id → 그 카드의 삭제 진행. 여러 장을 잇달아 눌러도 안 섞이게. */
+const cardProgress = new Map<string, { done?: number; total?: number; bytes?: number; pct?: number; etaSec?: number | null }>()
 
 /**
  * 경로 → 사람이 읽는 폴더 이름('다운로드', '앱 데이터(로컬)').
@@ -1323,6 +1348,8 @@ if (inTauri) {
     const p = e?.payload
     if (p && (p.t === 'scan' || p.t === 'plan')) lastProgress = p as ScanProgress
     else if (p && (p.t === 'sweep' || p.t === 'sweep-plan')) lastSweep = p as SweepProgress
+    // 카드 삭제 진행 — 카드마다 따로 담는다(여러 장을 잇달아 누를 수 있다)
+    else if (p && p.t === 'proposal' && p.id) cardProgress.set(p.id, p)
   })
 }
 
