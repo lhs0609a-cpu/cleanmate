@@ -44,6 +44,7 @@ export function classifyOne(f: FileEntry): Classified {
       reason: rule.reason,
       unknown: rule.zone === 'AMBIG' ? rule.unknown : undefined,
       ruleBacked: true, // 규칙 DB가 확증 → 존 A 승격 자격 있음
+      ruleId: rule.id, // 어느 규칙이 걸렸는지 — 판정 사다리가 이걸로 갈래를 탄다
     }
     return { ...f, verdict }
   }

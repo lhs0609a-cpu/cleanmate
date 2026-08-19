@@ -47,6 +47,14 @@ export interface Verdict {
   unknown?: Unknown
   /** 규칙 DB가 확증했는가. false면 추론이므로 보수적으로 다룬다. */
   ruleBacked: boolean
+  /**
+   * 어느 규칙이 이 판정을 냈나. 추론이면 없다.
+   *
+   * ★ 왜 필요한가: 판정 사다리(verdict.ts)가 "이건 다시 빌드하면 된다"처럼
+   *   **규칙별로 다른 결론**을 내려면 어느 규칙이 걸렸는지 알아야 한다.
+   *   meaning 문자열로 맞추면 문구 한 번 다듬을 때 조용히 깨진다.
+   */
+  ruleId?: string
 }
 
 export interface Classified extends FileEntry {
