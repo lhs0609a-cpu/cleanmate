@@ -31,6 +31,7 @@
  *   empty-recycle-bin                휴지통 비우기(윈도우 공식 명령, 되돌리기 없음)
  *   hibernate-off | hibernate-on     최대 절전 끄기·켜기 (관리자 확인 후, 되돌릴 수 있음)
  *   open-system-protection           시스템 복원 설정 창 열기
+ *   restore-measure                  시스템 복원이 잡아둔 공간을 관리자 권한으로 재기 (읽기만)
  *   open-virtual-memory              가상 메모리 설정 창 열기
  *   open-cleanmgr                    윈도우 디스크 정리 도구 띄우기
  *   relocate-scan                    옮길 만한 것 자동 탐색 + 대상 드라이브 목록
@@ -60,11 +61,11 @@
  *   있는 건 옛 버전이 보관해둔 것을 되돌리거나 마저 지우기 위해서다.
  */
 
-import { stat, readFile, writeFile, mkdir, appendFile } from 'node:fs/promises'
+import { stat, readFile, writeFile, mkdir, appendFile, rm } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { parseArgv } from "./argv.ts"
 import { join, dirname, basename } from 'node:path'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { scan } from './scanner.ts'
@@ -92,7 +93,9 @@ import { gatherFacts } from './probes/facts.ts'
 import { probeHiberfil } from './probes/hiberfil.ts'
 import { gatherReclaimFacts, probeRecycleBin, probeUpdateCache } from './probes/reclaim.ts'
 import { gatherBulkFacts, probeBulk } from './probes/bulk.ts'
-import { gatherPageFile, probePageFile, gatherRestore, probeRestore } from './probes/system-space.ts'
+import {
+  gatherPageFile, probePageFile, gatherRestore, probeRestore, parseRestore, VSS_QUERY,
+} from './probes/system-space.ts'
 import { probeStartup, countLogonTasks, setStartupEnabled } from './probes/startup.ts'
 import {
   planFolderTidy,
@@ -486,6 +489,46 @@ async function runPowerShell(command: string): Promise<void> {
     ['-NoProfile', '-NonInteractive', '-Command', command],
     { windowsHide: true }
   )
+}
+
+/**
+ * 시스템 복원이 잡아둔 공간을 **관리자 권한으로** 잰다.
+ *
+ * ★ 왜 파일로 받나. Start-Process -Verb RunAs는 승격된 **별도 프로세스**를 띄운다.
+ *   그쪽 stdout은 우리 파이프로 안 온다 — 그래서 여기서 결과를 못 읽는다.
+ *   승격된 쪽이 파일에 적고, 우리가 그 파일을 읽는다.
+ *
+ * ★ 왜 -EncodedCommand인가. 스크립트를 -Command 인자로 넘기면 따옴표가
+ *   파워셸을 두 번 지나며 망가진다(바깥 파워셸 → Start-Process → 안쪽 파워셸).
+ *   base64(UTF-16LE)는 그 사이를 그대로 통과한다. -File을 쓰면 실행 정책에
+ *   막히는 PC가 있어서 그쪽도 안 쓴다.
+ *
+ * ★ 이 통로는 읽기만 한다. 스크립트는 고정 문자열이고(VSS_QUERY), 밖에서 온
+ *   값이 섞이는 자리는 결과 파일 경로뿐인데 그건 우리가 만든 임시 경로다.
+ */
+async function measureRestoreElevated(): Promise<{ facts: ReturnType<typeof parseRestore>; cancelled: boolean }> {
+  const outPath = join(tmpdir(), `teraclean-vss-${process.pid}-${Date.now()}.json`)
+  // 경로에 작은따옴표가 낄 일은 없지만, 스크립트에 값을 넣는 유일한 자리라 막아둔다.
+  const literal = outPath.replace(/'/g, "''")
+  const child = `${VSS_QUERY}
+[System.IO.File]::WriteAllText('${literal}', $json)`
+  const encoded = Buffer.from(child, 'utf16le').toString('base64')
+
+  try {
+    await runPowerShell(
+      "Start-Process powershell -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand','" +
+        encoded +
+        "' -Verb RunAs -Wait -WindowStyle Hidden"
+    )
+  } catch {
+    // 확인 창에서 '아니오'를 누르면 Start-Process가 던진다 — 취소와 실패를 갈라서 말한다.
+    return { facts: parseRestore(''), cancelled: true }
+  }
+
+  let raw = ''
+  try { raw = await readFile(outPath, 'utf8') } catch { /* 승격은 됐는데 못 읽었다 */ }
+  try { await rm(outPath, { force: true }) } catch { /* 임시 파일 청소 실패는 삼킨다 */ }
+  return { facts: parseRestore(raw), cancelled: false }
 }
 
 function out(data: unknown): never {
@@ -1875,6 +1918,27 @@ async function main() {
           freedBytes: Math.max(0, (before.hiberfilBytes ?? 0) - (after.hiberfilBytes ?? 0)),
           bytesNow: after.hiberfilBytes ?? 0,
         })
+        break
+      }
+      /**
+       * 시스템 복원이 잡아둔 공간 재기 — **읽기만 한다.**
+       *
+       * ★ 여태 화면엔 "권한이 있어야 볼 수 있어서 저희가 못 쟀습니다"만 떠 있었다.
+       *   숨은 공간 중 가장 큰 항목이고 100GB가 잡혀 있을 수도 있는데, 물어보지도
+       *   않고 모른다고 한 것이다. 권한이 필요하면 권한을 물어보면 된다.
+       *
+       * 재고 나서 항목을 **다시 만들어** 돌려준다. 화면이 숫자를 받아 제 나름대로
+       * 문장을 짓지 않게 하기 위해서다 — 그러면 두 곳의 말이 언젠가 갈린다.
+       * (v0.18.0에서 같은 이유로 화면이 판정을 다시 하지 않게 만들었다)
+       */
+      case 'restore-measure': {
+        if (process.platform !== 'win32') fail('윈도우에서만 확인할 수 있어요.')
+        const { facts, cancelled } = await measureRestoreElevated()
+        if (cancelled) fail('관리자 확인이 취소됐어요. 아무것도 바뀌지 않았습니다 — 다시 눌러 "예"를 선택해 주세요.')
+        if (!facts.measured) {
+          fail('권한은 받았는데 값을 읽지 못했어요. 시스템 복원이 꺼져 있으면 잡아둔 공간도 없습니다 — "시스템 보호 설정 열기"로 확인해 보세요.')
+        }
+        out({ ...facts, finding: probeRestore(facts) })
         break
       }
       case 'open-cleanmgr': {

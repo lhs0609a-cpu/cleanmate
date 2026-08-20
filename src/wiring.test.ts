@@ -78,3 +78,46 @@ test('★ 지운 명령을 화면이 아직 부르고 있지 않다', () => {
     )
   }
 })
+
+/**
+ * ★ 화면이 이름을 변수로 넘기는 통로 — 위 테스트가 못 보는 자리다.
+ *
+ * 카드의 '실행'과 '재기' 버튼은 engine('literal')이 아니라 engine(f.action.run),
+ * engine(f.measure.run)으로 부른다. 이름이 엔진이 아니라 **프로브가 만든 값**에
+ * 들어 있어서, 위의 문자열 훑기로는 안 잡힌다. 그래서 그 이름들이 사는
+ * types.ts의 유니온을 읽어 엔진과 맞춰본다.
+ *
+ * 이게 어긋나면 "지우기/재기를 눌렀더니 알 수 없는 명령"이 뜬다 —
+ * proposal-apply 때와 정확히 같은 사고다.
+ */
+test('★ 프로브가 만드는 실행 이름(run)이 전부 엔진에 있다', () => {
+  const types = read('src/types.ts')
+  const have = engineCommands()
+
+  const names = new Set<string>()
+  // run?: 'hibernate-off' / undoRun?: 'hibernate-on' / run: 'restore-measure'
+  for (const m of types.matchAll(/\b(?:run|undoRun)\??:\s*((?:'[a-z0-9-]+'\s*\|?\s*)+)/g)) {
+    for (const q of m[1].matchAll(/'([a-z0-9-]+)'/g)) names.add(q[1])
+  }
+  assert.ok(names.size >= 3, `types.ts에서 실행 이름을 못 찾았다(${names.size}개) — 이 테스트가 낡았다`)
+
+  const missing = [...names].filter((n) => !have.has(n))
+  assert.deepEqual(missing, [], `프로브는 내는데 엔진에 없는 실행 이름: ${missing.join(', ')}`)
+})
+
+test('★ 정식 도구(assist) 이름도 전부 엔진에 있다', () => {
+  const types = read('src/types.ts')
+  const have = engineCommands()
+  const block = types.match(/command:\s*((?:'[a-z0-9-]+'\s*\|\s*)+'[a-z0-9-]+')/)
+  assert.ok(block, 'AssistAction의 command 유니온을 못 찾았다 — 이 테스트가 낡았다')
+  const names = [...block![1].matchAll(/'([a-z0-9-]+)'/g)].map((m) => m[1])
+  const missing = names.filter((n) => !have.has(n))
+  assert.deepEqual(missing, [], `assist는 내는데 엔진에 없는 이름: ${missing.join(', ')}`)
+})
+
+test('★ 권한을 받아 재는 통로가 살아 있다 — "못 쟀다"로 끝내지 않기 위한 것', () => {
+  assert.ok(engineCommands().has('restore-measure'), '시스템 복원을 재는 통로가 사라졌다')
+  const ui = read('web/src/app.ts')
+  assert.match(ui, /data-measure/, '화면에 재기 버튼을 그리는 자리가 없다')
+  assert.match(ui, /querySelectorAll<HTMLButtonElement>\('\[data-measure\]'\)/, '재기 버튼이 아무 일도 안 한다')
+})

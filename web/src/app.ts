@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.19.0'
+const APP_VERSION = '0.19.1'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -1742,15 +1742,24 @@ function explainCard(f: any, index: number): string {
   const rest = (e.ifRemoved ?? []).filter((x: string) => !x.includes('★'))
 
   /* 실행 줄. 항목마다 우리가 할 수 있는 게 다르다 —
-     되돌리는 명령이 있으면 우리가 실행(SystemAction), 없으면 정식 도구(assist),
-     둘 다 없으면 아직 안전한 경로를 모르는 것이므로 솔직히 그렇게 쓴다. */
+     되돌리는 명령이 있으면 우리가 실행(SystemAction),
+     권한이 없어 못 잰 것이면 권한을 받아 재기(MeasureAction),
+     그것도 아니면 정식 도구(assist),
+     전부 없으면 아직 안전한 경로를 모르는 것이므로 솔직히 그렇게 쓴다.
+
+     ★ measure가 assist보다 앞이다. 못 잰 항목에서 사용자가 할 일은
+       '설정 창을 열어 직접 읽고 오기'가 아니라 '재달라고 하기'다. */
   const foot = f.action?.run
     ? `<button class="btn" data-run="${index}">${esc(f.action.describe)}</button>
        <span class="why">관리자 확인 창이 한 번 뜹니다 · 되돌리기: ${esc(f.action.undoDescribe)}</span>`
-    : f.assist
-      ? `<button class="btn${f.assist.irreversible ? '' : ' ghost'}" data-assist="${index}">${esc(f.assist.label)}</button>
-         <span class="why">${esc(f.assist.note)}</span>`
-      : `<span class="pill desk">아직 안전하게 실행할 방법을 몰라서, 알려만 드립니다</span>`
+    : f.measure?.run
+      ? `<button class="btn" data-measure="${index}">${esc(f.measure.label)}</button>
+         ${f.assist ? `<button class="btn ghost" data-assist="${index}">${esc(f.assist.label)}</button>` : ''}
+         <span class="why">${esc(f.measure.note)}</span>`
+      : f.assist
+        ? `<button class="btn${f.assist.irreversible ? '' : ' ghost'}" data-assist="${index}">${esc(f.assist.label)}</button>
+           <span class="why">${esc(f.assist.note)}</span>`
+        : `<span class="pill desk">아직 안전하게 실행할 방법을 몰라서, 알려만 드립니다</span>`
 
   return `
     <div class="fact">
@@ -1803,6 +1812,47 @@ function wireAssists(host: HTMLElement, findings: any[]) {
         toast(`완료 — ${fmtBytes(r.freedBytes || f.bytes)}가 비었습니다.`, 'good')
         hiddenLoaded = false
         refreshDisk(true)
+      } catch (err) {
+        toast(errText(err), 'bad')
+        btn.disabled = false
+        btn.textContent = before
+      }
+    })
+  })
+
+  /* 권한을 받아 다시 재기 — 읽기만 한다.
+     ★ 다 끝나고 화면을 통째로 새로고침하면 안 된다. 새로고침은 probe를 다시
+       부르는데 그건 권한 없이 도는 통로라, 방금 잰 값이 도로 "확인 필요"가 된다.
+       그래서 그 카드 하나만 갈아끼운다. */
+  host.querySelectorAll<HTMLButtonElement>('[data-measure]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const i = +btn.dataset.measure!
+      const f = findings[i]
+      btn.disabled = true
+      const before = btn.textContent
+      btn.textContent = '관리자 확인 창을 확인해 주세요…'
+      try {
+        const r = await engine(f.measure.run)
+        const card = btn.closest('.fact') as HTMLElement | null
+        if (r.finding && card) {
+          findings[i] = r.finding
+          const box = document.createElement('div')
+          box.innerHTML = explainCard(r.finding, i)
+          const fresh = box.firstElementChild as HTMLElement
+          card.replaceWith(fresh)
+          // 새로 그린 카드 안쪽만 다시 배선한다 — host 전체를 다시 걸면 나머지 카드에
+          // 같은 처리기가 한 겹 더 쌓여 한 번 누른 게 두 번 실행된다.
+          wireAssists(fresh, findings)
+          toast(`재봤어요 — ${fmtBytes(r.allocatedBytes)}가 잡혀 있습니다.`, 'good')
+        } else {
+          // 재보니 항목으로 낼 만큼 크지 않은 경우. 그래도 숫자는 알려준다 —
+          // "재달라"고 눌렀는데 아무 답이 없으면 안 잰 것과 구별이 안 된다.
+          const p = document.createElement('p')
+          p.className = 'fact-p'
+          p.textContent = `재봤어요 — 지금 ${fmtBytes(r.usedBytes)}를 쓰고 있고 ` +
+            `${fmtBytes(r.allocatedBytes)}가 잡혀 있습니다. 정리할 만큼은 아니에요.`
+          btn.parentElement?.replaceWith(p)
+        }
       } catch (err) {
         toast(errText(err), 'bad')
         btn.disabled = false

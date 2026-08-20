@@ -197,6 +197,32 @@ export interface AssistAction {
 }
 
 /**
+ * 권한을 받아 **다시 재는** 것.
+ *
+ * ★ 왜 세 번째 개념이 필요한가.
+ *   시스템 복원이 잡아둔 공간은 관리자 권한이 있어야 읽힌다. 여태 우리는
+ *   권한이 없으면 "확인 필요"라고 적고 끝냈다 — 100GB가 잡혀 있을 수도 있는데
+ *   **물어보지도 않고 모른다고 한 것**이다. 권한이 필요하면 권한을 물어보면 된다.
+ *
+ * ★ 왜 SystemAction이 아닌가: SystemAction은 undo를 요구한다(그래야 우리가
+ *   실행해도 되는 것이라는 증거가 되니까). 아무것도 안 바꾸고 읽기만 하는 일에
+ *   되돌리기를 요구하면 없는 되돌리기를 지어내게 된다. 읽기에는 되돌릴 게 없다.
+ *
+ * ★ 왜 AssistAction이 아닌가: 창을 대신 띄우는 게 아니다. 숫자를 가져온다.
+ *   사용자가 창을 열어 직접 읽고 외워서 돌아올 필요가 없어야 한다.
+ *
+ * 이 통로는 **읽기만 한다.** 여기로 오는 명령이 무언가를 바꾸기 시작하면
+ * 그건 SystemAction이어야 하고, undo를 가져와야 한다.
+ */
+export interface MeasureAction {
+  label: string
+  /** 엔진이 아는 실행 이름만. 임의 문자열을 받지 않는다(SystemAction과 같은 원칙). */
+  run: 'restore-measure'
+  needsAdmin: boolean
+  note: string
+}
+
+/**
  * 프로브가 찾은 것 — 파일이 아니라 '항목'이다.
  *
  * 왜 FileEntry가 아닌가: hiberfil.sys는 node의 stat()이 EPERM으로 튕겨서
@@ -218,4 +244,6 @@ export interface Finding {
   action?: SystemAction
   /** 되돌리기가 없어 SystemAction을 못 만드는 항목의 정식 도구 경로 */
   assist?: AssistAction
+  /** 권한이 없어 못 잰 값을, 권한을 받아 다시 재는 통로 */
+  measure?: MeasureAction
 }

@@ -12,10 +12,18 @@
  * 그래서 여기서 하는 일은 "있다는 사실 + 얼마나 + 정식 창 열어주기"까지다.
  * (types.ts 규약: 되돌리는 명령이 없으면 SystemAction으로 만들지 않는다)
  *
- * ── 시스템 복원은 우리가 못 잰다 ─────────────────────────────
- * 크기를 읽으려면 관리자 권한이 필요하다. 그래서 **모르는 걸 아는 척하지 않고**
- * "확인하려면 권한이 필요해요" 상태로 내보낸다. 사용자가 확인을 누르면 그때
- * 한 번 권한을 받아 재고, 그 전까지는 숫자를 지어내지 않는다.
+ * ── 시스템 복원은 물어보고 잰다 ──────────────────────────────
+ * 크기를 읽으려면 관리자 권한이 필요하다. 권한 없이 부르면 빈 결과가 오는데,
+ * 그걸 "0"으로 보고하면 안 된다 — "없다"와 "못 봤다"는 완전히 다른 말이다.
+ *
+ * ★ 그렇다고 "못 쟀습니다"로 끝내는 것도 틀렸다(2026-08-20).
+ *   여태 화면엔 "권한이 있어야 볼 수 있어서 저희가 못 쟀습니다"만 떠 있었다.
+ *   숨은 공간 중 가장 큰 항목이고 100GB가 잡혀 있을 수도 있는데,
+ *   **물어보지도 않고 모른다고 한 것**이다. 권한이 필요하면 권한을 물어보면 된다.
+ *
+ *   그래서 못 쟀을 때는 measure 통로를 함께 낸다(types.ts의 MeasureAction).
+ *   누르면 관리자 확인 창이 한 번 뜨고, 확인하면 그 자리에서 진짜 숫자가 나온다.
+ *   이 통로는 **읽기만 한다** — 복원 지점은 여전히 우리가 안 지운다.
  */
 
 import { execFile } from 'node:child_process'
@@ -121,17 +129,47 @@ export interface RestoreFacts {
   maxBytes: number
 }
 
-/*
- * ★ 관리자 권한이 필요하다. 권한이 없으면 빈 결과가 나오는데, 그걸 "0"으로
- *   보고하면 안 된다 — "없다"와 "못 봤다"는 완전히 다른 말이다.
+/**
+ * 값을 `$json`에 담기까지가 공통이다. 어디로 내보내느냐만 다르다:
+ *   · 권한 없이 부를 때  → 그대로 stdout (아래 gatherRestore)
+ *   · 권한을 받아 부를 때 → 파일로 (engine-cli의 restore-measure)
+ *     승격된 파워셸은 **다른 프로세스**라 stdout이 우리 쪽으로 안 온다.
+ *
+ * ★ 스크립트는 고정 문자열이다. 사용자·레지스트리에서 온 값을 이어붙이지 않는다
+ *   (startup.ts·main.rs와 같은 원칙 — 이어붙이는 순간 주입 통로가 된다).
  */
-const VSS_SCRIPT = `
+export const VSS_QUERY = `
 $ErrorActionPreference = 'SilentlyContinue'
 $s = Get-CimInstance Win32_ShadowStorage | Select-Object -First 1
-if ($s) {
+$json = if ($s) {
   [PSCustomObject]@{ used = [double]$s.UsedSpace; alloc = [double]$s.AllocatedSpace; max = [double]$s.MaxSpace } | ConvertTo-Json -Compress
 } else { '{}' }
 `
+
+const VSS_SCRIPT = VSS_QUERY + `$json`
+
+/**
+ * 파워셸이 뱉은 JSON 한 줄을 사실로 바꾼다. 권한 있는 쪽·없는 쪽이 같이 쓴다.
+ *
+ * ★ max가 터무니없이 크면 '무제한'이다. 윈도우는 한도를 안 걸었을 때
+ *   UINT64 최대값을 그대로 준다(18,446,744,073,709,551,615 ≈ 16EB).
+ *   그걸 "최대 16777216.0GB까지 잡혀 있습니다"라고 쓰면 화면이 고장난 것처럼 보인다.
+ */
+export function parseRestore(stdout: string): RestoreFacts {
+  const none: RestoreFacts = { measured: false, usedBytes: 0, allocatedBytes: 0, maxBytes: 0 }
+  let raw: any
+  try { raw = JSON.parse(stdout || '{}') } catch { return none }
+  if (!raw || !raw.max) return none
+  return {
+    measured: true,
+    usedBytes: Number(raw.used ?? 0),
+    allocatedBytes: Number(raw.alloc ?? 0),
+    maxBytes: Number(raw.max ?? 0),
+  }
+}
+
+/** 한도를 안 건 상태인가 — 이 위로는 숫자가 아니라 '제한 없음'이라고 써야 한다. */
+export const UNBOUNDED_BYTES = 1024 ** 5 // 1PB. 이보다 큰 한도를 건 사람은 없다.
 
 export async function gatherRestore(): Promise<RestoreFacts> {
   const none: RestoreFacts = { measured: false, usedBytes: 0, allocatedBytes: 0, maxBytes: 0 }
@@ -141,14 +179,7 @@ export async function gatherRestore(): Promise<RestoreFacts> {
       windowsHide: true,
       maxBuffer: 1 << 20,
     })
-    const raw = JSON.parse(stdout || '{}')
-    if (!raw.max) return none
-    return {
-      measured: true,
-      usedBytes: Number(raw.used ?? 0),
-      allocatedBytes: Number(raw.alloc ?? 0),
-      maxBytes: Number(raw.max ?? 0),
-    }
+    return parseRestore(stdout)
   } catch {
     return none
   }
@@ -166,6 +197,12 @@ export function probeRestore(f: RestoreFacts, driveTotalBytes = 0): Finding | nu
 
   const known = f.measured
   const capHint = driveTotalBytes ? `이 드라이브 기준으로는 최대 ${size(driveTotalBytes * 0.15)} 정도까지 잡히는 게 보통이에요.` : ''
+  /* ★ 한도를 안 걸었으면 윈도우가 UINT64 최대값을 준다(≈16EB).
+     그걸 그대로 쓰면 "최대 16777216.0GB까지"가 되어 화면이 고장난 것처럼 보인다.
+     숫자가 아니라 상태를 말해야 하는 자리다. */
+  const capText = f.maxBytes >= UNBOUNDED_BYTES
+    ? '한도를 따로 안 걸어두셔서 드라이브가 허락하는 만큼 늘어납니다'
+    : `최대 ${size(f.maxBytes)}까지 쓰도록 잡혀 있습니다`
 
   return {
     id: 'win.systemrestore',
@@ -176,9 +213,10 @@ export function probeRestore(f: RestoreFacts, driveTotalBytes = 0): Finding | nu
     explain: {
       what: known
         ? `문제가 생겼을 때 되돌아갈 지점을 저장해두는 자리예요. 지금 ${size(f.usedBytes)}를 쓰고 있고, ` +
-          `최대 ${size(f.maxBytes)}까지 쓰도록 잡혀 있습니다.`
+          `${capText}.`
         : '문제가 생겼을 때 되돌아갈 지점을 저장해두는 자리예요. ' +
-          '얼마나 쓰고 있는지는 **권한이 있어야 볼 수 있어서** 저희가 못 쟀습니다. ' +
+          '얼마나 잡혀 있는지는 **관리자 권한이 있어야 읽을 수 있습니다.** ' +
+          '아래 “권한 확인하고 재기”를 누르시면 확인 창이 한 번 뜨고, 확인하시면 바로 재서 알려드려요. ' +
           `숨은 공간 중 가장 큰 경우가 많아요 — 수십 GB에서 100GB를 넘기도 합니다. ${capHint}`,
       why:
         '윈도우 업데이트나 프로그램 설치 전에 자동으로 저장 지점을 만듭니다. ' +
@@ -197,8 +235,18 @@ export function probeRestore(f: RestoreFacts, driveTotalBytes = 0): Finding | nu
         '한도만 줄이면(예: 20GB) 최근 지점은 남으면서 오래된 것만 정리됩니다.',
       ifKept: '아무 문제 없어요. 잡아둔 만큼 계속 쓸 뿐이고, 되돌릴 지점이 더 많이 남습니다.',
     },
+    /* ★ 못 쟀을 때만 낸다. "권한이 필요해서 못 쟀습니다"로 끝내지 않기 위한 통로다.
+       읽기만 한다 — 복원 지점은 여전히 우리가 안 지운다(recovery: 'none'이니까). */
+    measure: known
+      ? undefined
+      : {
+          label: '권한 확인하고 재기',
+          run: 'restore-measure',
+          needsAdmin: true,
+          note: '관리자 확인 창이 한 번 뜹니다. 읽기만 하고 아무것도 바꾸지 않아요.',
+        },
     assist: {
-      label: known ? '시스템 보호 설정 열기' : '확인하고 설정 열기',
+      label: '시스템 보호 설정 열기',
       command: 'open-system-protection',
       irreversible: false,
       note:
