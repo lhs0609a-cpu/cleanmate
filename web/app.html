@@ -20,8 +20,14 @@
      규칙 넷
        1) 색은 의미다 — 초록=안전, 주황=물어봄, 빨강=잠금, 청록=행동.
           장식으로 쓰는 색이 하나 늘 때마다 경고색의 힘이 그만큼 빠진다.
-       2) 위계는 크기가 아니라 대비로 만든다 — 굵기·색·여백을 먼저 쓰고
-          글자 크기는 마지막에 건드린다. 크기로만 만든 위계는 시끄럽다.
+       2) 위계는 크기로 만든다. 색으로 만들지 않는다.
+          ★ 예전 규칙은 정반대였다: "굵기·색을 먼저 쓰고 크기는 마지막에".
+            그 규칙대로 했더니 12·14·15·16px이 화면을 가득 채우고, 위계는
+            12px 청록 라벨을 여섯 번 반복해서 만들고 있었다. 결과는 둘 다 나쁘다 —
+            읽기 어렵고(작다), 경고색의 힘도 빠진다(청록이 장식이 된다).
+            토스가 큼지막해 보이는 이유는 여백이 아니라 **크기 격차**다:
+            제목 28 / 본문 18 / 보조 15 처럼 단이 성큼성큼 벌어져 있고,
+            색은 파랑 하나만 쓴다. 우리도 그렇게 한다.
        3) 여백은 8의 배수 — 눈에 안 보이는 규칙이 화면을 정돈한다.
        4) 글꼴을 네트워크로 받지 않는다 — 파일이 기기를 안 떠난다는 약속은
           글꼴에도 적용된다. 대신 앱에 넣어서 함께 설치한다(아래 @font-face).
@@ -68,17 +74,24 @@
        원칙 하나: **작은 글자는 자간을 벌리고, 큰 글자는 좁힌다.**
        작은 글자를 좁히면 뭉치고, 큰 글자를 안 좁히면 헐거워 보인다.
        줄간격도 같은 방향이다 — 커질수록 촘촘하게. */
-    --t-micro:12px;  --lh-micro:1.42;  --tr-micro:.010em;   /* 눈썹·배지 */
-    --t-caption:14px;--lh-caption:1.55;--tr-caption:.002em; /* 캡션·보조 */
-    --t-small:15px;  --lh-small:1.62;  --tr-small:-.004em;  /* 본문 작은 것 */
-    --t-body:16px;   --lh-body:1.66;   --tr-body:-.008em;   /* 읽는 본문 */
-    --t-lead:17px;   --lh-lead:1.62;   --tr-lead:-.012em;   /* 리드 문장 */
-    --t-title:19px;  --lh-title:1.42;  --tr-title:-.020em;  /* 소제목·질문 */
-    --t-h2:23px;     --lh-h2:1.30;     --tr-h2:-.028em;     /* 섹션 제목 */
-    --t-h1:28px;     --lh-h1:1.22;     --tr-h1:-.034em;     /* 큰 숫자 */
-    --t-num:36px;    --lh-num:1.12;    --tr-num:-.040em;    /* 지켜드린 양 */
-    --t-display:46px;--lh-display:1.05;--tr-display:-.044em;/* 대시보드 큰 숫자 */
-    --t-hero:64px;   --lh-hero:1.0;    --tr-hero:-.048em;   /* 주인공 숫자 */
+    /* ★ 2026-08-20 전면 상향. 실물 스크린샷에서 "글씨가 너무 작다"가 나왔다.
+         재보니 본문 16px에 읽는 폭 1000px — 한 줄에 한글 62자가 들어간다.
+         토스는 390px 폭에 본문 17px, 한 줄 22자다. 글자가 폭에서 차지하는
+         비율이 4.4% 대 1.6%, 세 배 차이다. 그래서 두 손을 같이 쓴다:
+         **글자를 키우고(16→18) 읽는 폭을 좁힌다(--measure).**
+         단은 성큼 벌린다 — 18 다음이 19가 아니라 22, 그다음이 28이다.
+         한 칸 차이가 1~2px이면 그건 위계가 아니라 오차로 읽힌다. */
+    --t-micro:13px;  --lh-micro:1.40;  --tr-micro:.006em;   /* 배지·꼬리표 */
+    --t-caption:15px;--lh-caption:1.55;--tr-caption:0em;    /* 캡션·보조 */
+    --t-small:16px;  --lh-small:1.60;  --tr-small:-.006em;  /* 본문 작은 것 */
+    --t-body:18px;   --lh-body:1.64;   --tr-body:-.012em;   /* 읽는 본문 */
+    --t-lead:19px;   --lh-lead:1.58;   --tr-lead:-.016em;   /* 리드 문장 */
+    --t-title:22px;  --lh-title:1.38;  --tr-title:-.024em;  /* 소제목·질문 */
+    --t-h2:28px;     --lh-h2:1.28;     --tr-h2:-.030em;     /* 화면 제목 */
+    --t-h1:34px;     --lh-h1:1.20;     --tr-h1:-.036em;     /* 큰 숫자 */
+    --t-num:44px;    --lh-num:1.10;    --tr-num:-.042em;    /* 항목의 주인공 숫자 */
+    --t-display:56px;--lh-display:1.04;--tr-display:-.046em;/* 대시보드 큰 숫자 */
+    --t-hero:76px;   --lh-hero:1.0;    --tr-hero:-.050em;   /* 주인공 숫자 */
 
     /* ── 굵기 ──────────────────────────────────────────────────
        가변축이라 100단위에 갇히지 않는다. 다섯 단계로 고정하고 이 밖은 안 쓴다.
@@ -100,7 +113,13 @@
     /* ★ 카드 안쪽 여백만 따로 둔다.
        글자를 키우면 같은 여백이 상대적으로 좁아 보인다 — 글자만 키우고 여백을
        그대로 두면 화면이 더 답답해진다. 24는 14px 본문에 맞춘 값이었다. */
-    --pad-card:28px;
+    --pad-card:32px;
+
+    /* ★ 읽는 줄의 최대 길이. 폭이 넓어지면 눈이 다음 줄 첫 글자를 못 찾는다.
+       한글은 1자가 대략 1em이라 38em ≈ 38자다(토스가 22자, 책이 35~40자).
+       카드 폭을 좁히는 게 아니라 **글이 흐르는 폭만** 좁힌다 —
+       목록·표는 넓은 카드를 그대로 써야 하기 때문이다. */
+    --measure:38em;
 
     /* ── 색: 중립 ──────────────────────────────────────────────
        순백·순회색을 쓰지 않는다. 청록을 아주 조금 섞어야 브랜드와 붙는다. */
@@ -213,14 +232,13 @@
   .nav button.on{background:var(--surface);color:var(--accent);box-shadow:var(--sh-1)}
 
   main{padding:var(--s-6) 0 var(--s-8);min-height:70vh}
-  .screen{display:none;flex-direction:column;gap:var(--s-4)}
+  .screen{display:none;flex-direction:column;gap:var(--s-5)}
   .screen.on{display:flex;animation:enter var(--base) var(--ease)}
   @keyframes enter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
   /* ── 카드 ───────────────────────────────────────────────────── */
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
         padding:var(--pad-card);box-shadow:var(--sh-1)}
-  .card.pad{padding:var(--s-6)}
 
   /* ── 홈 히어로 ────────────────────────────────────────────────
      숫자 하나가 화면의 주인공. 고정폭 글꼴을 쓰지 않는다 —
@@ -263,18 +281,50 @@
   #status{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);color:var(--muted);text-align:center;
           min-height:1.4em;margin-top:var(--s-3)}
 
-  /* ── 섹션 머리 — 눈썹(eyebrow) + 제목 ───────────────────────── */
-  .sechead{display:flex;align-items:center;gap:var(--s-3);margin-bottom:var(--s-1);flex-wrap:wrap}
+  /* ── 섹션 머리 ────────────────────────────────────────────────
+     ★ 눈썹 배지(.k)를 없앴다. "숨은 공간 / 스캔에 안 보이는 용량"처럼
+       왼쪽 내비가 방금 말한 것을 청록 배지로 한 번 더 말하고 있었다.
+       화면마다 하나씩, 열 개가 있었다. 반복은 위계를 만들지 않고 지운다 —
+       청록이 열 곳에 깔리면 청록이 '누를 수 있는 것'이라는 뜻을 잃는다. */
+  .sechead{display:flex;align-items:center;gap:var(--s-3);margin-bottom:var(--s-2);flex-wrap:wrap}
   .sechead h2{font-size:var(--t-h2);line-height:var(--lh-h2);font-weight:var(--w-num);letter-spacing:var(--tr-h2)}
-  .sechead .k{font-size:var(--t-micro);line-height:var(--lh-micro);font-weight:var(--w-num);color:var(--accent);
-              background:var(--accent-soft);border:1px solid var(--accent-line);
-              padding:3px 9px;border-radius:var(--r-sm);white-space:nowrap;letter-spacing:var(--tr-micro)}
-  .lede{font-size:var(--t-body);color:var(--ink-2);line-height:var(--lh-body);letter-spacing:var(--tr-body)}
+  .lede{font-size:var(--t-body);color:var(--ink-2);line-height:var(--lh-body);letter-spacing:var(--tr-body);max-width:var(--measure)}
   .lede b{color:var(--ink);font-weight:var(--w-em)}
+
+  /* ── 화면 머리 — 카드가 아니다 ────────────────────────────────
+     예전엔 화면마다 안내문이 '카드'로 맨 위에 있었다. 카드는 "여기 내용이
+     있다"는 뜻인데 그건 내용이 아니라 안내문이다. 사용자가 이 화면에 온
+     이유(69.8GB)는 그 카드 아래, 스크롤 밖에 있었다.
+     카드를 벗기고, 한 문장만 남기고, 나머지는 접는다. */
+  .pagehead{padding:var(--s-1) 0 0}
+  .pagehead h2{font-size:var(--t-h2);line-height:var(--lh-h2);
+               font-weight:var(--w-num);letter-spacing:var(--tr-h2)}
+  .pagehead .sub{margin-top:var(--s-3);max-width:var(--measure);color:var(--ink-2);
+                 font-size:var(--t-lead);line-height:var(--lh-lead);letter-spacing:var(--tr-lead)}
+  .pagehead .sub b{color:var(--ink);font-weight:var(--w-em)}
+  .pagehead .note,.pagehead .more{margin-top:var(--s-4)}
+
+  /* ── 접기 ─────────────────────────────────────────────────────
+     ★ 접으면 안 되는 것이 있다. "되돌릴 수 없다", "무엇이 깨질 수 있다" —
+       접힌 채로 안 읽히면 그건 안 쓴 것과 같다. 접는 것은 배경 설명뿐이다. */
+  .more{max-width:var(--measure)}
+  .more>summary{list-style:none;display:inline-flex;align-items:center;gap:6px;
+                color:var(--muted);font-weight:var(--w-ui);cursor:pointer;
+                font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small)}
+  .more>summary::-webkit-details-marker{display:none}
+  .more>summary::after{content:"⌄";transform:translateY(-2px)}
+  .more[open]>summary::after{content:"⌃";transform:translateY(2px)}
+  .more>summary:hover{color:var(--ink-2)}
+  .more-b{margin-top:var(--s-3);display:flex;flex-direction:column;gap:var(--s-3);max-width:var(--measure);
+          color:var(--ink-2);font-size:var(--t-body);line-height:var(--lh-body);letter-spacing:var(--tr-body)}
+  .more-b b{color:var(--ink);font-weight:var(--w-em)}
+  .more-b .h{display:block;color:var(--ink);font-weight:var(--w-em)}
+  .more-b ul{margin:var(--s-1) 0 0;padding-left:20px}
+  .more-b li+li{margin-top:var(--s-1)}
 
   /* ── 존 막대 ────────────────────────────────────────────────── */
   .zbars{display:flex;flex-direction:column;gap:var(--s-4)}
-  .zrow{display:grid;grid-template-columns:84px 1fr 132px;gap:var(--s-4);align-items:center}
+  .zrow{display:grid;grid-template-columns:100px 1fr 150px;gap:var(--s-4);align-items:center}
   .zlabel{font-size:var(--t-small);line-height:var(--lh-small);color:var(--z);font-weight:var(--w-head);white-space:nowrap;letter-spacing:var(--tr-small)}
   /* ★ display:block 이 반드시 있어야 한다. 둘 다 <span>이라 인라인이면
      width·height가 통째로 무시된다 — 막대가 회색 줄로만 보인다.
@@ -292,7 +342,7 @@
   .split3{display:grid;gap:var(--s-3);grid-template-columns:repeat(3,1fr)}
   @media(max-width:640px){
     .split3{grid-template-columns:1fr}
-    .zrow{grid-template-columns:64px 1fr 100px;gap:var(--s-3)}
+    .zrow{grid-template-columns:76px 1fr 112px;gap:var(--s-3)}
     .wrap{padding:0 var(--s-4)}
   }
   .stat{border:1px solid var(--line);border-radius:var(--r-md);padding:var(--s-4);
@@ -372,13 +422,40 @@
   .q-answered{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);color:var(--safe);font-weight:var(--w-em);margin-top:var(--s-3)}
   .q-stake{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);color:var(--muted);margin-top:var(--s-3)}
 
-  /* ── 설명 블록 ──────────────────────────────────────────────── */
-  .expl{display:flex;flex-direction:column;gap:var(--s-4)}
-  .expl .blk .h{font-size:var(--t-micro);line-height:var(--lh-micro);font-weight:var(--w-num);color:var(--accent);
-                margin-bottom:5px;letter-spacing:var(--tr-micro)}
-  .expl .blk.warn .h{color:var(--amb)}
-  .expl .blk p,.expl .blk li{font-size:var(--t-body);color:var(--ink-2);line-height:var(--lh-body);letter-spacing:var(--tr-body)}
-  .expl .blk ul{margin:4px 0 0;padding-left:18px}
+  /* ── 사실 카드 — 숫자가 먼저다 ────────────────────────────────
+     ★ 이 자리는 원래 여섯 블록이었다. "이게 뭔가요 / 왜 이렇게 큰가요 /
+       뭐가 이걸 쓰나요 / 지우면 뭐가 달라지나요 / 되돌릴 수 있나요 /
+       안 지우면요" — 전부 펼친 채로. 12px 청록 라벨 여섯 개가 세로로 섰고,
+       정작 사용자가 이 화면에 온 이유인 69.8GB는 오른쪽 구석 23px이었다.
+
+       여섯 개를 다 보여주는 건 친절이 아니라 **결정을 사용자에게 미루는 것**이다.
+       읽어야 할 것을 우리가 못 골랐다는 뜻이니까. 그래서 순서를 정했다:
+         언제나 보임 : 숫자 → 이름 → 이게 뭔지 한 줄 → ★위험 → 버튼
+         접힘        : 왜 큰가 · 뭐가 쓰나 · 되돌리기 · 안 지우면
+       ★가 붙은 줄은 절대 안 접는다(엔진이 붙인 표시다). */
+  .fact+.fact{margin-top:var(--s-6);padding-top:var(--s-6);border-top:1px solid var(--line)}
+  .fact-n{font-family:var(--font-display);font-size:var(--t-num);line-height:var(--lh-num);
+          letter-spacing:var(--tr-num);font-weight:var(--w-num);color:var(--ink);
+          font-variant-numeric:tabular-nums;display:block}
+  .fact-n.unknown{font-size:var(--t-title);line-height:var(--lh-title);
+                  letter-spacing:var(--tr-title);color:var(--muted)}
+  .fact-t{margin-top:var(--s-1);font-size:var(--t-title);line-height:var(--lh-title);
+          letter-spacing:var(--tr-title);font-weight:var(--w-head)}
+  .fact-p{margin-top:var(--s-3);max-width:var(--measure);color:var(--ink-2);
+          font-size:var(--t-body);line-height:var(--lh-body);letter-spacing:var(--tr-body)}
+  .fact-p b{color:var(--ink);font-weight:var(--w-em)}
+  /* 위험은 접지 않는다. 배경색을 주는 건 장식이 아니라 "여기서 눈을 멈추라"다. */
+  .fact-risk{margin-top:var(--s-4);max-width:var(--measure);
+             background:var(--amb-soft);border-radius:var(--r-md);
+             padding:var(--s-3) var(--s-4);color:var(--amb);
+             font-size:var(--t-body);line-height:var(--lh-body);letter-spacing:var(--tr-body)}
+  .fact-risk li+li{margin-top:var(--s-2)}
+  .fact-risk ul{margin:0;padding-left:20px}
+  .fact-risk b{font-weight:var(--w-em)}
+  .fact .more{margin-top:var(--s-4)}
+  .fact-act{margin-top:var(--s-5);display:flex;align-items:center;gap:var(--s-3);flex-wrap:wrap}
+  .fact-act .why{font-size:var(--t-caption);line-height:var(--lh-caption);
+                 letter-spacing:var(--tr-caption);color:var(--muted);max-width:var(--measure)}
 
   /* ── 배지 ───────────────────────────────────────────────────── */
   .pill{display:inline-flex;align-items:center;gap:5px;font-size:var(--t-micro);line-height:var(--lh-micro);font-weight:var(--w-head);
@@ -399,8 +476,11 @@
         font-size:var(--t-body);color:var(--ink-2);line-height:var(--lh-body);letter-spacing:var(--tr-body)}
   .note b{color:var(--ink);font-weight:var(--w-em)}
 
-  .btn{font-size:var(--t-body);line-height:var(--lh-body);font-weight:var(--w-head);letter-spacing:var(--tr-body);padding:11px 20px;
-       border-radius:var(--r-sm);background:var(--accent);color:var(--accent-ink);border:0;
+  /* 높이 ≈ 58px. 토스의 주요 버튼이 52~56px다. 손가락이 아니라 마우스로
+     누르는 앱이지만, 이 앱의 버튼은 **되돌릴 수 없는 일**을 하는 것이 많아
+     "잘못 눌렀다"가 나오면 안 되는 크기여야 한다. */
+  .btn{font-size:var(--t-body);line-height:var(--lh-body);font-weight:var(--w-head);letter-spacing:var(--tr-body);padding:14px 22px;
+       border-radius:var(--r-md);background:var(--accent);color:var(--accent-ink);border:0;
        cursor:pointer;transition:filter var(--fast),transform var(--fast) var(--ease)}
   .btn:hover{filter:brightness(1.1)}
   .btn:active{transform:scale(.98)}
@@ -827,16 +907,16 @@
   /* ══ 앱 골격 — 좌측 고정 내비 + 우측 작업 영역 ═══════════════
      데스크톱 앱의 기본 골격이다. 상단 탭은 웹페이지 문법이라
      창 안에 들어가면 "브라우저를 띄운 것"처럼 보인다. */
-  .shell{display:grid;grid-template-columns:224px 1fr;min-height:100vh}
+  .shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
   .side{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;
         gap:var(--s-2);padding:var(--s-5) var(--s-3);background:var(--surface);
         border-right:1px solid var(--line)}
   .side .brand{padding:0 var(--s-3) var(--s-4);font-size:var(--t-h2);
                color:var(--ink);text-decoration:none;display:block}
-  .side .nav{display:flex;flex-direction:column;gap:2px;
+  .side .nav{display:flex;flex-direction:column;gap:var(--s-1);
              background:none;padding:0;border-radius:0;overflow:visible}
   .side .nav button{display:flex;align-items:center;width:100%;text-align:left;
-                    padding:10px var(--s-3);border-radius:var(--r-sm);
+                    padding:var(--s-3) 14px;border-radius:var(--r-md);
                     font-size:var(--t-body);line-height:var(--lh-body);letter-spacing:var(--tr-body);font-weight:var(--w-ui);color:var(--muted)}
   .side .nav button:hover{background:var(--surface-2);color:var(--ink)}
   .side .nav button.on{background:var(--accent-soft);color:var(--accent);box-shadow:none}
@@ -844,7 +924,9 @@
   .side-foot{margin-top:auto;padding:var(--s-3);border-top:1px solid var(--line);
              font-size:var(--t-micro);line-height:var(--lh-micro);letter-spacing:var(--tr-micro);color:var(--muted)}
   .content{min-width:0;display:flex;flex-direction:column}
-  .content main{padding:var(--s-6) var(--s-6) var(--s-8);max-width:1000px;width:100%}
+  /* ★ 가운데 정렬 + 폭 제한. 최대화하면 1900px가 되는데 글이 왼쪽 끝에만
+     붙어 있으면 오른쪽 절반이 통째로 비어 화면이 고장난 것처럼 보인다. */
+  .content main{padding:var(--s-7) var(--s-6) var(--s-8);max-width:960px;width:100%;margin-inline:auto}
   .content footer{margin-top:auto}
   @media(max-width:820px){
     .shell{grid-template-columns:1fr}
@@ -1035,13 +1117,13 @@
     <div id="results" hidden style="display:flex;flex-direction:column;gap:20px">
 
       <div class="card">
-        <div class="sechead"><span class="k">분류</span><h2>확신도 3-존</h2></div>
+        <div class="sechead"><h2>확신도 3-존</h2></div>
         <p class="zdesc">모든 파일을 “알아서 처리 / 물어봐야 / 아예 잠금” 셋 중 하나로 나눕니다.</p>
         <div class="zbars" id="zbars" style="margin-top:14px"></div>
       </div>
 
       <div class="card">
-        <div class="sechead"><span class="k">원클릭</span><h2>정리 계획</h2>
+        <div class="sechead"><h2>정리 계획</h2>
           <span class="pill live" style="margin-left:auto">실시간 분석</span></div>
         <p class="lede" id="plan-lede"></p>
         <div class="split3" id="plan3" style="margin-top:14px"></div>
@@ -1056,7 +1138,7 @@
       </div>
 
       <div id="qwrap" class="card">
-        <div class="sechead"><span class="k">물어보기</span><h2>애매한 것만 딱</h2></div>
+        <div class="sechead"><h2>애매한 것만 딱</h2></div>
         <p class="lede">답 하나가 수백 개를 해결하는 질문만 골랐어요. ‘아니오/모르겠음’은 항상 그대로 둡니다.</p>
         <div id="questions" style="display:flex;flex-direction:column;gap:12px;margin-top:14px"></div>
       </div>
@@ -1072,129 +1154,142 @@
 
   <!-- ════ 숨은 공간 ════ -->
   <section class="screen" id="s-hidden">
-    <div class="card pad">
-      <div class="sechead"><span class="k">숨은 공간</span><h2>스캔에 안 보이는 용량</h2></div>
-      <p class="lede" style="margin-top:6px">
-        “청소했는데 왜 그대로지?”의 1순위 원인.
-        <b style="color:var(--ink)">컴퓨터가 잘 때 덮는 이불</b> 같은 파일이에요 —
-        목록엔 안 보이는데 수십 GB를 차지합니다.
-      </p>
-      <p class="lede" style="margin-top:8px">
-        지우는 게 아니라 <b style="color:var(--ink)">윈도우한테 개어 넣어달라고</b> 합니다.
-        언제든 다시 펼 수 있어요.
-      </p>
-      <div style="margin-top:12px"><span class="pill desk">실측·실행은 데스크톱 앱</span></div>
-    </div>
-
+    <header class="pagehead">
+      <h2>스캔에 안 보이는 용량</h2>
+      <p class="sub">목록엔 안 보이는데 수십 GB를 차지하는 파일이에요.
+        지우는 게 아니라 <b>윈도우한테 개어 넣어달라고</b> 합니다.</p>
+      <div class="web-only" style="margin-top:12px"><span class="pill desk">실측·실행은 데스크톱 앱</span></div>
+      <details class="more">
+        <summary>이게 무슨 뜻인가요</summary>
+        <div class="more-b">
+          <p>“청소했는데 왜 그대로지?”의 1순위 원인입니다.
+            <b>컴퓨터가 잘 때 덮는 이불</b> 같은 파일이라, 파일 목록을 아무리 뒤져도 안 나와요.</p>
+          <p>펼쳐둔 이불을 개어 서랍에 넣는 것과 같습니다. 이불이 없어지는 게 아니라
+            자리를 덜 차지하게 되는 것이고, <b>언제든 다시 펼 수 있어요.</b></p>
+        </div>
+      </details>
+    </header>
     <div class="card" id="hiber-card"></div>
   </section>
 
   <!-- ════ 시작프로그램 ════ -->
   <section class="screen" id="s-startup">
-    <div class="card pad">
-      <div class="sechead"><span class="k">시작프로그램</span><h2>컴퓨터를 켤 때 같이 뜨는 것들</h2></div>
-      <p class="lede" style="margin-top:6px">
-        지우는 게 아니라 <b style="color:var(--ink)">끄는 것</b>이에요.
-        전구를 빼는 게 아니라 <b style="color:var(--ink)">스위치만 내리는 것</b> —
-        프로그램은 그대로 있고, 켤 때 따라 나오지 않을 뿐입니다. 언제든 다시 켜요.
-      </p>
-      <p class="lede" style="margin-top:8px">
-        정체를 모르는 건 끄자고 하지 않습니다.
-        <b style="color:var(--ink)">“뭔지 모른다”는 “꺼도 된다”가 아니니까요.</b>
-      </p>
-      <div style="margin-top:12px"><span class="pill desk">실제 목록·끄기는 데스크톱 앱</span></div>
-      <div id="startup-body"><div class="empty">'시작프로그램' 탭을 열면 이 PC를 실측합니다.</div></div>
-    </div>
+    <header class="pagehead">
+      <h2>컴퓨터를 켤 때 같이 뜨는 것들</h2>
+      <p class="sub">지우는 게 아니라 <b>끄는 것</b>이에요.
+        프로그램은 그대로 있고, 켤 때 따라 나오지 않을 뿐입니다.</p>
+      <div class="web-only" style="margin-top:12px"><span class="pill desk">실제 목록·끄기는 데스크톱 앱</span></div>
+      <details class="more">
+        <summary>끈다는 게 무슨 뜻인가요</summary>
+        <div class="more-b">
+          <p>전구를 빼는 게 아니라 <b>스위치만 내리는 것</b>입니다. 언제든 다시 켜요.</p>
+          <p>정체를 모르는 건 끄자고 하지 않습니다 —
+            <b>“뭔지 모른다”는 “꺼도 된다”가 아니니까요.</b></p>
+        </div>
+      </details>
+    </header>
+    <div class="card"><div id="startup-body"><div class="empty">'시작프로그램' 탭을 열면 이 PC를 실측합니다.</div></div></div>
   </section>
 
   <!-- ════ 되돌리기 ════ -->
   <!-- 오래 안 쓴 프로그램 -->
   <section class="screen" id="s-programs">
-    <div class="card pad">
-      <div class="sechead"><span class="k">프로그램</span><h2>오래 안 쓴 프로그램</h2></div>
-      <p class="lede" style="margin-top:6px">
-        <b style="color:var(--ink)">쓴 기록이 있는 것만</b> 봅니다. 기록이 없으면
-        “안 쓰신다”고 넘겨짚지 않고 그냥 빼둬요.
-      </p>
-      <p class="lede" style="margin-top:8px">
-        지울 땐 <b style="color:var(--ink)">폴더를 삽으로 퍼내지 않습니다.</b> 그러면 뿌리가 남아요 —
-        찌꺼기가 남고 재설치도 막힙니다. <b style="color:var(--ink)">만든 회사가 준 제거 도구</b>를
-        그대로 부릅니다. 그걸 여기서 대신 눌러드리는 거예요.
-      </p>
-      <div class="note" style="margin-top:12px">
+    <header class="pagehead">
+      <h2>오래 안 쓴 프로그램</h2>
+      <p class="sub"><b>쓴 기록이 있는 것만</b> 봅니다.
+        기록이 없으면 “안 쓰신다”고 넘겨짚지 않고 그냥 빼둬요.</p>
+      <!-- ★ 이 경고는 접지 않는다. 되돌릴 수 없는 화면의 첫 문장이어야 한다. -->
+      <div class="note">
         ⚠️ 프로그램 제거는 <b>되돌릴 수 없어요.</b> 그래서 하나씩 확인받습니다.
         끝나면 목록을 다시 뒤져 <b>정말 없어졌는지 확인하고</b> 알려드려요.
       </div>
-      <div style="margin-top:12px"><span class="pill desk">실제 목록·제거는 데스크톱 앱</span></div>
-      <div id="programs-body"><div class="empty">'안 쓴 프로그램' 탭을 열면 이 PC를 실측합니다.</div></div>
-    </div>
+      <div class="web-only" style="margin-top:12px"><span class="pill desk">실제 목록·제거는 데스크톱 앱</span></div>
+      <details class="more">
+        <summary>어떻게 지우나요</summary>
+        <div class="more-b">
+          <p><b>폴더를 삽으로 퍼내지 않습니다.</b> 그러면 뿌리가 남아요 —
+            찌꺼기가 남고 재설치도 막힙니다.</p>
+          <p><b>만든 회사가 준 제거 도구</b>를 그대로 부릅니다.
+            그걸 여기서 대신 눌러드리는 거예요.</p>
+        </div>
+      </details>
+    </header>
+    <div class="card"><div id="programs-body"><div class="empty">'안 쓴 프로그램' 탭을 열면 이 PC를 실측합니다.</div></div></div>
   </section>
 
   <!-- 다른 드라이브로 옮기기 -->
   <section class="screen" id="s-dupes">
-    <div class="card pad">
-      <div class="sechead"><span class="k">같은 파일</span><h2>같은 걸 두 번 갖고 계세요</h2></div>
-      <p class="lede" style="margin-top:6px">
-        이름만 비슷한 게 아니라 <b style="color:var(--ink)">내용이 완전히 같은 파일</b>만 찾습니다.
-        크기가 같은 것끼리 추린 다음 내용을 읽어서 확인해요.
-      </p>
-      <p class="lede" style="margin-top:8px">
-        프로그램 폴더·부품 상자·게임처럼 <b style="color:var(--ink)">같은 파일이 여러 벌 있는 게 정상인 곳은 아예 안 봅니다.</b>
-        거기서 한 벌을 지우면 정리가 아니라 고장이거든요.
-      </p>
-      <div style="margin-top:12px"><span class="pill desk">실제 정리는 데스크톱 앱</span></div>
-      <div id="dupes-body"><div class="empty">'같은 파일' 탭을 열면 찾기 시작합니다.</div></div>
-    </div>
+    <header class="pagehead">
+      <h2>같은 걸 두 번 갖고 계세요</h2>
+      <p class="sub">이름만 비슷한 게 아니라 <b>내용이 완전히 같은 파일</b>만 찾습니다.</p>
+      <div class="web-only" style="margin-top:12px"><span class="pill desk">실제 정리는 데스크톱 앱</span></div>
+      <details class="more">
+        <summary>어떻게 찾나요</summary>
+        <div class="more-b">
+          <p>크기가 같은 것끼리 먼저 추린 다음, <b>내용을 실제로 읽어서</b> 같은지 확인해요.</p>
+          <p>프로그램 폴더·부품 상자·게임처럼
+            <b>같은 파일이 여러 벌 있는 게 정상인 곳은 아예 안 봅니다.</b>
+            거기서 한 벌을 지우면 정리가 아니라 고장이거든요.</p>
+        </div>
+      </details>
+    </header>
+    <div class="card"><div id="dupes-body"><div class="empty">'같은 파일' 탭을 열면 찾기 시작합니다.</div></div></div>
   </section>
 
   <section class="screen" id="s-move">
-    <div class="card pad">
-      <div class="sechead"><span class="k">옮기기</span><h2>지우긴 아까운 것들</h2></div>
-      <p class="lede" style="margin-top:6px">
-        용량 부족의 절반은 “못 지우는데 자리만 차지하는 것”이에요.
-        그건 버릴 게 아니라 <b style="color:var(--ink)">철 지난 겨울옷처럼 창고로 옮길 것</b>입니다.
-      </p>
-      <p class="lede" style="margin-top:8px">
-        프로그램 폴더·앱 설정·동기화 폴더는 <b style="color:var(--ink)">안 옮겨요.</b>
-        <b style="color:var(--ink)">주소를 옮기면 찾아오던 사람이 길을 잃거든요.</b>
-        옮긴 기록이 같이 저장돼서 언제든 되돌립니다.
-      </p>
-      <div style="margin-top:12px"><span class="pill desk">실제 이동은 데스크톱 앱</span></div>
-      <div id="move-body"><div class="empty">'드라이브 옮기기' 탭을 열면 옮길 수 있는 것을 찾습니다.</div></div>
-    </div>
+    <header class="pagehead">
+      <h2>지우긴 아까운 것들</h2>
+      <p class="sub">못 지우는데 자리만 차지하는 것은 버릴 게 아니라
+        <b>철 지난 겨울옷처럼 창고로 옮길 것</b>입니다.</p>
+      <div class="web-only" style="margin-top:12px"><span class="pill desk">실제 이동은 데스크톱 앱</span></div>
+      <details class="more">
+        <summary>무엇을 옮기고, 무엇은 안 옮기나요</summary>
+        <div class="more-b">
+          <p>프로그램 폴더·앱 설정·동기화 폴더는 <b>안 옮겨요.</b>
+            <b>주소를 옮기면 찾아오던 사람이 길을 잃거든요.</b></p>
+          <p>옮긴 기록이 파일 옆에 같이 저장돼서 <b>언제든 되돌립니다.</b></p>
+        </div>
+      </details>
+    </header>
+    <div class="card"><div id="move-body"><div class="empty">'드라이브 옮기기' 탭을 열면 옮길 수 있는 것을 찾습니다.</div></div></div>
   </section>
 
   <!-- ════ 생활 정리 ════ -->
   <section class="screen" id="s-tidy">
-    <div class="card pad">
-      <div class="sechead"><span class="k">생활 정리</span><h2>PC를 비우고 나면 방이 보입니다</h2></div>
-      <p class="lede" style="margin-top:6px">
-        정리는 컴퓨터에서 끝나지 않습니다. 책상·이불·서랍처럼 <b style="color:var(--ink)">짧게 자주 하는 것들</b>을
-        모아두고, 언제 했는지만 기억해 드릴게요.
-      </p>
-      <p class="lede" style="margin-top:8px">
-        밀렸다고 재촉하지 않습니다. <b style="color:var(--ink)">안 해도 되는 날은 안 해도 됩니다.</b>
-        기록은 이 컴퓨터에만 저장되고 어디로도 보내지 않아요.
-      </p>
-      <div id="tidy-body"><div class="empty">'생활 정리' 탭을 열면 오늘 할 것을 보여드립니다.</div></div>
-    </div>
+    <header class="pagehead">
+      <h2>PC를 비우고 나면 방이 보입니다</h2>
+      <p class="sub">책상·이불·서랍처럼 <b>짧게 자주 하는 것들</b>만 모아두고,
+        언제 했는지만 기억해 드릴게요.</p>
+      <details class="more">
+        <summary>어떻게 쓰는 건가요</summary>
+        <div class="more-b">
+          <p>밀렸다고 재촉하지 않습니다. <b>안 해도 되는 날은 안 해도 됩니다.</b></p>
+          <p>기록은 <b>이 컴퓨터에만</b> 저장되고 어디로도 보내지 않아요.</p>
+        </div>
+      </details>
+    </header>
+    <div class="card"><div id="tidy-body"><div class="empty">'생활 정리' 탭을 열면 오늘 할 것을 보여드립니다.</div></div></div>
   </section>
 
   <section class="screen" id="s-quar">
-    <div class="card pad">
-      <div class="sechead"><span class="k">되돌리기</span><h2>옮긴 것 · 합친 것 · 못 지운 것</h2></div>
+    <header class="pagehead">
+      <h2>옮긴 것 · 합친 것 · 못 지운 것</h2>
       <!-- 화면이 동작과 다른 말을 하면 나머지 설명도 못 믿는다. 이 앱은 이제
            보관하지 않고 지운다 — 그러니 "30일간 되돌릴 수 있다"고 쓰지 않는다.
-           되돌릴 수 있는 것만 여기 적고, 지운 것은 못 되돌린다고 먼저 말한다. -->
-      <p class="lede" style="margin-top:6px">
-        <b style="color:var(--ink)">지운 것은 되돌릴 수 없어요.</b>
-        보관함은 없앴습니다 — 같은 드라이브에 쌓아두는 것이라 그동안 용량이 하나도 안 빠졌거든요.
-        <br>대신 <b style="color:var(--ink)">지우지 않은 것</b>이 여기 옵니다 —
-        다른 드라이브로 옮긴 것, 하나로 합친 것, 그리고 사용 중이라 지우려다 못 지운 것.
-      </p>
-      <div style="margin-top:12px"><span class="pill desk">실제 목록·되돌리기는 데스크톱 앱</span></div>
-      <div class="empty">되돌릴 것이 없어요.</div>
-    </div>
+           ★ 이 문장은 접지 않는다. 접히면 안 읽히고, 안 읽히면 안 쓴 것과 같다. -->
+      <p class="sub"><b>지운 것은 되돌릴 수 없어요.</b>
+        여기 오는 건 <b>지우지 않은 것</b>입니다 — 다른 드라이브로 옮긴 것,
+        하나로 합친 것, 사용 중이라 지우려다 못 지운 것.</p>
+      <div class="web-only" style="margin-top:12px"><span class="pill desk">실제 목록·되돌리기는 데스크톱 앱</span></div>
+      <details class="more">
+        <summary>보관함은 왜 없앴나요</summary>
+        <div class="more-b">
+          <p>보관함은 <b>같은 드라이브에 쌓아두는 것</b>이라, 지웠다고 말해놓고
+            용량이 하나도 안 빠지고 있었어요. 그래서 없앴습니다.</p>
+        </div>
+      </details>
+    </header>
+    <div class="card"><div class="empty">되돌릴 것이 없어요.</div></div>
   </section>
 
 </main>

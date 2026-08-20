@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.18.2'
+const APP_VERSION = '0.19.0'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -231,6 +231,12 @@ function go(name: string) {
   if (inTauri && name === 'dupes' && !dupesLoaded) { dupesLoaded = true; loadDupes() }
 }
 document.querySelectorAll<HTMLButtonElement>('.nav button').forEach((b) => b.addEventListener('click', () => go(b.dataset.go!)))
+
+/* ★ "실측·실행은 데스크톱 앱"은 **웹 데모에서만** 맞는 말이다.
+   여태 홈 화면 것만, 그것도 스캔이 끝난 뒤에야 숨겼다. 그래서 데스크톱 앱을
+   켜고 '숨은 공간'에 들어가면 "실측은 데스크톱 앱에서 하세요"가 떠 있었다 —
+   지금 그 앱 안에서. 켜자마자 전부 숨긴다. */
+document.querySelectorAll<HTMLElement>('.web-only').forEach((el) => { el.hidden = inTauri })
 
 /* ── 지원 여부 ─────────────────────────────────────────────── */
 if (!inTauri && !isSupported()) {
@@ -1703,54 +1709,70 @@ async function loadHidden() {
   try {
     const data = await engine('probe')
     if (!data.findings.length) { card.innerHTML = `<div class="empty"><svg class="ic"><use href="#i-check"/></svg><b>회수할 숨은 공간이 없어요</b><span>최대절전 파일·휴지통·업데이트가 남긴 파일 모두 깔끔합니다.</span></div>`; return }
-    card.innerHTML = data.findings
-      .map((f: any, i: number) => explainCard(f, i))
-      .join('<hr style="border:0;border-top:1px solid var(--line);margin:22px 0">')
+    card.innerHTML = data.findings.map((f: any, i: number) => explainCard(f, i)).join('')
     wireAssists(card, data.findings)
   } catch (err) {
     card.innerHTML = `<div class="note">숨은 공간을 확인하지 못했어요: ${esc(errText(err))}</div>`
   }
 }
 
+/**
+ * 사실 카드 — 숫자가 먼저다
+ *
+ * ★ 2026-08-20 재설계. 여기는 원래 여섯 블록이 **전부 펼쳐진** 자리였다.
+ *   "이게 뭔가요 / 왜 이렇게 큰가요 / 뭐가 이걸 쓰나요 / 지우면 뭐가
+ *   달라지나요 / 되돌릴 수 있나요 / 안 지우면요" — 12px 청록 라벨 여섯 개가
+ *   세로로 서 있고, 정작 사용자가 이 화면에 온 이유인 69.8GB는 오른쪽 구석에
+ *   23px로 붙어 있었다. 읽을 것을 하나도 못 고른 화면이다.
+ *
+ *   순서를 뒤집는다. 언제나 보이는 것은 **결정에 필요한 것**뿐이다:
+ *     얼마나(숫자) → 무엇을(이름) → 이게 뭔지 → ★위험 → 할 수 있는 것
+ *   나머지 배경 설명은 접는다. 접는 게 숨기는 것이 되지 않도록,
+ *   **★가 붙은 줄은 절대 접지 않는다** — 엔진이 "이건 반드시 읽혀야 한다"고
+ *   붙인 표시이고(노트북 빠른 시작, 리눅스 환경이 통째로 사라짐 …),
+ *   접힌 채로 안 읽히면 안 쓴 것과 같기 때문이다.
+ */
 function explainCard(f: any, index: number): string {
   const e = f.explain
   const gb = (n: number) => (n / 1073741824).toFixed(1) + 'GB'
-  const blk = (h: string, body: string, warn = false) => `<div class="blk${warn ? ' warn' : ''}"><div class="h">${h}</div>${body}</div>`
-  const ul = (arr: string[]) => `<ul>${arr.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`
+  const li = (arr: string[]) => `<ul>${arr.map((x) => `<li>${esc(x.replace(/^★\s*/, ''))}</li>`).join('')}</ul>`
+  const blk = (h: string, body: string) => `<div><span class="h">${h}</span>${body}</div>`
+
+  const risks = (e.ifRemoved ?? []).filter((x: string) => x.includes('★'))
+  const rest = (e.ifRemoved ?? []).filter((x: string) => !x.includes('★'))
 
   /* 실행 줄. 항목마다 우리가 할 수 있는 게 다르다 —
      되돌리는 명령이 있으면 우리가 실행(SystemAction), 없으면 정식 도구(assist),
-     둘 다 없으면 아직 안전한 경로를 모르는 것이므로 솔직히 그렇게 쓴다.
-
-     ★ 여태 SystemAction이 있어도 화면엔 "다음 업데이트에서 연결됩니다"만 떴다.
-       12.7GB짜리를 찾아놓고 사용자에게 직접 powercfg를 치라고 한 셈이다.
-       되돌릴 수 있는 것(끄면 다시 켤 수 있는 것)은 우리가 눌러드린다. */
+     둘 다 없으면 아직 안전한 경로를 모르는 것이므로 솔직히 그렇게 쓴다. */
   const foot = f.action?.run
     ? `<button class="btn" data-run="${index}">${esc(f.action.describe)}</button>
-       <span class="t-small" style="color:var(--muted);margin-left:10px">
-         관리자 확인 창이 한 번 뜹니다 · 되돌리기: ${esc(f.action.undoDescribe)}</span>`
+       <span class="why">관리자 확인 창이 한 번 뜹니다 · 되돌리기: ${esc(f.action.undoDescribe)}</span>`
     : f.assist
       ? `<button class="btn${f.assist.irreversible ? '' : ' ghost'}" data-assist="${index}">${esc(f.assist.label)}</button>
-         <span class="t-small" style="color:var(--muted);margin-left:10px">${esc(f.assist.note)}</span>`
+         <span class="why">${esc(f.assist.note)}</span>`
       : `<span class="pill desk">아직 안전하게 실행할 방법을 몰라서, 알려만 드립니다</span>`
 
   return `
-    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
-      <h2 class="t-title" style="font-weight:var(--w-num)">${esc(f.title)}</h2>
-      <span class="t-h2 tnum" style="font-weight:var(--w-num);color:${f.bytes ? 'var(--safe)' : 'var(--muted)'};margin-left:auto">${
+    <div class="fact">
+      <span class="fact-n${f.bytes ? '' : ' unknown'}">${
         // ★ 못 잰 것에 0GB라고 쓰지 않는다. "없다"와 "못 봤다"는 다른 말이다.
         f.bytes ? gb(f.bytes) : '확인 필요'
       }</span>
-    </div>
-    <div class="expl" style="margin-top:14px">
-      ${blk('이게 뭔가요', `<p>${esc(e.what)}</p>`)}
-      ${blk('왜 이렇게 큰가요', `<p>${esc(e.why)}</p>`)}
-      ${blk('뭐가 이걸 쓰나요', ul(e.usedBy))}
-      ${blk('지우면 뭐가 달라지나요', ul(e.ifRemoved), true)}
-      ${blk('되돌릴 수 있나요', `<p>${esc(e.recoveryNote)}</p>`)}
-      ${blk('안 지우면요', `<p>${esc(e.ifKept)}</p>`)}
-    </div>
-    <div style="margin-top:16px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${foot}</div>`
+      <div class="fact-t">${esc(f.title)}</div>
+      <p class="fact-p">${esc(e.what)}</p>
+      <p class="fact-p">${esc(e.why)}</p>
+      ${risks.length ? `<div class="fact-risk">${li(risks)}</div>` : ''}
+      <details class="more">
+        <summary>뭐가 쓰는지 · 되돌리기 · 안 지우면</summary>
+        <div class="more-b">
+          ${blk('뭐가 이걸 쓰나요', li(e.usedBy))}
+          ${rest.length ? blk('지우면 뭐가 달라지나요', li(rest)) : ''}
+          ${blk('되돌릴 수 있나요', `<p>${esc(e.recoveryNote)}</p>`)}
+          ${blk('안 지우면요', `<p>${esc(e.ifKept)}</p>`)}
+        </div>
+      </details>
+      <div class="fact-act">${foot}</div>
+    </div>`
 }
 
 /**

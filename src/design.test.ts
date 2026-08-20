@@ -77,3 +77,96 @@ test('★ 창이 화면에 맞춰 열린다 — 매번 손으로 늘리게 하�
   assert.equal(w.maximized, true, '기본 크기로 열려서 목록이 잘린다')
   assert.ok(w.width >= 1100, `기본 너비가 좁다(${w.width}) — 최대화가 안 먹는 환경의 대비책이다`)
 })
+
+/* ══════════════════════════════════════════════════════════════
+   큼지막함 — 2026-08-20 실물에서 "글씨가 너무 작다"가 나왔다
+
+   재보니 본문 16px에 읽는 폭 1000px이었다. 한 줄에 한글 62자다.
+   토스는 390px 폭에 본문 17px, 한 줄 22자 — 글자가 화면 폭에서 차지하는
+   비율이 세 배 차이였다. 그래서 두 손을 같이 쓴다:
+   글자를 키우고(16→18), 글이 흐르는 폭을 좁힌다(--measure).
+
+   ★ 눈으로만 지키면 다시 작아진다. 크기는 한 번에 안 줄고 한 화면씩
+     "여긴 좀 작아도 되지"로 줄어든다. 그래서 바닥을 코드로 박는다.
+   ══════════════════════════════════════════════════════════════ */
+
+/** :root의 --t-* 토큰을 {이름: px}로 읽는다. */
+function ramp(): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const m of html().matchAll(/--t-([a-z0-9]+)\s*:\s*([0-9.]+)px/g)) out[m[1]] = Number(m[2])
+  return out
+}
+
+/** 셀렉터 하나의 선언 블록을 통째로 꺼낸다. */
+function rule(selector: string): string {
+  const css = html()
+  const i = css.indexOf(selector + '{')
+  assert.ok(i >= 0, `${selector} 규칙을 찾지 못했다`)
+  return css.slice(i, css.indexOf('}', i) + 1)
+}
+
+test('★ 읽는 본문이 18px 아래로 안 내려간다 — "글씨가 너무 작다"가 실물에서 나왔다', () => {
+  const r = ramp()
+  assert.ok(r.body >= 18, `본문이 ${r.body}px다`)
+  assert.ok(r.small >= 16, `보조 본문이 ${r.small}px다 — 여기가 먼저 작아진다`)
+  assert.ok(r.caption >= 15, `캡션이 ${r.caption}px다`)
+  assert.ok(r.micro >= 13, `가장 작은 글자가 ${r.micro}px다 — 배지도 읽혀야 한다`)
+})
+
+test('★ 크기 단이 성큼 벌어진다 — 1~2px 차이는 위계가 아니라 오차로 읽힌다', () => {
+  /* 본문 다음이 본문+1이면 둘은 같은 글자로 보이고, 결국 위계를 색으로 만들게
+     된다 — 그래서 12px 청록 라벨이 여섯 개 생겼었다. 최소 15%씩 벌린다. */
+  const r = ramp()
+  const steps = ['body', 'title', 'h2', 'h1']
+  for (let i = 1; i < steps.length; i++) {
+    const lo = r[steps[i - 1]]
+    const hi = r[steps[i]]
+    assert.ok(hi >= lo * 1.15,
+      `--t-${steps[i]}(${hi}px)가 --t-${steps[i - 1]}(${lo}px)보다 15% 이상 크지 않다`)
+  }
+})
+
+test('★ 글이 흐르는 폭에 상한이 있다 — 한 줄이 길면 눈이 다음 줄 첫 글자를 못 찾는다', () => {
+  assert.match(html(), /--measure\s*:/, '읽는 줄 길이를 정하는 토큰이 없다')
+  /* 토큰만 있고 안 걸려 있으면 없는 것과 같다. 본문을 담는 곳에 실제로 건다.
+     (카드 폭을 줄이는 게 아니라 글이 흐르는 폭만 줄인다 — 목록·표는 넓어야 한다) */
+  for (const sel of ['.lede', '.fact-p', '.more-b', '.pagehead .sub']) {
+    assert.match(rule(sel), /max-width:var\(--measure\)/, `${sel}에 읽는 폭 상한이 없다`)
+  }
+})
+
+test('★ 눈썹 배지를 화면마다 달지 않는다 — 왼쪽 내비가 방금 한 말이다', () => {
+  /* "숨은 공간 / 스캔에 안 보이는 용량"처럼 같은 말이 두 번, 열 곳에 있었다.
+     게다가 청록 배지라 '누를 수 있는 것'의 색이 열 곳에서 장식으로 쓰였다. */
+  assert.doesNotMatch(html(), /<span class="k">/, '눈썹 배지가 다시 생겼다')
+})
+
+test('★ 화면 안내가 카드로 맨 위를 차지하지 않는다', () => {
+  /* 사용자가 이 화면에 온 이유(69.8GB)가 안내 카드 아래, 스크롤 밖에 있었다.
+     안내는 카드가 아니라 화면 머리(.pagehead)로 두고, 배경 설명은 접는다. */
+  assert.match(html(), /\.pagehead\{/, '화면 머리 스타일이 없다')
+  const heads = (html().match(/<header class="pagehead">/g) ?? []).length
+  assert.ok(heads >= 6, `화면 머리를 쓰는 화면이 ${heads}개뿐이다`)
+})
+
+test('★ 위험 문장은 접기 밖에 있다 — 접히면 안 읽히고, 안 읽히면 안 쓴 것이다', () => {
+  /* 엔진이 ★를 붙인 줄은 "반드시 읽혀야 한다"는 표시다(노트북은 빠른 시작이
+     꺼진다, 리눅스 환경이 통째로 사라진다 …). 접기 안으로 들어가면 안 된다. */
+  const src = app()
+  const i = src.indexOf('function explainCard(')
+  assert.ok(i > 0, 'explainCard를 찾지 못했다')
+  const body = src.slice(i, src.indexOf('\n}', i))
+  assert.match(body, /includes\('★'\)/, '★ 줄을 따로 골라내지 않는다')
+  const risk = body.indexOf('fact-risk')
+  const fold = body.indexOf('<details')
+  assert.ok(risk > 0 && fold > 0 && risk < fold,
+    '★ 위험 줄이 접기(<details>) 안이나 뒤에 있다 — 펼치지 않으면 안 보인다')
+})
+
+test('★ "실행은 데스크톱 앱" 안내가 데스크톱 앱에서 안 뜬다', () => {
+  /* 앱을 켜고 들어가면 "실측은 데스크톱 앱에서 하세요"가 떠 있었다 — 그 앱 안에서.
+     홈 화면 것만, 그것도 스캔이 끝난 뒤에야 숨기고 있었기 때문이다. */
+  assert.match(app(), /querySelectorAll<HTMLElement>\('\.web-only'\)[\s\S]{0,80}hidden = inTauri/,
+    '웹 전용 안내를 앱 시작 때 숨기지 않는다')
+  assert.match(html(), /class="web-only"/, '웹 전용 안내에 표시가 없다')
+})
