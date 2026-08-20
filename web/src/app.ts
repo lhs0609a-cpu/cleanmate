@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.18.1'
+const APP_VERSION = '0.18.2'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -837,13 +837,52 @@ const canMove = (s: any): boolean => s?.move?.ok === true
  * 낱개 한 줄 — 체크박스 · 이름 · 크기 · 경로.
  * 설명은 묶음 머리가 이미 했다. 파일마다 같은 네 줄을 반복하면 아무도 안 읽는다.
  */
+/**
+ * 긴 경로를 한 줄로 — **앞을 버린다.**
+ *
+ * ★ 왜 (2026-08-20 실물): 목록의 경로가 이렇게 나왔다.
+ *     C:\Users\lhs06\AppData\Local\MusicFactory\work\l
+ *     ongform\20260819_1630_채널a\video.mp4
+ *   한 줄에 안 들어가 두 줄로 접히고, 그나마 단어 중간(l|ongform)에서 잘려서
+ *   읽히지도 않았다. 줄마다 두 줄씩 먹으니 목록이 절반만 보인다.
+ *
+ * ★ 처음엔 가운데를 접었다. 그랬더니 C:\Users\lhs06\…\채널a\video.mp4가 됐는데,
+ *   앞의 C:\Users\lhs06은 **모든 줄에 똑같이 붙는 잡음**이다. 게다가 어느 앱인지는
+ *   묶음 머리가 이미 말한다("MusicFactory(프로그램)의 동영상으로 보입니다").
+ *   줄이 해야 할 일은 **줄끼리 구별되는 것**뿐이라, 뒤쪽만 남긴다.
+ *
+ * 짧아서 다 보이는 경로는 손대지 않는다 — 접는 게 늘 이득은 아니다.
+ * 전체 경로는 title로 남겨서 마우스를 올리면 그대로 보인다.
+ */
+function shortPath(p: string, keepTail = 3, fitsAt = 52): string {
+  if (p.length <= fitsAt) return p
+  const segs = p.split(/[\\/]/).filter(Boolean)
+  if (segs.length <= keepTail) return p
+  return '…\\' + segs.slice(-keepTail).join('\\')
+}
+
+/**
+ * 낱개 한 줄 — 체크박스 · 이름 · 크기 · 경로.
+ * 설명은 묶음 머리가 이미 했다. 파일마다 같은 네 줄을 반복하면 아무도 안 읽는다.
+ */
+/**
+ * 낱개 한 줄 — 체크박스 · 이름 · 크기 · 경로.
+ * 설명은 묶음 머리가 이미 했다. 파일마다 같은 네 줄을 반복하면 아무도 안 읽는다.
+ *
+ * ★ 이름은 파일명만으로는 모자란다 (2026-08-20 실물): 40줄이 전부 `video.mp4`였다.
+ *   같은 이름이 반복되면 이름 칸이 아무 말도 안 하는 셈이다. 구별되는 건
+ *   상위 폴더(20260819_1630_채널a)라서, 그걸 앞에 세운다.
+ */
 function pickRowHtml(s: any): string {
+  const segs = s.path.split(/[\\/]/).filter(Boolean)
+  const name = segs[segs.length - 1] ?? s.path
+  const parent = segs.length > 1 ? segs[segs.length - 2] : ''
   return `
     <label class="pick-row">
       <input type="checkbox" data-pick="${esc(s.path)}">
-      <span class="pick-name">${esc(baseName(s.path))}</span>
+      <span class="pick-name">${parent ? `<span class="pick-dir">${esc(parent)} ›</span> ` : ''}${esc(name)}</span>
       <span class="pick-size">${fmtBytes(s.size)}</span>
-      <span class="bd-path">${esc(s.path)}</span>
+      <span class="bd-path" title="${esc(s.path)}">${esc(shortPath(s.path))}</span>
     </label>`
 }
 

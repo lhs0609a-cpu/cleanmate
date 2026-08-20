@@ -348,15 +348,24 @@
      40줄을 하나씩 누르는 것 말고 다른 길이 있다는 걸 안 보이면 없는 것과 같다. */
   .opt.strong{border-color:var(--accent);color:var(--accent);font-weight:var(--w-em)}
   .opt.strong:hover{background:var(--accent-soft)}
+  /* ★ 고른 상태가 강조 상태를 이겨야 한다 (2026-08-20 실물에서 빈 버튼으로 보임).
+     .opt.strong이 .opt.chosen보다 아래에 있어서 색을 덮었고, 청록 배경에 청록
+     글씨가 되어 **버튼이 통째로 비어 보였다.** 두 규칙의 특이도가 같으므로
+     순서가 곧 승부다 — 이긴 쪽을 명시적으로 못 박는다. */
+  .opt.strong.chosen{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
   .opt.keep.chosen{background:var(--safe);border-color:var(--safe);color:#fff}
   /* 되돌릴 수 없는 실행이 이 모양으로 올 때도 있다(옮기기 화면의 지우기 버튼) */
   .opt.danger{border-color:var(--lock);color:var(--lock)}
   .opt.danger:hover{border-color:var(--lock);color:#fff;background:var(--lock)}
   .opt:disabled{opacity:.5;cursor:default}
   /* 옮겨도 되나 — 선택지 위에 둔다. 누른 뒤에 알려주면 늦다. */
-  .q-move{display:flex;gap:6px;align-items:flex-start;margin-top:var(--s-3);
+  /* ★ display:flex를 쓰면 안 된다 (2026-08-20 실물에서 깨짐).
+     문장 안의 <b> 하나하나가 flex 아이템이 되어 조각조각 벌어진다 —
+     "낱개로는 옮길 수  없어요 —   프로그램이 저장한  자료   라 자리를..." 처럼
+     한 문장이 여섯 덩어리로 흩어졌다. 문장은 문장으로 흘러야 한다. */
+  .q-move{display:block;margin-top:var(--s-3);
           font-size:var(--t-caption);line-height:var(--lh-caption)}
-  .q-move i{font-style:normal;flex:none;opacity:.8}
+  .q-move i{font-style:normal;opacity:.8;margin-right:5px}
   .q-move.ok{color:var(--safe)}
   .q-move.warn{color:var(--lock)}
   .q-move b{font-weight:var(--w-em)}
@@ -602,6 +611,9 @@
   .pick-row input{width:18px;height:18px;accent-color:var(--accent);margin:0;cursor:pointer}
   .pick-name{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
              font-weight:var(--w-em);color:var(--ink);word-break:break-all}
+  /* 폴더 이름을 파일명 앞에 — 같은 이름이 40줄 반복될 때 구별되는 건 이쪽이다.
+     다만 주인공은 파일명이라 폴더는 한 톤 죽인다. */
+  .pick-dir{color:var(--muted);font-weight:var(--w-text)}
   .pick-size{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
              color:var(--muted);white-space:nowrap}
   .pick-row .bd-path{grid-column:2/-1;margin-top:0}
