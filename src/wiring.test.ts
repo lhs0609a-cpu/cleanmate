@@ -121,3 +121,90 @@ test('★ 권한을 받아 재는 통로가 살아 있다 — "못 쟀다"로 �
   assert.match(ui, /data-measure/, '화면에 재기 버튼을 그리는 자리가 없다')
   assert.match(ui, /querySelectorAll<HTMLButtonElement>\('\[data-measure\]'\)/, '재기 버튼이 아무 일도 안 한다')
 })
+
+/* ══════════════════════════════════════════════════════════════
+   "열었어요"라고 답해놓고 아무 창도 안 뜬 자리 — 2026-08-21 실물
+
+   ★ 무슨 일이 있었나.
+     "가상 메모리 설정 열기"를 눌렀더니 버튼만 '열었어요'로 바뀌고 창은 안 떴다.
+     잘못이 두 겹이었다.
+
+       ① spawn은 실패를 나중에 'error' 이벤트로 알린다. 그런데 엔진은 곧바로
+          out({opened:true})를 부르고 process.exit(0)로 죽었다 — 실패가 도착할
+          자리가 아예 없었다. 무슨 일이 있어도 성공이라고 답한 셈이다.
+       ② 실패 이유는 EACCES였다. 파일이 없는 게 아니라 CreateProcess가
+          "관리자로 띄워야 한다"고 거절한 것이다(ERROR_ELEVATION_REQUIRED).
+          CreateProcess는 UAC를 안 띄우고 그냥 거절한다.
+
+   ①이 이 테스트가 지키는 것이다. ②는 언제든 다른 exe에서 또 나올 수 있고,
+   그때 조용히 성공으로 답하지만 않으면 사용자가 우리에게 알려줄 수 있다.
+   ══════════════════════════════════════════════════════════════ */
+
+test('★ 창을 여는 통로가 spawn을 직접 부르지 않는다 — 열렸는지 보는 문을 지난다', () => {
+  const src = read('src/engine-cli.ts')
+  /* spawn 자체는 다른 데서도 쓴다(엔진 사이드카 등). 여기서 막는 건
+     '창을 띄우는 exe'를 문을 안 지나고 부르는 것이다. */
+  const raw = [...src.matchAll(/spawn\('([A-Za-z]+\.exe)'/g)].map((m) => m[1])
+  assert.deepEqual(raw, [], `openTool을 안 지나고 직접 띄우는 창: ${raw.join(', ')}`)
+  assert.match(src, /async function openTool\(/, '창을 여는 공용 문이 없다')
+})
+
+test('★ 열렸는지 보고 답한다 — spawn 직후 성공이라고 쓰지 않는다', () => {
+  const src = read('src/engine-cli.ts')
+  const i = src.indexOf('async function openTool(')
+  const body = src.slice(i, src.indexOf('\n}', i))
+  // 'spawn' 이벤트가 와야 진짜 뜬 것이다. 'error'도 받아야 실패를 안다.
+  assert.match(body, /once\('spawn'/, "'spawn' 이벤트를 안 기다린다 — 뜨기 전에 성공이라고 답한다")
+  assert.match(body, /once\('error'/, "'error' 이벤트를 안 받는다 — 실패가 도착할 자리가 없다")
+
+  // ★ 떴다고 끝이 아니다. 창을 띄우는 stub은 창이 살아 있는 동안 같이 산다 —
+  //   곧바로 끝났으면 창을 안 띄운 것이다(실측: 이미 열려 있으면 종료코드 0으로 즉시 종료).
+  assert.match(body, /exitCode !== null/, '띄운 뒤 살아 있는지 안 본다 — 창 없이 끝나도 성공이라고 답한다')
+
+  // 세 통로가 전부 그 문을 await 한다.
+  for (const cmd of ['open-system-protection', 'open-virtual-memory', 'open-cleanmgr']) {
+    const j = src.indexOf(`case '${cmd}':`)
+    assert.ok(j > 0, `${cmd} 통로가 없다`)
+    const block = src.slice(j, src.indexOf('break', j))
+    assert.match(block, /await openTool\(/, `${cmd}가 열렸는지 안 보고 답한다`)
+  }
+})
+
+test('★ 권한이 필요해 거절당하면 승격해서 다시 띄운다 — 거기서 포기하지 않는다', () => {
+  /* 실측(2026-08-21): SystemPropertiesPerformance.exe·SystemPropertiesProtection.exe는
+     권한 없이 부르면 EACCES로 거절당한다. cleanmgr.exe는 그냥 열린다. */
+  const src = read('src/engine-cli.ts')
+  const i = src.indexOf('const ELEVATED_OPEN')
+  assert.ok(i > 0, '승격해서 여는 목록이 없다')
+  const map = src.slice(i, src.indexOf('\n}', i))
+  for (const exe of ['SystemPropertiesProtection.exe', 'SystemPropertiesPerformance.exe']) {
+    assert.ok(map.includes(exe), `${exe}가 승격 목록에 없다 — 누르면 아무 창도 안 뜬다`)
+  }
+  // ★ 취소를 성공으로 읽지 않게 하는 한 줄. 없으면 '아니오'를 눌러도 0으로 끝난다.
+  assert.ok(
+    map.split('$ErrorActionPreference').length - 1 >= 2,
+    "승격 명령에 $ErrorActionPreference='Stop'이 없다 — 확인 창에서 '아니오'를 눌러도 열린 줄 안다"
+  )
+})
+
+test('★ 창이 안 떴으면 왜 안 떴는지 말한다 — "열었어요"로 덮지 않는다', () => {
+  /* 실측(2026-08-21): 윈도우는 sysdm.cpl 계열 창을 한 번에 하나만 띄운다.
+     [성능 옵션]이 떠 있는 상태에서 다시 띄우면 둘 다 종료코드 0으로 즉시 끝나고
+     창이 안 생긴다. 사용자에게는 "눌렀는데 아무 일도 안 일어남"으로 보인다. */
+  const src = read('src/engine-cli.ts')
+  assert.match(src, /function windowGoneMessage\(/, '창이 안 떴을 때 할 말이 없다')
+  const i = src.indexOf('function windowGoneMessage(')
+  const msg = src.slice(i, src.indexOf('\n}', i))
+  assert.match(msg, /한 번에 하나만/, '왜 안 떴는지 안 말한다 — 사용자는 고장으로 읽는다')
+  assert.match(msg, /닫고 다시/, '무엇을 하면 되는지 안 말한다')
+
+  // 승격 경로도 같은 판정을 해야 한다. 안 하면 승격했을 때만 거짓말이 남는다.
+  const j = src.indexOf('const ELEVATED_OPEN')
+  const map = src.slice(j, src.indexOf('\n}', j))
+  assert.match(map, /HasExited/, '승격해서 띄운 창이 떴는지 안 본다')
+  assert.match(map, /-PassThru/, '승격해서 띄운 프로세스를 안 잡아둔다 — 확인할 방법이 없다')
+
+  // 사람이 화면에서 찾을 이름으로 말한다.
+  assert.match(src, /const TOOL_NAME: Record<string, string>/, '창 이름을 사람 말로 옮기는 자리가 없다')
+  assert.doesNotMatch(msg, /\.exe/, '"SystemPropertiesPerformance.exe를 닫으세요"는 안내가 아니다')
+})

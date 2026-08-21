@@ -110,6 +110,7 @@ export function probePageFile(f: PageFileFacts): Finding | null {
       command: 'open-virtual-memory',
       irreversible: false,
       note:
+        '관리자 확인 창이 한 번 뜰 수 있어요. ' +
         '“고급 → 가상 메모리 → 변경”에서 크기를 정하시면 됩니다. ' +
         '외장하드로 옮기는 건 권하지 않아요 — 안 꽂혀 있으면 문제가 생깁니다. 다른 내장 드라이브면 괜찮습니다.',
     },
@@ -250,6 +251,7 @@ export function probeRestore(f: RestoreFacts, driveTotalBytes = 0): Finding | nu
       command: 'open-system-protection',
       irreversible: false,
       note:
+        '관리자 확인 창이 한 번 뜰 수 있어요. ' +
         '“구성”을 누르면 지금 쓰는 양과 최대 크기 막대가 나옵니다. 거기서 20GB쯤으로 줄이시면 ' +
         '최근 복원 지점은 남기면서 오래된 것만 정리돼요.',
     },

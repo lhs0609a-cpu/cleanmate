@@ -492,6 +492,100 @@ async function runPowerShell(command: string): Promise<void> {
 }
 
 /**
+ * 승격해서 여는 통로. **엔진 안에 하드코딩된 것만** 연다 —
+ * 밖에서 온 문자열을 파워셸에 넘기는 자리를 만들지 않는다(SystemAction과 같은 원칙).
+ *
+ * $ErrorActionPreference='Stop'이 반드시 있어야 한다. 없으면 사용자가 관리자
+ * 확인 창에서 '아니오'를 눌러도 파워셸이 0으로 끝나서, 우리는 열린 줄 안다.
+ */
+const ELEVATED_OPEN: Record<string, string> = {
+  'SystemPropertiesProtection.exe':
+    "$ErrorActionPreference='Stop'; $p = Start-Process SystemPropertiesProtection.exe -Verb RunAs -PassThru; " +
+    "Start-Sleep -Milliseconds 1200; if ($p.HasExited) { exit 3 }",
+  'SystemPropertiesPerformance.exe':
+    "$ErrorActionPreference='Stop'; $p = Start-Process SystemPropertiesPerformance.exe -Verb RunAs -PassThru; " +
+    "Start-Sleep -Milliseconds 1200; if ($p.HasExited) { exit 3 }",
+}
+
+/** 사람이 화면에서 찾을 이름. "SystemPropertiesPerformance.exe를 닫으세요"는 안내가 아니다. */
+const TOOL_NAME: Record<string, string> = {
+  'SystemPropertiesProtection.exe': '시스템 속성',
+  'SystemPropertiesPerformance.exe': '성능 옵션',
+  'cleanmgr.exe': '디스크 정리',
+}
+
+/**
+ * 창이 떴는지 판정할 시간.
+ *
+ * 이 도구들은 **창을 띄우는 stub**이라, 창이 살아 있는 동안 프로세스도 같이 산다.
+ * 곧바로 종료되면 창을 안 띄웠다는 뜻이다. 실측(2026-08-21):
+ *   [성능 옵션]이 떠 있는 상태에서 다시 띄우면 →  둘 다 종료코드 0으로 즉시 종료, 창 없음
+ *   아무것도 안 떠 있을 때                    →  살아 있고 [성능 옵션] 창이 보임(True)
+ */
+const WINDOW_CHECK_MS = 1200
+/** 창이 안 뜬 이유가 하나뿐이라 그걸 그대로 말한다. 실측으로 확인한 것이다. */
+const EXIT_WINDOW_GONE = 3
+function windowGoneMessage(exe: string): string {
+  return `${TOOL_NAME[exe] ?? exe} 창이 안 떴어요. 윈도우는 이 창을 한 번에 하나만 띄웁니다 — ` +
+    '"시스템 속성"이나 "성능 옵션" 창이 이미 열려 있으면 새 창이 안 떠요. ' +
+    '열려 있는 창을 찾아 닫고 다시 눌러주세요.'
+}
+
+/**
+ * 윈도우의 정식 도구를 띄운다 — **열렸는지 보고** 답한다.
+ *
+ * ★ 실물에서 터졌다(2026-08-21). "가상 메모리 설정 열기"를 눌렀더니 아무 창도
+ *   안 뜨고 버튼만 "열었어요"로 바뀌었다. 잘못이 두 겹이었다.
+ *
+ *   ① spawn은 실패를 **나중에** 'error' 이벤트로 알린다. 그런데 우리는 곧바로
+ *      out({opened:true})를 부르고 process.exit(0)로 죽었다. 실패가 도착할
+ *      자리가 아예 없었던 것이다 — 무슨 일이 있어도 "열었어요"라고 답했다.
+ *
+ *   ② 실패 이유는 EACCES였다. 파일이 없는 게(ENOENT) 아니라 CreateProcess가
+ *      "이건 관리자로 띄워야 한다"고 거절한 것이다
+ *      (ERROR_ELEVATION_REQUIRED 740을 libuv가 EACCES로 옮긴다). 실측:
+ *        SystemPropertiesPerformance.exe   거절: EACCES
+ *        SystemPropertiesProtection.exe    거절: EACCES
+ *        cleanmgr.exe                      실행됨
+ *
+ * CreateProcess는 UAC를 안 띄우고 그냥 거절한다. ShellExecute(=Start-Process)는
+ * 그 자리에서 UAC를 띄운다. 그래서 **거절당했을 때만** 그쪽으로 다시 띄운다 —
+ * 권한이 필요 없는 PC에 괜히 확인 창을 띄우지 않는다.
+ * (main.rs가 제거 창을 740일 때만 승격하는 것과 같은 판단)
+ */
+async function openTool(exe: string, args: string[] = []): Promise<{ elevated: boolean }> {
+  let child: ReturnType<typeof spawn> | null = null
+  try {
+    child = await new Promise<ReturnType<typeof spawn>>((resolve, reject) => {
+      const c = spawn(exe, args, { detached: true, stdio: 'ignore', windowsHide: false })
+      c.once('error', reject)
+      // 'spawn'이 와야 진짜 떴다. 여기서 unref하면 우리가 먼저 죽어 창이 못 뜬다.
+      c.once('spawn', () => resolve(c))
+    })
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code !== 'EACCES') {
+      fail(`창을 열지 못했어요(${code ?? '알 수 없는 오류'}). 시작 메뉴에서 "${TOOL_NAME[exe] ?? exe}"를 직접 열어보실 수 있어요.`)
+    }
+    const elevate = ELEVATED_OPEN[exe]
+    if (!elevate) fail(`이 창은 관리자 권한이 필요한데, 저희가 올려서 띄우는 통로가 없어요: ${exe}`)
+    try {
+      await runPowerShell(elevate)
+    } catch (e) {
+      if ((e as { code?: number }).code === EXIT_WINDOW_GONE) fail(windowGoneMessage(exe))
+      fail('관리자 확인이 취소돼서 창을 못 열었어요 — 다시 눌러 "예"를 선택해 주세요.')
+    }
+    return { elevated: true }
+  }
+
+  // 권한 없이 떴다면, 그게 **창을 띄운 것**인지 곧바로 끝난 것인지 확인한다.
+  await new Promise((r) => setTimeout(r, WINDOW_CHECK_MS))
+  if (child.exitCode !== null) fail(windowGoneMessage(exe))
+  child.unref()
+  return { elevated: false }
+}
+
+/**
  * 시스템 복원이 잡아둔 공간을 **관리자 권한으로** 잰다.
  *
  * ★ 왜 파일로 받나. Start-Process -Verb RunAs는 승격된 **별도 프로세스**를 띄운다.
@@ -1880,14 +1974,12 @@ async function main() {
        * 되돌릴 수 없는 걸 대신 실행하지 않는다(types.ts 규약).
        */
       case 'open-system-protection': {
-        spawn('SystemPropertiesProtection.exe', [], { detached: true, stdio: 'ignore', windowsHide: false }).unref()
-        out({ opened: true })
+        out({ opened: true, ...(await openTool('SystemPropertiesProtection.exe')) })
         break
       }
       /** 가상 메모리(pagefile) 크기를 정하는 정식 창 — 성능 옵션 → 고급. */
       case 'open-virtual-memory': {
-        spawn('SystemPropertiesPerformance.exe', [], { detached: true, stdio: 'ignore', windowsHide: false }).unref()
-        out({ opened: true })
+        out({ opened: true, ...(await openTool('SystemPropertiesPerformance.exe')) })
         break
       }
       /**
@@ -1943,8 +2035,9 @@ async function main() {
       }
       case 'open-cleanmgr': {
         const drive = process.env.SystemDrive ?? 'C:'
-        spawn('cleanmgr.exe', ['/d', drive], { detached: true, stdio: 'ignore', windowsHide: false }).unref()
-        out({ opened: true, drive })
+        // 실측에선 권한 없이 열렸다. 그래도 같은 문으로 보낸다 —
+        // "이건 안 그러니까 건너뛰자"가 쌓이면 문이 없는 것과 같아진다(v0.18.1).
+        out({ opened: true, drive, ...(await openTool('cleanmgr.exe', ['/d', drive])) })
         break
       }
       /**
