@@ -208,3 +208,73 @@ test('★ 창이 안 떴으면 왜 안 떴는지 말한다 — "열었어요"로
   assert.match(src, /const TOOL_NAME: Record<string, string>/, '창 이름을 사람 말로 옮기는 자리가 없다')
   assert.doesNotMatch(msg, /\.exe/, '"SystemPropertiesPerformance.exe를 닫으세요"는 안내가 아니다')
 })
+
+/* ══════════════════════════════════════════════════════════════
+   승격해서 돌리는 파워셸 조각 — 2026-08-21 실물에서 두 번 물렸다
+
+   ★ ① 조각을 세미콜론으로 이어붙였더니 if/else가 깨졌다.
+        `if (...) { }; else { }` → 파워셸은 그 else를 명령 이름으로 읽는다:
+        "The term 'else' is not recognized as the name of a cmdlet..."
+        그런데 if 쪽은 이미 실행된 뒤라 **설정은 절반 바뀐 채로 실패**했다.
+
+     ② 그 실패를 "관리자 확인이 취소됐거나 설정하지 못했어요.
+        아무것도 바뀌지 않았습니다"라고 답했다. 둘 다 틀렸다 —
+        취소가 아니었고, 바뀐 것이 있었다.
+   ══════════════════════════════════════════════════════════════ */
+
+test('★ 승격 스크립트를 세미콜론으로 이어붙이지 않는다 — if/else가 깨진다', () => {
+  const src = read('src/engine-cli.ts')
+  for (const fn of ['setPageFileScript', 'restorePageFileScript']) {
+    const i = src.indexOf(`function ${fn}(`)
+    assert.ok(i > 0, `${fn}이 없다`)
+    const body = src.slice(i, src.indexOf('\n}', i))
+    assert.doesNotMatch(body, /\]\.join\('; '\)/, `${fn}이 조각을 '; '로 잇는다 — else가 떨어져 나간다`)
+  }
+})
+
+test('★ 승격된 쪽의 실패 이유를 그대로 전한다 — 취소와 오류를 갈라 말한다', () => {
+  /* 승격된 프로세스는 별도 프로세스라 오류가 우리 파이프로 안 온다.
+     그쪽에서 붙잡아 파일에 적게 하고 여기서 읽어야 이유를 말할 수 있다. */
+  const src = read('src/engine-cli.ts')
+  assert.match(src, /class ElevatedError extends Error/, '취소와 오류를 가를 방법이 없다')
+  const i = src.indexOf('async function runElevated(')
+  const body = src.slice(i, src.indexOf('\n}\n', i))
+  assert.match(body, /WriteAllText/, '승격된 쪽이 실패 이유를 남기지 않는다')
+  assert.match(body, /readFile/, '남긴 이유를 읽지 않는다')
+})
+
+test('★ 실패했을 때 "아무것도 안 바뀌었다"고 단정하지 않는다', () => {
+  /* 여러 걸음짜리 스크립트는 중간에 터지면 앞 걸음이 남는다. 단정하면 거짓말이 된다.
+     다시 읽어서 지금 상태를 말해야 한다. */
+  const src = read('src/engine-cli.ts')
+  const i = src.indexOf("case 'pagefile-set':")
+  const block = src.slice(i, src.indexOf("case 'pagefile-restore':", i))
+  assert.doesNotMatch(
+    block,
+    /설정하지 못했어요[^']*아무것도 바뀌지 않았습니다/,
+    '실패 = 아무것도 안 바뀜으로 단정한다'
+  )
+  assert.match(block, /const now = await gatherPageFile\(\)/, '실패한 뒤 지금 상태를 다시 안 읽는다')
+})
+
+test('★ 되돌리기를 글로만 적지 않는다 — 누를 수 있어야 한다', () => {
+  /* 여태 "되돌리려면: …"이라고 적기만 했다. 그건 되돌릴 수 있다는 말이지
+     되돌리는 방법이 아니다. undoRun이 있으면 버튼이 생겨야 한다. */
+  const ui = read('web/src/app.ts')
+  assert.match(ui, /a\.undoRun/, '화면이 되돌리기 명령을 아예 안 본다')
+  assert.match(ui, /engine\(a\.undoRun\)/, '되돌리기 버튼이 엔진을 안 부른다')
+})
+
+test('★ 아직 안 빈 용량을 "비었습니다"라고 쓰지 않는다', () => {
+  /* 가상 메모리는 재시작 전까지 한 바이트도 안 빈다. v0.16.0에서
+     "58.86GB를 아낄 수 있어요"라고 해놓고 0바이트였던 그 자리다. */
+  const src = read('src/engine-cli.ts')
+  const i = src.indexOf("case 'pagefile-set':")
+  const block = src.slice(i, src.indexOf("case 'pagefile-restore':", i))
+  // 주석에서 이 이름을 **언급**하는 건 괜찮다. 실제로 내보내는지(키로 쓰는지)만 본다.
+  assert.doesNotMatch(block, /freedBytes\s*:/, '아직 안 빈 것을 freedBytes로 내보낸다')
+  assert.match(block, /needsRestart: true/, '재시작이 필요하다는 사실을 화면에 안 알린다')
+
+  const ui = read('web/src/app.ts')
+  assert.match(ui, /r\.done \?\?/, '화면이 엔진의 말을 안 쓰고 제 나름대로 "비었습니다"를 짓는다')
+})

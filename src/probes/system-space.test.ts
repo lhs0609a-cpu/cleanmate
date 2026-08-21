@@ -9,12 +9,31 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { probePageFile, probeRestore, gatherPageFile, parseRestore, SYSTEM_FLOOR_BYTES } from './system-space.ts'
+import {
+  probePageFile, probeRestore, gatherPageFile, parseRestore, recommendPageFile,
+  SYSTEM_FLOOR_BYTES, PAGEFILE_WORTH_BYTES,
+} from './system-space.ts'
+import type { PageFileFacts } from './system-space.ts'
 
 const GB = 1024 ** 3
 
+/** 실측 PC를 본뜬 값. 필요한 것만 덮어쓴다. */
+function pf(over: Partial<PageFileFacts> = {}): PageFileFacts {
+  return {
+    path: 'C:\\pagefile.sys',
+    bytes: 71 * GB,
+    usedBytes: 16 * GB,
+    peakBytes: 24 * GB,
+    automatic: true,
+    ramBytes: 32 * GB,
+    initialMB: 0,
+    maximumMB: 0,
+    ...over,
+  }
+}
+
 test('★ 가상 메모리는 잡아둔 양과 실제 쓰는 양을 갈라서 말한다', () => {
-  const f = probePageFile({ path: 'C:\\pagefile.sys', bytes: 65 * GB, usedBytes: 16 * GB })!
+  const f = probePageFile(pf({ bytes: 65 * GB, usedBytes: 16 * GB }))!
   assert.ok(f)
   assert.equal(f.bytes, 65 * GB)
   assert.match(f.explain.what, /65\.0GB/)
@@ -22,17 +41,77 @@ test('★ 가상 메모리는 잡아둔 양과 실제 쓰는 양을 갈라서 �
   assert.match(f.explain.why, /놀고 있습니다/, '남는 양을 안 알려준다')
 })
 
-test('★ 우리가 직접 바꾸지 않는다 — 정식 창으로 넘긴다', () => {
-  const f = probePageFile({ path: 'C:\\pagefile.sys', bytes: 65 * GB, usedBytes: 16 * GB })!
+/* ══════════════════════════════════════════════════════════════
+   권장 크기 — 근거는 '최고 사용 기록' 하나다
+
+   ★ "지금 쓰는 양"으로 정하면 안 된다. 지금 16GB를 쓴다고 20GB로 줄였는데
+     영상 편집을 시작하는 순간 24GB가 필요해지면 프로그램이 꺼진다.
+     실측 PC가 정확히 그랬다: 지금 15.9GB, 최고 24.0GB.
+   ══════════════════════════════════════════════════════════════ */
+
+test('★ 권장 크기는 최고 기록의 1.5배 이상이다 — 지금 쓰는 양이 아니라', () => {
+  const r = recommendPageFile(pf({ usedBytes: 16 * GB, peakBytes: 24 * GB }))!
+  assert.ok(r, '줄일 여지가 있는데 제안하지 않는다')
+  assert.ok(r.targetBytes >= 24 * GB * 1.5, `권장 ${r.targetBytes / GB}GB가 최고 기록의 1.5배에 못 미친다`)
+  assert.ok(r.targetBytes < 71 * GB, '줄어들지 않는 권장은 권장이 아니다')
+  assert.equal(r.freesBytes, 71 * GB - r.targetBytes)
+})
+
+test('★ 최고 기록을 못 읽었으면 제안하지 않는다 — 근거 없이 시스템을 바꾸지 않는다', () => {
+  assert.equal(recommendPageFile(pf({ peakBytes: 0 })), null)
+})
+
+test('★ 조금밖에 못 줄이면 제안하지 않는다 — 재시작까지 시킬 값을 못 한다', () => {
+  // 최고 기록이 커서 권장값이 지금 크기에 붙는 경우.
+  const f = pf({ bytes: 40 * GB, peakBytes: 26 * GB })
+  const r = recommendPageFile(f)
+  if (r) assert.ok(r.freesBytes >= PAGEFILE_WORTH_BYTES, '푼돈을 벌자고 재시작을 시킨다')
+  const tight = recommendPageFile(pf({ bytes: 40 * GB, peakBytes: 30 * GB }))
+  assert.equal(tight, null, '거의 못 줄이는데도 제안한다')
+})
+
+test('★ 메모리를 거의 안 쓰는 PC에도 바닥은 남긴다', () => {
+  const r = recommendPageFile(pf({ bytes: 60 * GB, peakBytes: 1 * GB }))!
+  assert.ok(r.targetBytes >= 4 * GB, '0에 가깝게 줄이면 메모리가 몰릴 때 프로그램이 꺼진다')
+})
+
+test('★ 우리가 바꾸되, 되돌리는 명령을 반드시 들고 있다', () => {
+  /* types.ts 규약: 되돌리는 명령이 없으면 SystemAction으로 만들지 않는다.
+     가상 메모리는 되돌릴 수 있어서 통과한 것이지, 규약이 느슨해진 게 아니다. */
+  const f = probePageFile(pf())!
   assert.equal(f.zone, 'LOCKED')
-  assert.equal(f.action, undefined, '가상 메모리를 우리가 바꾸는 통로가 생겼다')
+  assert.equal(f.action?.run, 'pagefile-set')
+  assert.equal(f.action?.undoRun, 'pagefile-restore', '되돌리는 명령이 없는 실행을 만들었다')
+  assert.equal(f.action?.needsAdmin, true)
+  assert.match(f.action!.undoDescribe, /알아서 관리|자동 관리|원래 값/, '무엇으로 되돌아가는지 안 말한다')
+  // 정식 창도 남긴다 — 직접 정하고 싶은 사람의 길을 막지 않는다.
   assert.equal(f.assist?.command, 'open-virtual-memory')
-  // 외장하드 경고는 반드시 남아야 한다 — 옮겼다가 안 꽂으면 부팅이 이상해진다.
   assert.match(f.assist!.note, /외장하드/)
 })
 
+test('★ 사람이 이미 값을 정해둔 PC는 그 값으로 되돌린다 — 자동 관리로 바꿔놓지 않는다', () => {
+  const f = probePageFile(pf({ automatic: false, initialMB: 8192, maximumMB: 16384 }))!
+  assert.match(f.action!.undoDescribe, /8192/, '원래 값을 안 적어두면 되돌릴 수가 없다')
+  assert.match(f.action!.undoDescribe, /16384/)
+})
+
+test('★ 재시작해야 반영된다고 먼저 말한다 — 누르고 나서 알면 늦다', () => {
+  /* v0.16.0: "58.86GB를 아낄 수 있어요"라고 해놓고 0바이트였다. 같은 자리다. */
+  const f = probePageFile(pf())!
+  assert.ok(
+    f.explain.ifRemoved.some((s) => /★/.test(s) && /재시작/.test(s)),
+    '재시작 전까지 용량이 안 빈다는 말이 눈에 띄는 자리에 없다'
+  )
+})
+
+test('★ 줄일 게 없으면 실행 버튼을 안 만든다 — 근거 없는 실행은 사고다', () => {
+  const f = probePageFile(pf({ bytes: 10 * GB, peakBytes: 8 * GB }))!
+  assert.equal(f.action, undefined)
+  assert.equal(f.assist?.command, 'open-virtual-memory', '그래도 직접 여는 길은 남아야 한다')
+})
+
 test('작으면 아예 안 띄운다', () => {
-  assert.equal(probePageFile({ path: 'C:\\pagefile.sys', bytes: SYSTEM_FLOOR_BYTES - 1, usedBytes: 0 }), null)
+  assert.equal(probePageFile(pf({ bytes: SYSTEM_FLOOR_BYTES - 1, usedBytes: 0 })), null)
 })
 
 test('★ 시스템 복원을 못 쟀으면 "0"이 아니라 "확인 필요"로 낸다', () => {

@@ -7,10 +7,19 @@
  *   pagefile.sys (가상 메모리)   65.4GB
  *   시스템 복원                  최대 155GB까지 잡혀 있음
  *
- * ── 우리는 건드리지 않는다 ───────────────────────────────────
- * 둘 다 **윈도우 설정 창에서 바꾸는 것**이고, 잘못 만지면 부팅·복구가 깨진다.
- * 그래서 여기서 하는 일은 "있다는 사실 + 얼마나 + 정식 창 열어주기"까지다.
- * (types.ts 규약: 되돌리는 명령이 없으면 SystemAction으로 만들지 않는다)
+ * ── 가상 메모리는 우리가 줄여드린다 (2026-08-21 방침 변경) ───
+ * 예전엔 "정식 창을 열어주기"까지만 했다. 그런데 그 창은 **시각 효과 탭**으로
+ * 열린다. 사용자는 "Peek 사용", "메뉴에 시각 효과 사용" 같은 체크박스 열댓 개
+ * 앞에 던져지고, 정작 가상 메모리는 고급 탭 안쪽에 있다.
+ *
+ *     "가상메모리 뜨는데 어떻게 최적화한다는거야. 사용자는 뭘 꺼야할지 모르잖아"
+ *
+ * 맞는 말이다. 창을 띄우는 건 정리가 아니라 정리를 떠넘기는 것이다.
+ *
+ * 그래서 우리가 설정한다. types.ts 규약을 어기는 게 아니다 — 이건 **되돌리는
+ * 명령이 있다.** 원래 자동 관리였으면 자동 관리로, 사람이 정한 값이었으면 그 값으로
+ * 되돌린다. 되돌릴 수 있느냐가 우리가 손대도 되느냐의 기준이고, 이건 통과한다.
+ * (시스템 복원은 여전히 안 건드린다 — 지운 복원 지점은 못 되살리니까)
  *
  * ── 시스템 복원은 물어보고 잰다 ──────────────────────────────
  * 크기를 읽으려면 관리자 권한이 필요하다. 권한 없이 부르면 빈 결과가 오는데,
@@ -43,8 +52,23 @@ export interface PageFileFacts {
   path: string
   /** 잡아둔 크기 */
   bytes: number
-  /** 실제로 쓰고 있는 양 */
+  /** 지금 이 순간 쓰고 있는 양 */
   usedBytes: number
+  /**
+   * ★ 켠 뒤로 가장 많이 썼던 양. 권장 크기의 **유일한 근거**다.
+   *
+   * "지금 쓰는 양"으로 정하면 안 된다. 지금 17GB를 쓴다고 20GB로 줄였는데
+   * 영상 편집을 시작하는 순간 24GB가 필요해지면 프로그램이 꺼진다.
+   * 이 PC의 실측이 정확히 그랬다: 지금 17.2GB, 최고 24GB.
+   */
+  peakBytes: number
+  /** 윈도우가 알아서 관리 중인가. 되돌리기가 무엇인지가 여기서 갈린다. */
+  automatic: boolean
+  /** 이 PC의 메모리. 권장값의 바닥을 정할 때 쓴다. */
+  ramBytes: number
+  /** 자동 관리가 아닐 때 사람이 정해둔 값(MB). 되돌릴 때 그대로 복원한다. */
+  initialMB: number
+  maximumMB: number
 }
 
 /*
@@ -54,8 +78,14 @@ export interface PageFileFacts {
 const PAGEFILE_SCRIPT = `
 $ErrorActionPreference = 'SilentlyContinue'
 $p = Get-CimInstance Win32_PageFileUsage | Select-Object -First 1
+$c = Get-CimInstance Win32_ComputerSystem
+$t = Get-CimInstance Win32_PageFileSetting | Select-Object -First 1
 if ($p) {
-  [PSCustomObject]@{ path = $p.Name; mb = [int]$p.AllocatedBaseSize; usedMb = [int]$p.CurrentUsage } | ConvertTo-Json -Compress
+  [PSCustomObject]@{
+    path = $p.Name; mb = [int]$p.AllocatedBaseSize; usedMb = [int]$p.CurrentUsage; peakMb = [int]$p.PeakUsage
+    auto = [bool]$c.AutomaticManagedPagefile; ramMb = [int]($c.TotalPhysicalMemory / 1MB)
+    initMb = [int]$t.InitialSize; maxMb = [int]$t.MaximumSize
+  } | ConvertTo-Json -Compress
 } else { '{}' }
 `
 
@@ -67,7 +97,44 @@ export async function gatherPageFile(): Promise<PageFileFacts | null> {
   })
   const raw = JSON.parse(stdout || '{}')
   if (!raw.path || !raw.mb) return null
-  return { path: raw.path, bytes: Number(raw.mb) * MB, usedBytes: Number(raw.usedMb ?? 0) * MB }
+  return {
+    path: raw.path,
+    bytes: Number(raw.mb) * MB,
+    usedBytes: Number(raw.usedMb ?? 0) * MB,
+    peakBytes: Number(raw.peakMb ?? 0) * MB,
+    automatic: !!raw.auto,
+    ramBytes: Number(raw.ramMb ?? 0) * MB,
+    initialMB: Number(raw.initMb ?? 0),
+    maximumMB: Number(raw.maxMb ?? 0),
+  }
+}
+
+/**
+ * 얼마로 줄이면 되나 — 권장값.
+ *
+ * ★ 근거는 **최고 사용 기록** 하나다. 우리가 아는 유일한 사실이기 때문이다.
+ *   "메모리의 1.5배" 같은 옛 규칙은 메모리 4GB 시절의 것이고, 32GB PC에서는
+ *   48GB를 잡으라는 소리가 된다. 실측 PC가 정확히 그 꼴이었다:
+ *     메모리 31.7GB · 잡아둔 것 73.5GB · 최고 기록 24GB
+ *
+ *   최고 기록의 1.5배를 잡는다. 1.0배가 아닌 이유: 최고 기록은 '여태 겪은 것'이지
+ *   '앞으로 겪을 것'이 아니다. 여유 없이 딱 맞추면 다음 큰 작업에서 프로그램이 꺼진다.
+ *   너무 작은 PC를 위해 바닥을 4GB로 두고, 4GB 단위로 올림한다(사람이 읽는 숫자).
+ *
+ * 줄어드는 양이 적으면 아예 제안하지 않는다 — 재시작까지 시키면서 4GB를 벌 이유가 없다.
+ */
+export const PAGEFILE_MIN_BYTES = 4 * GB
+/** 이만큼도 못 줄이면 제안하지 않는다. 재시작 값을 못 한다. */
+export const PAGEFILE_WORTH_BYTES = 8 * GB
+
+export function recommendPageFile(f: PageFileFacts): { targetBytes: number; freesBytes: number } | null {
+  if (!f.peakBytes) return null // 최고 기록을 못 읽었으면 근거가 없다 — 추측하지 않는다
+  const step = 4 * GB
+  const raw = Math.max(f.peakBytes * 1.5, PAGEFILE_MIN_BYTES)
+  const targetBytes = Math.ceil(raw / step) * step
+  const freesBytes = f.bytes - targetBytes
+  if (freesBytes < PAGEFILE_WORTH_BYTES) return null
+  return { targetBytes, freesBytes }
 }
 
 /**
@@ -78,6 +145,7 @@ export async function gatherPageFile(): Promise<PageFileFacts | null> {
 export function probePageFile(f: PageFileFacts): Finding | null {
   if (f.bytes < SYSTEM_FLOOR_BYTES) return null
   const spare = f.bytes - f.usedBytes
+  const rec = recommendPageFile(f)
 
   return {
     id: 'win.pagefile',
@@ -90,21 +158,48 @@ export function probePageFile(f: PageFileFacts): Finding | null {
         `지금 실제로 쓰는 건 ${size(f.usedBytes)}입니다.`,
       why:
         '윈도우가 메모리 크기에 맞춰 알아서 잡습니다. 메모리가 큰 PC일수록 이 파일도 커져요. ' +
-        `지금은 잡아둔 것 중 ${size(spare)}가 놀고 있습니다.`,
+        `지금은 잡아둔 것 중 ${size(spare)}가 놀고 있습니다.` +
+        // ★ 권장값의 근거를 그 자리에서 밝힌다. 숫자만 들이밀면 믿을 근거가 없다.
+        (rec
+          ? ` 켠 뒤로 가장 많이 쓴 적이 ${size(f.peakBytes)}라, ${size(rec.targetBytes)}로 줄여도 ` +
+            '그 기록의 1.5배가 남습니다.'
+          : ''),
       usedBy: [
         '윈도우 전체 — 메모리가 꽉 찼을 때 여기로 밀어냅니다. 없으면 프로그램이 강제 종료됩니다.',
         '큰 작업(영상 편집·AI·게임) — 순간적으로 메모리를 넘길 때 이 자리가 버텨줍니다.',
       ],
       ifRemoved: [
-        '크기를 줄이면 그만큼 바로 빕니다. 메모리가 넉넉하면 대개 문제없어요.',
-        '★ 너무 줄이거나 없애면 메모리가 꽉 찰 때 프로그램이 갑자기 꺼질 수 있습니다.',
+        ...(rec
+          ? [`★ 줄인 크기는 **재시작한 뒤에** 반영됩니다. 재시작 전까지는 용량이 안 빕니다.`]
+          : ['크기를 줄이면 그만큼 바로 빕니다. 메모리가 넉넉하면 대개 문제없어요.']),
+        '★ 너무 줄이거나 없애면 메모리가 꽉 찰 때 프로그램이 갑자기 꺼질 수 있습니다. ' +
+          '그래서 저희는 켠 뒤로 가장 많이 쓴 양을 근거로만 줄입니다.',
+        ...(rec && f.automatic
+          ? ['윈도우가 알아서 늘려주던 것이 멈추고, 정한 크기로 고정됩니다. 되돌리면 다시 알아서 관리합니다.']
+          : []),
       ],
       recovery: 'one-command',
-      recoveryNote:
-        '설정 창에서 언제든 다시 늘릴 수 있어요(재시작 필요). 저희가 직접 바꾸진 않습니다 — ' +
-        '값을 잘못 잡으면 부팅 뒤에 프로그램이 꺼지는데, 그건 되돌리기 전까지 원인도 안 보입니다.',
+      recoveryNote: rec
+        ? '언제든 되돌릴 수 있어요. 누르면 ' +
+          (f.automatic ? '윈도우가 알아서 관리하던 원래 상태로' : `원래 값(${f.initialMB}~${f.maximumMB}MB)으로`) +
+          ' 그대로 돌려놓습니다(재시작 필요). 되돌리기 전 상태를 저희가 적어둡니다.'
+        : '설정 창에서 언제든 다시 늘릴 수 있어요(재시작 필요).',
       ifKept: `아무 문제 없어요. ${size(f.bytes)}를 계속 쓸 뿐입니다.`,
     },
+    /* ★ 우리가 실행하는 통로. 되돌리는 명령이 있어서 만들 수 있는 것이다.
+       권장할 게 없으면(줄일 여지가 적거나 최고 기록을 못 읽었으면) 안 만든다 —
+       할 일이 없는 버튼은 잡음이고, 근거 없는 실행은 사고다. */
+    action: rec
+      ? {
+          describe: `${size(rec.targetBytes)}로 줄이기 — ${size(rec.freesBytes)} 확보`,
+          command: `가상 메모리를 ${size(rec.targetBytes)}로 고정합니다 (재시작 뒤 적용)`,
+          needsAdmin: true,
+          undo: f.automatic ? '윈도우 자동 관리로 되돌리기' : `원래 값 ${f.initialMB}~${f.maximumMB}MB로 되돌리기`,
+          undoDescribe: f.automatic ? '윈도우가 알아서 관리하던 상태로' : `원래 값(${f.initialMB}~${f.maximumMB}MB)으로`,
+          run: 'pagefile-set',
+          undoRun: 'pagefile-restore',
+        }
+      : undefined,
     assist: {
       label: '가상 메모리 설정 열기',
       command: 'open-virtual-memory',

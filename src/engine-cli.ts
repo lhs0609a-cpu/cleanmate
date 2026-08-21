@@ -32,6 +32,7 @@
  *   hibernate-off | hibernate-on     최대 절전 끄기·켜기 (관리자 확인 후, 되돌릴 수 있음)
  *   open-system-protection           시스템 복원 설정 창 열기
  *   restore-measure                  시스템 복원이 잡아둔 공간을 관리자 권한으로 재기 (읽기만)
+ *   pagefile-set | pagefile-restore  가상 메모리 크기 줄이기·되돌리기 (관리자 확인 후, 재시작에 반영)
  *   open-virtual-memory              가상 메모리 설정 창 열기
  *   open-cleanmgr                    윈도우 디스크 정리 도구 띄우기
  *   relocate-scan                    옮길 만한 것 자동 탐색 + 대상 드라이브 목록
@@ -95,6 +96,7 @@ import { gatherReclaimFacts, probeRecycleBin, probeUpdateCache } from './probes/
 import { gatherBulkFacts, probeBulk } from './probes/bulk.ts'
 import {
   gatherPageFile, probePageFile, gatherRestore, probeRestore, parseRestore, VSS_QUERY,
+  recommendPageFile, type PageFileFacts,
 } from './probes/system-space.ts'
 import { probeStartup, countLogonTasks, setStartupEnabled } from './probes/startup.ts'
 import {
@@ -583,6 +585,129 @@ async function openTool(exe: string, args: string[] = []): Promise<{ elevated: b
   if (child.exitCode !== null) fail(windowGoneMessage(exe))
   child.unref()
   return { elevated: false }
+}
+
+/* ══ 가상 메모리 ══════════════════════════════════════════════
+   ★ 되돌리기를 **먼저** 적어두고 바꾼다. 순서가 반대면, 바꾸는 데 성공하고
+     적어두는 데 실패했을 때 되돌릴 방법이 사라진다. 그 상태는 사용자에게
+     "줄여놨는데 원래대로 못 돌린다"로 나타난다.
+   ══════════════════════════════════════════════════════════════ */
+
+interface PageFileUndo {
+  /** 바꾸기 전에 윈도우가 알아서 관리하고 있었나 */
+  automatic: boolean
+  initialMB: number
+  maximumMB: number
+  /** 우리가 정해 넣은 값. 사용자가 그 뒤로 직접 바꿨는지 알아보는 데 쓴다. */
+  setMB: number
+  at: string
+}
+
+const pageFileUndoPath = () => appDataFile('pagefile-undo.json')
+
+/** 엔진이 문장을 지을 때 쓰는 용량 표기. 화면의 fmtBytes와 같은 모양으로 쓴다. */
+function gbText(n: number): string {
+  const GB = 1024 ** 3
+  const MB = 1024 ** 2
+  return n >= GB ? `${(n / GB).toFixed(1)}GB` : `${Math.round(n / MB)}MB`
+}
+
+/** 승격해서 돌린 쪽이 남긴 실패 이유. 비어 있으면 확인 창에서 취소한 것이다. */
+class ElevatedError extends Error {
+  /* ★ 생성자 파라미터 프로퍼티(constructor(readonly x))를 쓰면 안 된다.
+     노드의 타입 스트립은 그 문법을 지원하지 않아 엔진이 통째로 안 뜬다. */
+  reason: string
+  constructor(reason: string) {
+    super(reason || '관리자 확인이 취소됨')
+    this.reason = reason
+  }
+}
+
+/**
+ * 파워셸을 **관리자 권한으로** 돌린다.
+ *
+ * ★ 취소와 실패를 갈라서 말할 수 있어야 한다(2026-08-21 실물).
+ *   처음엔 성패만 봤더니 "관리자 확인이 취소됐거나 설정하지 못했어요"라는
+ *   한 문장밖에 못 냈다. 실제로는 확인을 눌렀고, 승격된 쪽에서 New-CimInstance가
+ *   터진 것이었다. 사용자에게는 자기가 취소한 것처럼 보였다.
+ *
+ *   승격된 프로세스는 **별도 프로세스**라 그쪽 오류가 우리 파이프로 안 온다.
+ *   그래서 그쪽에서 try/catch로 붙잡아 파일에 적게 하고, 여기서 읽는다.
+ *   (restore-measure가 결과를 파일로 받는 것과 같은 이유)
+ *
+ * 스크립트는 엔진 안에 하드코딩된 고정 문자열이다. 밖에서 온 값이 섞이는 자리는
+ * 숫자 하나와 우리가 만든 임시 경로뿐이다.
+ */
+async function runElevated(script: string): Promise<void> {
+  const logPath = join(tmpdir(), `teraclean-elev-${process.pid}-${Date.now()}.txt`)
+  const literal = logPath.replace(/'/g, "''")
+  const wrapped = [
+    "$ErrorActionPreference='Stop'",
+    'try {',
+    script,
+    '} catch {',
+    `  [System.IO.File]::WriteAllText('${literal}', $_.Exception.Message)`,
+    '  exit 1',
+    '}',
+  ].join('\n')
+  const encoded = Buffer.from(wrapped, 'utf16le').toString('base64')
+
+  try {
+    await runPowerShell(
+      "$ErrorActionPreference='Stop'; $p = Start-Process powershell -ArgumentList " +
+        "'-NoProfile','-NonInteractive','-EncodedCommand','" + encoded +
+        "' -Verb RunAs -Wait -PassThru -WindowStyle Hidden; if ($p.ExitCode -ne 0) { exit $p.ExitCode }"
+    )
+  } catch {
+    let reason = ''
+    try { reason = (await readFile(logPath, 'utf8')).trim() } catch { /* 취소면 파일이 없다 */ }
+    try { await rm(logPath, { force: true }) } catch { /* 청소 실패는 삼킨다 */ }
+    throw new ElevatedError(reason)
+  }
+  try { await rm(logPath, { force: true }) } catch { /* 청소 실패는 삼킨다 */ }
+}
+
+/**
+ * 자동 관리를 끄고 크기를 고정한다. 초기=최대로 둔다 — 늘었다 줄었다 하면 조각이 난다.
+ *
+ * ★ 역슬래시가 두 종류로 들어간다. 헷갈리면 조용히 엉뚱한 경로를 만든다.
+ *   · WQL 필터 안(-Filter "Name='...'")에서는 역슬래시가 이스케이프 문자라
+ *     **두 개**를 써야 한다: C:\\pagefile.sys
+ *   · 파워셸의 홑따옴표 문자열 안에서는 있는 그대로라 **하나**면 된다: C:\pagefile.sys
+ *   실제로 이 자리에서 C:pagefile.sys를 만들 뻔했다.
+ */
+function setPageFileScript(mb: number, drive: string): string {
+  return [
+    '$c = Get-CimInstance Win32_ComputerSystem',
+    'if ($c.AutomaticManagedPagefile) { Set-CimInstance -InputObject $c -Property @{ AutomaticManagedPagefile = $false } }',
+    /* ★ 자동 관리를 끄면 **윈도우가 설정 항목을 대신 만들어 준다.** 다만 그게
+       바로 안 보인다. 실물에서 이렇게 터졌다: 껐다 → 곧바로 조회하니 없다 →
+       New-CimInstance로 만들려다 "이미 있다"로 실패. 그래서 잠깐 기다리며 다시 본다. */
+    '$s = $null',
+    `foreach ($i in 1..10) { $s = Get-CimInstance Win32_PageFileSetting -Filter "Name='${drive}\\\\pagefile.sys'"; if ($s) { break }; Start-Sleep -Milliseconds 200 }`,
+    /* ★ if와 else를 **한 조각**으로 둬야 한다. 조각을 세미콜론으로 이으면
+       `if (...) { }; else { }`가 되고, 파워셸은 그 else를 명령 이름으로 읽는다:
+         "The term 'else' is not recognized as the name of a cmdlet..."
+       실물에서 이걸로 실패했다. 그런데 if 쪽은 이미 실행된 뒤라 설정은 바뀌어 있었다 —
+       "실패했지만 절반은 바뀐" 상태가 이렇게 만들어진다. */
+    `if ($s) { Set-CimInstance -InputObject $s -Property @{ InitialSize = ${mb}; MaximumSize = ${mb} } } ` +
+      `else { New-CimInstance -ClassName Win32_PageFileSetting -Property @{ Name = '${drive}\\pagefile.sys'; InitialSize = ${mb}; MaximumSize = ${mb} } | Out-Null }`,
+  ].join('\n')
+}
+
+/** 자동 관리로 되돌린다. 사람이 정한 값이었으면 그 값으로 되돌린다. */
+function restorePageFileScript(u: PageFileUndo, drive: string): string {
+  // 여기도 줄바꿈으로 잇는다 — 세미콜론으로 이어붙이는 습관이 if/else를 깨뜨렸다.
+  if (u.automatic) {
+    return [
+      '$c = Get-CimInstance Win32_ComputerSystem',
+      'Set-CimInstance -InputObject $c -Property @{ AutomaticManagedPagefile = $true }',
+    ].join('\n')
+  }
+  return [
+    `$s = Get-CimInstance Win32_PageFileSetting -Filter "Name='${drive}\\\\pagefile.sys'"`,
+    `if ($s) { Set-CimInstance -InputObject $s -Property @{ InitialSize = ${u.initialMB}; MaximumSize = ${u.maximumMB} } }`,
+  ].join('\n')
 }
 
 /**
@@ -2031,6 +2156,110 @@ async function main() {
           fail('권한은 받았는데 값을 읽지 못했어요. 시스템 복원이 꺼져 있으면 잡아둔 공간도 없습니다 — "시스템 보호 설정 열기"로 확인해 보세요.')
         }
         out({ ...facts, finding: probeRestore(facts) })
+        break
+      }
+      /**
+       * 가상 메모리 줄이기 — 우리가 실행한다. 되돌리는 명령이 있어서 할 수 있는 일이다.
+       *
+       * ★ "창을 열어드릴게요"로는 정리가 안 된다. 그 창은 **시각 효과 탭**으로 열리고,
+       *   사용자는 체크박스 열댓 개 앞에서 뭘 꺼야 할지 모른다. 가상 메모리는
+       *   고급 탭 안쪽에 있다. 창을 띄우는 건 정리를 떠넘기는 것이다.
+       *
+       * ★ 크기는 화면이 정하지 않는다. 화면이 보낸 숫자를 그대로 쓰면, 화면의 판단을
+       *   엔진이 재확인 없이 집행하는 통로가 된다(v0.18.1에서 막은 것과 같은 구멍).
+       *   여기서 다시 재고 다시 계산한다.
+       *
+       * ★ 되돌리기를 **먼저** 적어두고 바꾼다. 반대 순서면, 바꾸는 데 성공하고
+       *   적어두는 데 실패했을 때 되돌릴 방법이 사라진다.
+       */
+      case 'pagefile-set': {
+        if (process.platform !== 'win32') fail('윈도우에서만 바꿀 수 있어요.')
+        const before = await gatherPageFile()
+        if (!before) fail('가상 메모리 설정을 읽지 못했어요. 아무것도 바꾸지 않았습니다.')
+        const rec = recommendPageFile(before)
+        if (!rec) fail('지금 크기가 이미 적당해서 줄일 게 없어요. 아무것도 바꾸지 않았습니다.')
+
+        const mb = Math.round(rec.targetBytes / (1024 * 1024))
+        // 스크립트에 들어가는 유일한 값이다. 정수가 아니면 여기서 멈춘다.
+        if (!Number.isInteger(mb) || mb < 1024) fail('계산된 크기가 이상해서 멈췄어요. 아무것도 바꾸지 않았습니다.')
+        const drive = (before.path.match(/^[A-Za-z]:/) ?? ['C:'])[0]
+
+        const undo: PageFileUndo = {
+          automatic: before.automatic,
+          initialMB: before.initialMB,
+          maximumMB: before.maximumMB,
+          setMB: mb,
+          at: new Date().toISOString(),
+        }
+        await mkdir(dirname(pageFileUndoPath()), { recursive: true })
+        await writeFile(pageFileUndoPath(), JSON.stringify(undo, null, 2), 'utf8')
+
+        try {
+          await runElevated(setPageFileScript(mb, drive))
+        } catch (err) {
+          /* ★ "아무것도 바뀌지 않았습니다"라고 단정하면 안 된다(2026-08-21 실물).
+             실제로 그렇게 답했는데, 그때 이미 자동 관리가 꺼져 있었다. 이 스크립트는
+             여러 걸음이라 중간에 터지면 앞 걸음은 남는다. 단정하지 말고 **다시 읽어서**
+             지금 어떤 상태인지 말한다. 되돌리기 기록은 이미 적어뒀으니 되돌릴 수 있다. */
+          const reason = err instanceof ElevatedError ? err.reason : ''
+          const now = await gatherPageFile()
+          const changed = now && (now.automatic !== before.automatic || now.maximumMB !== before.maximumMB)
+          fail(
+            (reason ? `설정하지 못했어요: ${reason}` : '관리자 확인이 취소됐어요.') +
+              (changed
+                ? ` 다만 중간까지는 바뀌었습니다 — 지금은 ${
+                    now!.automatic ? '윈도우 자동 관리' : `직접 지정 ${now!.initialMB}~${now!.maximumMB}MB`
+                  } 상태예요. 되돌리기로 원래대로 돌릴 수 있습니다.`
+                : ' 설정은 그대로입니다.')
+          )
+        }
+
+        // 바뀌었는지 **다시 읽어서** 답한다. "했습니다"만 말하지 않는다.
+        const after = await gatherPageFile()
+        const applied = after ? !after.automatic && after.maximumMB === mb : false
+        if (!applied) fail('설정을 넣었는데 확인해보니 반영이 안 됐어요. 되돌리기 기록은 남겨뒀습니다.')
+
+        out({
+          targetBytes: rec.targetBytes,
+          willFreeBytes: rec.freesBytes,
+          needsRestart: true,
+          /* ★ 여기서 freedBytes를 쓰지 않는다. 아직 한 바이트도 안 비었다.
+             v0.16.0에서 "58.86GB를 아낄 수 있어요"라고 해놓고 0바이트였던 그 자리다. */
+          done: `${gbText(rec.targetBytes)}로 정했어요 — 재시작하면 ${gbText(rec.freesBytes)}가 빕니다`,
+          notes: [
+            '지금은 아직 안 빕니다. 윈도우가 재시작할 때 파일을 다시 만들어요.',
+            '되돌리려면 이 카드의 되돌리기를 누르시면 됩니다.',
+          ],
+        })
+        break
+      }
+      case 'pagefile-restore': {
+        if (process.platform !== 'win32') fail('윈도우에서만 바꿀 수 있어요.')
+        let undo: PageFileUndo
+        try {
+          undo = JSON.parse(await readFile(pageFileUndoPath(), 'utf8'))
+        } catch {
+          fail('되돌릴 기록이 없어요. 저희가 바꾼 적이 없거나 기록이 지워졌습니다 — "가상 메모리 설정 열기"로 직접 정하실 수 있어요.')
+        }
+        const now = await gatherPageFile()
+        const drive = (now?.path.match(/^[A-Za-z]:/) ?? ['C:'])[0]
+        try {
+          await runElevated(restorePageFileScript(undo, drive))
+        } catch (err) {
+          const reason = err instanceof ElevatedError ? err.reason : ''
+          fail(reason ? '되돌리지 못했어요: ' + reason : '관리자 확인이 취소됐어요. 설정은 그대로입니다.')
+        }
+        const after = await gatherPageFile()
+        const ok = after ? (undo.automatic ? after.automatic : after.maximumMB === undo.maximumMB) : false
+        if (!ok) fail('되돌리기를 넣었는데 확인해보니 반영이 안 됐어요. 기록은 그대로 남겨뒀습니다.')
+        await rm(pageFileUndoPath(), { force: true })
+        out({
+          needsRestart: true,
+          done: undo.automatic
+            ? '윈도우 자동 관리로 되돌렸어요 — 재시작하면 반영됩니다'
+            : `원래 값(${undo.initialMB}~${undo.maximumMB}MB)으로 되돌렸어요 — 재시작하면 반영됩니다`,
+          notes: ['재시작하기 전까지는 지금 크기 그대로입니다.'],
+        })
         break
       }
       case 'open-cleanmgr': {

@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.19.2'
+const APP_VERSION = '0.20.0'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -1802,16 +1802,47 @@ function wireAssists(host: HTMLElement, findings: any[]) {
       try {
         const r = await engine(a.run)
         const box = btn.parentElement as HTMLElement
-        box.innerHTML = doneBlock(
-          `완료 — ${fmtBytes(r.freedBytes || f.bytes)}가 비었습니다`,
-          [
-            `되돌리려면: ${esc(a.undoDescribe)}`,
-            r.bytesNow ? `아직 ${fmtBytes(r.bytesNow)}가 남아 있어요 — 윈도우가 정리하는 데 잠깐 걸릴 수 있습니다.` : '',
-          ]
-        )
-        toast(`완료 — ${fmtBytes(r.freedBytes || f.bytes)}가 비었습니다.`, 'good')
+
+        /* ★ 무엇이 끝났는지는 엔진이 말한다(r.done).
+           화면이 제 나름대로 "X가 비었습니다"를 지으면 안 되는 경우가 있다 —
+           가상 메모리는 **재시작하기 전까지 한 바이트도 안 빈다.** 그 자리에
+           "31.3GB가 비었습니다"를 띄우면 v0.16.0("58.86GB를 아낄 수 있어요"라고
+           해놓고 0바이트였다)을 그대로 다시 하는 것이다. */
+        const title = r.done ?? `완료 — ${fmtBytes(r.freedBytes || f.bytes)}가 비었습니다`
+        box.innerHTML = doneBlock(title, [
+          ...(r.notes ?? []).map((n: string) => esc(n)),
+          r.notes ? '' : `되돌리려면: ${esc(a.undoDescribe)}`,
+          r.bytesNow ? `아직 ${fmtBytes(r.bytesNow)}가 남아 있어요 — 윈도우가 정리하는 데 잠깐 걸릴 수 있습니다.` : '',
+        ])
+
+        /* 되돌리기를 **누를 수 있게** 둔다. 여태는 "되돌리려면: …"이라고 글로만
+           적어놨는데, 그건 되돌릴 수 있다는 말이지 되돌릴 방법은 아니다. */
+        if (a.undoRun) {
+          const undo = document.createElement('button')
+          undo.className = 'btn ghost'
+          undo.style.marginTop = '12px'
+          undo.textContent = `되돌리기 — ${a.undoDescribe}`
+          undo.addEventListener('click', async () => {
+            undo.disabled = true
+            undo.textContent = '되돌리는 중… (관리자 확인 창을 확인해 주세요)'
+            try {
+              const u = await engine(a.undoRun)
+              box.innerHTML = doneBlock(u.done ?? '되돌렸어요', (u.notes ?? []).map((n: string) => esc(n)))
+              toast(u.done ?? '되돌렸어요.', 'good')
+              hiddenLoaded = false
+            } catch (err) {
+              toast(errText(err), 'bad')
+              undo.disabled = false
+              undo.textContent = `되돌리기 — ${a.undoDescribe}`
+            }
+          })
+          box.appendChild(undo)
+        }
+
+        toast(title, 'good')
         hiddenLoaded = false
-        refreshDisk(true)
+        // 재시작해야 반영되는 것은 지금 다시 재봐야 그대로다 — 괜히 안 재운다.
+        if (!r.needsRestart) refreshDisk(true)
       } catch (err) {
         toast(errText(err), 'bad')
         btn.disabled = false

@@ -176,8 +176,8 @@ export interface SystemAction {
    *   관리자 권한으로 실행하는 통로가 생긴다. command는 사람에게 보여주는 글이고,
    *   실제로 도는 건 엔진 안에 하드코딩된 명령이다(AssistAction과 같은 원칙).
    */
-  run?: 'hibernate-off'
-  undoRun?: 'hibernate-on'
+  run?: 'hibernate-off' | 'pagefile-set'
+  undoRun?: 'hibernate-on' | 'pagefile-restore'
 }
 
 /**
