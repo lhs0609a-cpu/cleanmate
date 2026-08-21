@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.20.0'
+const APP_VERSION = '0.21.0'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -2306,6 +2306,9 @@ async function loadStartup(quiet = false) {
           </div>
           <div class="row-sub">${esc(v.reason)}</div>
           <div class="row-sub" style="color:var(--ink-2)">끄면: ${esc(v.ifDisabled)}</div>
+          ${e.identity?.path
+            ? `<div class="row-sub sig" data-sig="${esc(e.identity.path)}" hidden></div>`
+            : ''}
           ${e.command ? `<div class="row-path">${esc(e.command)}</div>` : ''}
           ${btn}
         </div>
@@ -2338,6 +2341,8 @@ async function loadStartup(quiet = false) {
       <p class="note" style="margin-top:10px">몇 초 빨라지는지는 윈도우가 안 알려줘요.
         그래서 <b>“○초 단축” 같은 숫자를 지어내지 않습니다.</b> 작업관리자에서도 똑같이 보이고, 거기서도 되돌릴 수 있어요.</p>`
 
+    fillSignatures()
+
     host.querySelectorAll<HTMLButtonElement>('[data-toggle]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const e = entries[+btn.dataset.toggle!]
@@ -2368,6 +2373,35 @@ async function loadStartup(quiet = false) {
 
 const logonTaskNote = (n: number) =>
   `이 밖에 <b>예약작업 ${n}개</b>가 더 있어요. 대부분 윈도우가 만든 거라 여기서는 개수만 알려드립니다.`
+
+/**
+ * 서명 정보를 뒤늦게 채운다.
+ *
+ * ★ 왜 나중인가: 서명 확인은 파일을 통째로 해시한다. 실측에서 21개에 5.5초였다
+ *   (버전 정보는 34ms). "누가 만든 프로그램인가"라는 본문이 각주 때문에 5초를
+ *   기다리면 안 된다 — 예약작업 146초에서 배운 것과 같은 자리다.
+ *
+ * ★ 못 받으면 아무 말도 안 한다. 여기서 "서명 없음"으로 채우면, 서명된 프로그램을
+ *   서명이 없다고 말하는 셈이 된다. 안 본 것과 없는 것은 다르다.
+ */
+let signaturesPending: Promise<any> | null = null
+
+async function fillSignatures() {
+  if (!inTauri) return
+  try {
+    signaturesPending ??= engine('startup-signatures')
+    const r = await signaturesPending
+    const map: Record<string, string> = r.signatures ?? {}
+    document.querySelectorAll<HTMLElement>('[data-sig]').forEach((el) => {
+      const note = map[el.dataset.sig ?? '']
+      if (!note) return
+      el.textContent = note
+      el.hidden = false
+    })
+  } catch {
+    signaturesPending = null // 다음에 화면을 열 때 다시 시도한다
+  }
+}
 
 /**
  * 로그온 예약작업 개수를 뒤늦게 채운다. 못 세면 각주를 그냥 안 보여준다 — 지어내지 않는다.

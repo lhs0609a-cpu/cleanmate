@@ -98,7 +98,9 @@ import {
   gatherPageFile, probePageFile, gatherRestore, probeRestore, parseRestore, VSS_QUERY,
   recommendPageFile, type PageFileFacts,
 } from './probes/system-space.ts'
-import { probeStartup, countLogonTasks, setStartupEnabled } from './probes/startup.ts'
+import {
+  probeStartup, countLogonTasks, setStartupEnabled, gatherSignatures, signatureNote,
+} from './probes/startup.ts'
 import {
   planFolderTidy,
   applyFolderTidy,
@@ -1925,6 +1927,25 @@ async function main() {
        * 로그온 예약작업 개수 — 각주 한 줄이지만 세는 데 몇 초~몇 분이 걸린다.
        * 목록과 같은 명령에 묶어두면 각주가 본문을 막는다(probes/startup.ts LOGON_TASKS 머리말).
        */
+      /**
+       * 서명 확인 — 각주다. 목록이 다 그려진 뒤에 따로 받는다.
+       * 실측: VersionInfo 21개 34ms vs AuthenticodeSignature 21개 5,545ms(160배).
+       * 문구는 프로브가 만든다 — 화면이 제 나름대로 지으면 두 곳의 말이 갈린다.
+       */
+      case 'startup-signatures': {
+        const r = await probeStartup()
+        const paths = r.entries.map((e) => e.identity?.path).filter(Boolean) as string[]
+        const sigs = await gatherSignatures(paths)
+        const notes: Record<string, string> = {}
+        for (const p of Object.keys(sigs)) {
+          notes[p] = signatureNote({
+            description: '', product: '', company: '', path: p,
+            signed: sigs[p].signed, signer: sigs[p].signer,
+          })
+        }
+        out({ signatures: notes })
+        break
+      }
       case 'startup-tasks': {
         out({ logonTaskCount: await countLogonTasks() })
         break
