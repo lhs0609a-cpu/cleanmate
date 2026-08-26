@@ -239,9 +239,17 @@ export function filterDupeCandidates(files: DupFile[]): { candidates: DupFile[];
  * 해시는 **크기가 겹치는 것만** 읽는다. 파일 수가 아니라 '크기가 같은 파일 수'에
  * 비례하므로, 수만 개를 넣어도 실제로 읽는 건 보통 수십~수백 개다.
  */
-export async function hashAndGroup(candidates: DupFile[]): Promise<Omit<DupScanResult, 'excluded'>> {
+export async function hashAndGroup(
+  candidates: DupFile[],
+  opts: DupScanOptions = {}
+): Promise<Omit<DupScanResult, 'excluded'>> {
   const sizeGroups = groupBySize(candidates)
   const hashed: { file: DupFile; hash: string }[] = []
+  /* ★ 여기가 이 기능에서 제일 오래 걸리는 자리다 — 파일마다 앞뒤를 실제로 읽는다.
+     그동안 화면이 "찾는 중…" 한 줄이면 사용자는 멈춘 건지 도는 건지 알 수 없다.
+     몇 개 중 몇 개를 봤는지는 여기서만 알 수 있으니, 여기서 알린다. */
+  const total = sizeGroups.reduce((n, g) => n + g.length, 0)
+  let done = 0
   for (const group of sizeGroups) {
     for (const f of group) {
       try {
@@ -249,6 +257,7 @@ export async function hashAndGroup(candidates: DupFile[]): Promise<Omit<DupScanR
       } catch {
         /* 읽을 수 없는 파일은 후보에서 뺀다 — 못 읽은 걸 같다고 할 수는 없다 */
       }
+      opts.onHashProgress?.(++done, total, f.size)
     }
   }
 
@@ -395,7 +404,16 @@ export function findInstallCauses(groups: DupGroup[], top = 3): InstallCause[] {
 }
 
 /** 걸러내고 → 해시로 확정한다. 엔진이 쓰는 통로는 이것 하나다. */
-export async function findDuplicates(files: DupFile[]): Promise<DupScanResult> {
+/** 오래 걸리는 동안 밖에 알릴 통로. 없으면 예전 그대로 조용히 돈다. */
+export interface DupScanOptions {
+  /** @param done 여태 확인한 파일 수 @param total 확인할 전체 @param bytes 방금 본 파일 크기 */
+  onHashProgress?: (done: number, total: number, bytes: number) => void
+}
+
+export async function findDuplicates(
+  files: DupFile[],
+  opts: DupScanOptions = {}
+): Promise<DupScanResult> {
   const { candidates, excluded } = filterDupeCandidates(files)
-  return { ...(await hashAndGroup(candidates)), excluded }
+  return { ...(await hashAndGroup(candidates, opts)), excluded }
 }

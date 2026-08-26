@@ -555,6 +555,18 @@
   .help-ask a{color:var(--accent)}
   .help-note{display:block;color:var(--faint);font-size:var(--t-caption)}
 
+  /* 습관 기록 — 강조는 하되 겁주지 않는다. 빨강이 없는 이유다. */
+  .hb{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--safe);
+      border-radius:var(--r-md);padding:var(--s-4);margin-top:var(--s-4);
+      display:flex;flex-direction:column;gap:var(--s-2);min-width:0}
+  .hb-h{display:flex;align-items:baseline;gap:var(--s-2);flex-wrap:wrap}
+  .hb-t{font-size:var(--t-title);font-weight:var(--w-num);letter-spacing:-.02em;color:var(--ink)}
+  .hb-week{display:flex;align-items:center;gap:var(--s-3);flex-wrap:wrap}
+  .hb-dots{display:flex;gap:6px}
+  .hb-dots i{width:11px;height:11px;border-radius:50%;background:var(--surface-3);
+             border:1px solid var(--line-2);display:block}
+  .hb-dots i.on{background:var(--safe);border-color:var(--safe)}
+
   .prog{margin-top:var(--s-4)}
   .prog-bar{height:4px;border-radius:var(--r-full);background:var(--surface-3);overflow:hidden}
   .prog-bar span{display:block;height:100%;width:38%;border-radius:var(--r-full);
@@ -704,6 +716,9 @@
      첫 묶음의 설명조차 안 끝나면 접힌 것과 같다. */
   .pick-list{max-height:460px;overflow-y:auto;border:1px solid var(--line);
              border-radius:var(--r-sm);background:var(--surface)}
+  /* 격자 칸도 기본이 min-width:auto다 — 안 풀면 긴 이름이 칸을 못 줄인다.
+     여기 들어오는 이름이 하필 sha256-… 처럼 안 끊기는 것들이다. */
+  .pick-row > *{min-width:0}
   .pick-row{display:grid;grid-template-columns:auto 1fr auto;gap:var(--s-2) var(--s-3);
             align-items:center;padding:var(--s-2) var(--s-3);border-top:1px solid var(--line);cursor:pointer}
   .pick-row:first-child{border-top:0}
@@ -754,8 +769,11 @@
   /* ── 제안 카드 ──────────────────────────────────────────────
      한 장 = 한 결정. 용량이 제일 먼저 읽히고, 그다음이 "왜 지워도 되나"다. */
   .card-list{display:flex;flex-direction:column;gap:var(--s-2);margin-top:var(--s-3)}
+  /* flex-wrap을 항상 켠다 — 좁을 때만 접히게 해두면, 넓은 창에서 긴 경로가
+     들어왔을 때 접히지도 줄지도 못해서 카드가 통째로 밖으로 밀린다. */
   .pcard{border:1px solid var(--line);border-radius:var(--r-md);padding:var(--s-3);
-         background:var(--surface);display:flex;gap:var(--s-3);align-items:flex-start}
+         background:var(--surface);display:flex;gap:var(--s-3);align-items:flex-start;
+         flex-wrap:wrap;min-width:0}
   .pcard.t1{border-left:3px solid var(--safe)}
   .pcard.t2{border-left:3px solid var(--accent)}
   .pcard.t3{border-left:3px solid var(--line-2)}
@@ -768,8 +786,9 @@
   .pcard-why{font-size:var(--t-caption);line-height:var(--lh-caption);color:var(--muted);margin-top:3px}
   .pcard-where{font-size:var(--t-caption);color:var(--muted);opacity:.8;
                overflow-wrap:anywhere;margin-top:2px}
-  .pcard-eg{margin-top:6px;font-size:var(--t-caption);color:var(--ink-2)}
-  .pcard-eg div{overflow-wrap:anywhere;opacity:.85}
+  .pcard-eg{margin-top:6px;font-size:var(--t-caption);color:var(--ink-2);
+            min-width:0;max-width:100%;overflow-x:auto}
+  .pcard-eg div{overflow-wrap:anywhere;opacity:.85;min-width:0}
   .pcard-act{flex:none}
   @media (max-width:640px){
     .pcard{flex-wrap:wrap}
@@ -821,7 +840,9 @@
   .pg:first-child{border-top:0}
   .pg-safe{--k:var(--safe)} .pg-ask{--k:var(--amb)} .pg-keep{--k:var(--lock)}
   .pg-h{display:flex;align-items:baseline;gap:var(--s-2);flex-wrap:wrap}
+  .pg,.pg-h,.pg-files{min-width:0}
   .pg-who{font-size:var(--t-small);line-height:var(--lh-small);letter-spacing:var(--tr-small);
+          overflow-wrap:anywhere;
           font-weight:var(--w-head);color:var(--ink)}
   .pg-v{font-size:var(--t-micro);line-height:var(--lh-micro);letter-spacing:var(--tr-micro);
         font-weight:var(--w-em);color:var(--k);border:1px solid var(--k);border-radius:999px;
@@ -943,7 +964,11 @@
   .side .nav button .ic{width:17px;height:17px;margin-right:10px}
   .side-foot{margin-top:auto;padding:var(--s-3);border-top:1px solid var(--line);
              font-size:var(--t-micro);line-height:var(--lh-micro);letter-spacing:var(--tr-micro);color:var(--muted)}
-  .content{min-width:0;display:flex;flex-direction:column}
+  /* ★ 마지막 안전망. 어디서 무엇이 터지든 창 전체가 가로로 밀리지는 않는다.
+       clip을 쓰는 이유: hidden은 스크롤 컨테이너를 만들어서 세로 스크롤·sticky가
+       같이 망가진다. clip은 자르기만 한다. */
+  .content{min-width:0;display:flex;flex-direction:column;overflow-x:clip}
+  .screen{min-width:0}
   /* ★ 가운데 정렬 + 폭 제한. 최대화하면 1900px가 되는데 글이 왼쪽 끝에만
      붙어 있으면 오른쪽 절반이 통째로 비어 화면이 고장난 것처럼 보인다. */
   .content main{padding:var(--s-7) var(--s-6) var(--s-8);max-width:960px;width:100%;margin-inline:auto}

@@ -21,6 +21,7 @@ import {
   markDone,
   undoDone,
   planToday,
+  habitStats,
   todayISO,
   type TidyState,
 } from '../../src/content/tidy.ts'
@@ -1504,8 +1505,31 @@ if (inTauri) {
     else if (p && (p.t === 'sweep' || p.t === 'sweep-plan')) lastSweep = p as SweepProgress
     // 카드 삭제 진행 — 카드마다 따로 담는다(여러 장을 잇달아 누를 수 있다)
     else if (p && p.t === 'proposal' && p.id) cardProgress.set(p.id, p)
+    // 같은 파일 찾기 — 훑기(빠름)와 안을 펼쳐 확인(느림)이 따로 온다
+    else if (p && (p.t === 'dupes-scan' || p.t === 'dupes-hash')) lastDupes = p as DupProgress
   })
 }
+
+/**
+ * 같은 파일 찾기의 진행 상황.
+ *
+ * ★ 두 단계를 갈라서 받는다. 폴더를 훑는 건 빠르고, **안을 펼쳐 내용을 확인하는
+ *   건 느리다**(파일마다 실제로 읽는다). 한 막대로 합치면 후반에 멈춘 것처럼
+ *   보인다 — 실제로는 제일 중요한 일을 하는 중인데.
+ */
+interface DupProgress {
+  t: 'dupes-scan' | 'dupes-hash'
+  phase: 'scan' | 'hash' | 'done'
+  files?: number
+  label?: string
+  rootIndex?: number
+  rootCount?: number
+  done?: number
+  total?: number
+  pct?: number | null
+  etaSec?: number | null
+}
+let lastDupes: DupProgress | null = null
 
 /**
  * 오래 걸리는 작업 중에 '어디까지 왔고 얼마나 남았는지'를 보여준다.
@@ -2152,7 +2176,46 @@ async function tidyPlan(mark?: { id: string; done: boolean }) {
     state = mark.done ? markDone(state, mark.id, today) : undoDone(state, mark.id, today)
     try { localStorage.setItem(TIDY_KEY, JSON.stringify(state)) } catch { /* 사생활 모드 등 — 기록만 안 남는다 */ }
   }
-  return { today, ...planToday(state, today), total: ROUTINES.length }
+  return { today, ...planToday(state, today), total: ROUTINES.length, habit: habitStats(state, today) }
+}
+
+/**
+ * 습관 기록 — "얼마나 잘하고 있나"를 보여주는 자리.
+ *
+ * ★ 이 블록에 없는 것들이 설계다.
+ *   빨간색이 없다. "며칠 밀렸어요"가 없다. 연속 기록이 끊길까 봐 겁주는 문구도
+ *   없다. 정리는 시험이 아니라 살림이고, 살림은 하루 거르는 날이 있다.
+ *
+ *   대신 셋을 보여준다 — 지금까지 몇 번 했는지(등급), 최근 이레 중 어느 날
+ *   했는지(점 일곱 개), 다음 단계까지 몇 번인지. 셋 다 **셀 수 있는 것**이다.
+ *   "연구에 따르면 습관은 21일" 같은 지어낸 수치는 여기에도 안 쓴다.
+ */
+function habitHtml(h: any): string {
+  if (!h) return ''
+  if (!h.doneTotal) {
+    return `<div class="hb">
+      <div class="hb-t">아직 기록이 없어요</div>
+      <div class="t-small" style="color:var(--muted)">아래에서 하나만 눌러보세요. 오늘부터 세어드릴게요.</div>
+    </div>`
+  }
+  const dots = h.days7
+    .map((d: any) => `<i class="${d.count ? 'on' : ''}" title="${esc(d.date)}${d.count ? ` · ${d.count}개` : ''}"></i>`)
+    .join('')
+  const runLine = h.currentDays > 0
+    ? `<b>${h.currentDays}일째</b> 이어가는 중` +
+      (h.bestDays > h.currentDays ? ` · 가장 길었던 건 ${h.bestDays}일` : '')
+    // ★ 쉬었다고 나무라지 않는다. 그냥 기록을 말하고 다시 시작할 수 있다고 한다.
+    : `가장 길었던 건 <b>${h.bestDays}일</b> · 오늘 하나 하면 다시 시작돼요`
+
+  return `<div class="hb">
+    <div class="hb-h">
+      <span class="hb-t">${esc(h.rank.name)}</span>
+      <span class="t-small" style="color:var(--muted);margin-left:auto">지금까지 ${h.doneTotal.toLocaleString()}번</span>
+    </div>
+    <div class="hb-week"><span class="hb-dots">${dots}</span><span class="t-micro" style="color:var(--faint)">최근 7일</span></div>
+    <div class="t-small" style="color:var(--ink-2)">${runLine}</div>
+    ${h.next ? `<div class="t-small" style="color:var(--muted)">${h.next.remain}번 더 하면 '${esc(h.next.name)}'</div>` : ''}
+  </div>`
 }
 
 async function loadTidy(mark?: { id: string; done: boolean }) {
@@ -2195,6 +2258,7 @@ async function loadTidy(mark?: { id: string; done: boolean }) {
   const doneCards = d.doneToday.map((id: string) => card({ ...byId.get(id), streak: 0 }, 'done')).join('')
 
   host.innerHTML = `
+    ${habitHtml(d.habit)}
     <div style="display:flex;align-items:baseline;gap:10px;margin:16px 0 4px;flex-wrap:wrap">
       <h2 class="t-title" style="font-weight:var(--w-num)">오늘 할 것 ${d.due.length}개</h2>
       <span class="t-small" style="margin-left:auto;color:var(--muted)">
@@ -2729,7 +2793,46 @@ function dupCauseHtml(causes: any[]): string {
 
 async function loadDupes() {
   const host = $('dupes-body')
-  host.innerHTML = `<div class="card"><div class="empty">같은 파일을 찾는 중… (안을 직접 펼쳐 확인하느라 조금 걸려요)</div></div>`
+  /* ★ 여기가 "찾는 중…" 한 줄로 몇 분을 버티던 자리다.
+     진행 표시가 없으면 사람이 견디는 건 중앙값 9초다. 막대를 보여주면 그 두 배를
+     넘게 기다린다 — 같은 작업인데. 그래서 아는 것을 전부 적는다:
+     몇 개를 봤는지, 몇 %인지, 얼마나 남았는지. 모르는 건 모른다고 쓴다. */
+  lastDupes = null
+  host.innerHTML = `<div class="card">
+    <div class="prog" style="margin:0"><div class="prog-bar"><span></span></div></div>
+    <div class="empty" data-dup-prog="1" style="padding-top:12px">같은 파일을 찾는 중…</div>
+  </div>`
+  const started = Date.now()
+  const bar = host.querySelector<HTMLElement>('.prog')
+  const fill = host.querySelector<HTMLElement>('.prog-bar span')
+  const line = host.querySelector<HTMLElement>('[data-dup-prog]')
+  const paint = () => {
+    if (!line) return
+    const elapsed = fmtDuration((Date.now() - started) / 1000)
+    const d = lastDupes
+    if (!d) { line.textContent = `같은 파일을 찾는 중… · 경과 ${elapsed}`; return }
+
+    if (d.phase === 'scan') {
+      // 아직 몇 개가 나올지 모른다 — 진행률을 지어내지 않고 본 개수만 말한다.
+      const where = d.label ? `${d.label} ` : ''
+      const nth = d.rootCount && d.rootCount > 1 ? ` (${d.rootCount}곳 중 ${(d.rootIndex ?? 0) + 1})` : ''
+      line.textContent = `${where}훑는 중${nth} · ${(d.files ?? 0).toLocaleString()}개 · 경과 ${elapsed}`
+      return
+    }
+    const parts = [`안을 펼쳐 확인하는 중`]
+    if (d.pct !== null && d.pct !== undefined) {
+      parts.push(`${d.pct}%`)
+      if (fill) fill.style.width = `${d.pct}%`
+      bar?.classList.add('prog-known')
+    }
+    if (d.total) parts.push(`${(d.done ?? 0).toLocaleString()} / ${d.total.toLocaleString()}개`)
+    parts.push(`경과 ${elapsed}`)
+    if (d.etaSec !== null && d.etaSec !== undefined) parts.push(`남은 시간 약 ${fmtDuration(d.etaSec)}`)
+    else parts.push('남은 시간은 조금 더 봐야 알 수 있어요')
+    line.textContent = parts.join(' · ')
+  }
+  paint()
+  const timer = setInterval(paint, 1000)
   dupPicked.clear()
   try {
     const [d, mr] = await Promise.all([
@@ -2774,6 +2877,12 @@ async function loadDupes() {
           <button class="opt strong" data-dup-all="1">전체 선택 (사본 ${allCopies.length.toLocaleString()}개 · ${fmtBytes(allBytes)})</button>
         </div>
         <div class="pick-list">${d.groups.map((g: any) => dupGroupHtml(g)).join('')}</div>
+        <!-- ★ 버튼 두 개를 나란히 놓으면 그건 판단을 떠넘긴 것이다.
+             엔진은 이미 어느 쪽이 맞는지 알고 있다(모델·받아온 자료 = 합치기).
+             그러면 화면도 그렇게 말해야 한다 — 권장을 글로 적고, 위험한 쪽은
+             한 단 낮춘다. 숫자만 크다고 좋은 선택이 아니라는 걸 말해주는 건
+             화면의 몫이다(지우기 49.6GB vs 합치기 13.1GB처럼 보일 때). -->
+        <div class="t-caption" data-dup-rec="1" style="margin:10px 0 6px"></div>
         <div class="pick-foot">
           <button class="btn" data-dup-merge="1" disabled>하나로 합치기</button>
           <button class="opt" data-dup-go="1" disabled>고른 사본 지우기</button>
@@ -2816,6 +2925,31 @@ async function loadDupes() {
         mergeBtn.textContent = ok.length
           ? `${ok.length}개를 하나로 합치기 (${fmtBytes(okBytes)} 회수)`
           : '하나로 합치기'
+      }
+      /* ★ 무엇을 눌러야 하는지 한 줄로 말한다.
+         합칠 수 있는 게 하나라도 있으면 답은 합치기다 — 지우면 그 프로그램이
+         다음에 켤 때 다시 받는다. 못 합치는 것(드라이브가 다름)만 남았을 때
+         비로소 지우기가 선택지가 된다. */
+      const rec = host.querySelector<HTMLElement>('[data-dup-rec]')
+      if (rec) {
+        const mergeable = [...dupPicked].filter((p) => !blockedOf.get(p))
+        const blocked = [...dupPicked].filter((p) => blockedOf.get(p))
+        const recommendMerge = mergeable.length > 0
+        goBtn.classList.toggle('danger', dupPicked.size > 0 && !recommendMerge)
+        if (!dupPicked.size) {
+          rec.textContent = ''
+        } else if (recommendMerge) {
+          rec.innerHTML =
+            `<b style="color:var(--accent)">합치기를 권합니다</b> — 프로그램이 자기 자리에서 찾는 파일이라, ` +
+            `지우면 다음에 켤 때 <b>다시 받습니다</b>. 합치면 경로는 다 살아 있고 용량만 한 벌치를 써요.` +
+            (blocked.length
+              ? ` (${blocked.length}개는 드라이브가 달라 못 합쳐요 — 그건 '드라이브 옮기기'로 해결하세요)`
+              : '')
+        } else {
+          rec.innerHTML =
+            `고르신 ${blocked.length}개는 <b>드라이브가 달라 합칠 수 없어요.</b> ` +
+            `어느 프로그램도 그 자리를 안 본다는 확신이 있을 때만 지우세요 — 되돌릴 수 없습니다.`
+        }
       }
     }
 
@@ -2920,6 +3054,9 @@ async function loadDupes() {
     wireDupRoots(host, modelRoots)
   } catch (err) {
     host.innerHTML = `<div class="note" style="margin-top:12px">찾지 못했어요: ${esc(errText(err))}</div>`
+  } finally {
+    clearInterval(timer)
+    lastDupes = null
   }
 }
 

@@ -408,3 +408,105 @@ export function planToday(state: TidyState, today: string, routines = ROUTINES):
   later.sort((a, b) => a.daysUntil - b.daysUntil)
   return { due, later, doneToday }
 }
+
+/* ── 습관 기록 (게임처럼, 다만 재촉하지 않게) ──────────────────
+   ★ 설계 원칙 — 이 화면은 "잘하고 있나"를 보여주는 자리지 "왜 안 했냐"를
+     따지는 자리가 아니다. 그래서 셋을 지킨다.
+
+     1) 등급은 **누적 횟수**로만 오른다. 연속 기록으로 등급을 매기면 하루
+        아파서 못 한 사람이 등급을 잃는다 — 그건 벌이지 보상이 아니다.
+     2) 등급은 **내려가지 않는다.** 한 번 몸에 붙은 건 안 사라진다.
+     3) 이어가는 날수는 **하루 빠짐을 봐준다**(streak()과 같은 규칙). 이틀
+        연속 비어야 끊긴다. 사람은 하루쯤 거른다.
+
+     그리고 "연구에 따르면 N%" 같은 지어낸 수치는 여기에도 안 쓴다. 셀 수 있는
+     것만 센다 — 몇 번 했고, 며칠째고, 가장 길었던 게 며칠인지. */
+
+/** 등급 — 누적 완료 횟수로만 오른다. 숫자가 아니라 이름으로 말한다. */
+export const HABIT_RANKS = [
+  { at: 0, name: '시작' },
+  { at: 5, name: '손에 익는 중' },
+  { at: 20, name: '몸에 붙는 중' },
+  { at: 50, name: '습관' },
+  { at: 120, name: '오래된 습관' },
+] as const
+
+/** 이어가는 날수를 셀 때 봐주는 간격. 하루는 걸러도 이어진다. */
+const GAP_FORGIVEN = 2
+
+export interface HabitStats {
+  /** 여태 완료한 총 횟수 (기록에 남아 있는 만큼) */
+  doneTotal: number
+  /** 최근 7일 — 오래된 날이 먼저. 화면의 점 일곱 개가 이걸 그린다 */
+  days7: { date: string; count: number }[]
+  /** 지금 이어가는 중인 날수 */
+  currentDays: number
+  /** 가장 길게 이어간 날수 */
+  bestDays: number
+  rank: { name: string; index: number }
+  /** 다음 등급까지 남은 횟수. 마지막 등급이면 null */
+  next: { name: string; remain: number } | null
+}
+
+/** 완료 기록이 있는 날들 (중복 없이, 오름차순 일 번호) */
+function activeDayNumbers(state: TidyState): number[] {
+  const days = new Set<number>()
+  for (const list of Object.values(state.done)) {
+    for (const d of list) days.add(dayNumber(d))
+  }
+  return [...days].sort((a, b) => a - b)
+}
+
+/** 하루 빠짐을 봐주면서 가장 긴 구간을 센다. */
+function longestRun(days: number[]): number {
+  if (!days.length) return 0
+  let best = 1
+  let cur = 1
+  for (let i = 1; i < days.length; i++) {
+    if (days[i] - days[i - 1] <= GAP_FORGIVEN) cur++
+    else cur = 1
+    if (cur > best) best = cur
+  }
+  return best
+}
+
+export function habitStats(state: TidyState, today: string): HabitStats {
+  const days = activeDayNumbers(state)
+  const doneTotal = Object.values(state.done).reduce((n, l) => n + l.length, 0)
+
+  // 지금 이어가는 중인가 — 마지막 기록이 너무 오래되지 않았어야 한다.
+  let currentDays = 0
+  if (days.length && dayNumber(today) - days[days.length - 1] <= GAP_FORGIVEN) {
+    currentDays = 1
+    for (let i = days.length - 2; i >= 0; i--) {
+      if (days[i + 1] - days[i] > GAP_FORGIVEN) break
+      currentDays++
+    }
+  }
+
+  const t = dayNumber(today)
+  const perDay = new Map<number, number>()
+  for (const list of Object.values(state.done)) {
+    for (const d of list) {
+      const n = dayNumber(d)
+      perDay.set(n, (perDay.get(n) ?? 0) + 1)
+    }
+  }
+  const days7 = Array.from({ length: 7 }, (_, i) => {
+    const n = t - (6 - i)
+    return { date: new Date(n * 86_400_000).toISOString().slice(0, 10), count: perDay.get(n) ?? 0 }
+  })
+
+  let index = 0
+  for (let i = 0; i < HABIT_RANKS.length; i++) if (doneTotal >= HABIT_RANKS[i].at) index = i
+  const upcoming = HABIT_RANKS[index + 1]
+
+  return {
+    doneTotal,
+    days7,
+    currentDays,
+    bestDays: Math.max(longestRun(days), currentDays),
+    rank: { name: HABIT_RANKS[index].name, index },
+    next: upcoming ? { name: upcoming.name, remain: upcoming.at - doneTotal } : null,
+  }
+}

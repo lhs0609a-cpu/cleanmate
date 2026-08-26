@@ -124,6 +124,7 @@ import {
   markDone,
   undoDone,
   planToday,
+  habitStats,
   todayISO,
   type TidyState,
 } from './content/tidy.ts'
@@ -1996,7 +1997,7 @@ async function main() {
       case 'tidy-list': {
         const state = await readTidy()
         const today = args[0] ?? todayISO()
-        out({ today, ...planToday(state, today), total: ROUTINES.length })
+        out({ today, ...planToday(state, today), total: ROUTINES.length, habit: habitStats(state, today) })
         break
       }
       /**
@@ -2555,10 +2556,27 @@ async function main() {
            잡혀서 "6.46GB 낭비"라는 유령이 생긴다. */
         const seenPath = new Set<string>()
 
+        /* 두 단계를 갈라서 알린다: 훑기(빠름) → 안을 펼쳐 확인(느림).
+           같은 막대에 뭉뚱그리면 후반에 진행이 멈춘 것처럼 보인다. */
+        const dupStarted = Date.now()
+        let lastDupEmit = 0
         for (const [i, r] of roots.entries()) {
-          progress({ t: 'dupes-scan', rootIndex: i, rootCount: roots.length, root: r.path, label: r.label })
+          progress({
+            t: 'dupes-scan', phase: 'scan', files: files.length,
+            rootIndex: i, rootCount: roots.length, root: r.path, label: r.label,
+          })
           try {
-            const scanned = await scan(r.path)
+            const scanned = await scan(r.path, {
+              onProgress: (count) => {
+                const now = Date.now()
+                if (now - lastDupEmit < 250) return // 초당 수백 줄이 나가면 화면이 더 느려진다
+                lastDupEmit = now
+                progress({
+                  t: 'dupes-scan', phase: 'scan', files: files.length + count,
+                  rootIndex: i, rootCount: roots.length, root: r.path, label: r.label,
+                })
+              },
+            })
             for (const f of scanned.files) {
               const key = f.path.toLowerCase()
               if (seenPath.has(key)) continue
@@ -2575,7 +2593,24 @@ async function main() {
           }
         }
 
-        const r = await findDuplicates(files)
+        const hashStarted = Date.now()
+        let lastHashEmit = 0
+        const r = await findDuplicates(files, {
+          onHashProgress: (done, total) => {
+            const now = Date.now()
+            if (now - lastHashEmit < 250 && done !== total) return
+            lastHashEmit = now
+            const elapsed = (now - hashStarted) / 1000
+            // 남은 시간은 여태의 속도로만 잰다 — 없는 숫자를 지어내지 않는다.
+            const etaSec = done > 0 && elapsed > 1 ? Math.round((elapsed / done) * (total - done)) : null
+            progress({
+              t: 'dupes-hash', phase: 'hash', done, total,
+              pct: total ? Math.min(99, Math.round((done / total) * 100)) : null,
+              etaSec,
+            })
+          },
+        })
+        progress({ t: 'dupes-hash', phase: 'done', done: 0, total: 0, pct: 100, etaSec: 0, elapsedMs: Date.now() - dupStarted })
         out({
           scanned: files.length,
           candidates: r.candidates,
