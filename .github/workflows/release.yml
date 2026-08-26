@@ -90,10 +90,13 @@ jobs:
           head -c4 "$f" | grep -q wOF2 || { echo "::error::$f 가 woff2가 아닙니다"; exit 1; }
           echo "글꼴 OK — $(wc -c < "$f") bytes"
 
-      # ★ 아이콘 자산: assets/logo.png 가 있으면 모든 크기를 생성한다.
-      #   없으면 이 단계에서 실패한다 — 브랜드 아이콘은 어차피 필요한 자산.
+      # ★ 아이콘 자산: 크기마다 **직접 그린다**.
+      #   전에는 `tauri icon`으로 1024 원본을 축소했는데, 그러면 16·32px에서
+      #   대괄호가 뭉갠다 — 하필 작업표시줄·alt-tab에서 제일 자주 보이는 크기다.
+      #   make-logo.mjs는 크기마다 그 크기에 맞는 원도를 쓴다(작으면 T만).
+      #   나오는 것: assets/logo.png · icons/{32x32,128x128,128x128@2x,tray}.png · icon.ico
       - name: 아이콘 생성
-        run: npx tauri icon assets/logo.png
+        run: node scripts/make-logo.mjs
 
       - name: Tauri 빌드 (→ teraclean.exe + 리소스)
         run: npx tauri build

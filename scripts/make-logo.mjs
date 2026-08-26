@@ -103,15 +103,15 @@ function over(sr, sg, sb, sa, dr, dg, db, da) {
 
      작은 크기일수록 슈퍼샘플을 올린다. 큰 그림은 픽셀이 많아 2배로 충분하지만,
      32px에서는 획 하나가 2~3픽셀이라 계단이 그대로 보인다. */
-function bake(M) {
+/** 생 RGBA (필터 바이트 없음). PNG도 ICO도 여기서 출발한다. */
+function pixels(M) {
   // 최종 픽셀에서 타일이 몇 px이 되는지 — 그 크기로 원도를 고른다.
   const tileOnScreen = (TILE * M) / N
   MARK = markAt(TILE, { simple: tileOnScreen < SIMPLE_BELOW })
   const ss = M <= 64 ? 4 : SS
   const scale = N / M
-  const raw = Buffer.alloc(M * (1 + M * 4))
+  const out = Buffer.alloc(M * M * 4)
   for (let py = 0; py < M; py++) {
-    raw[py * (1 + M * 4)] = 0 // 필터 바이트
     for (let px = 0; px < M; px++) {
       let R = 0, G = 0, B = 0, A = 0
       for (let sy = 0; sy < ss; sy++)
@@ -122,12 +122,23 @@ function bake(M) {
           R += r * a; G += g * a; B += b * a; A += a
         }
       const a = A / (ss * ss)
-      const o = py * (1 + M * 4) + 1 + px * 4
-      raw[o] = A > 0 ? Math.round(R / A) : 0
-      raw[o + 1] = A > 0 ? Math.round(G / A) : 0
-      raw[o + 2] = A > 0 ? Math.round(B / A) : 0
-      raw[o + 3] = Math.round(a * 255)
+      const o = (py * M + px) * 4
+      out[o] = A > 0 ? Math.round(R / A) : 0
+      out[o + 1] = A > 0 ? Math.round(G / A) : 0
+      out[o + 2] = A > 0 ? Math.round(B / A) : 0
+      out[o + 3] = Math.round(a * 255)
     }
+  }
+  return out
+}
+
+/** PNG용 — 줄마다 필터 바이트(0)를 앞에 붙인다. */
+function bake(M) {
+  const px = pixels(M)
+  const raw = Buffer.alloc(M * (1 + M * 4))
+  for (let y = 0; y < M; y++) {
+    raw[y * (1 + M * 4)] = 0
+    px.copy(raw, y * (1 + M * 4) + 1, y * M * 4, (y + 1) * M * 4)
   }
   return raw
 }
@@ -180,13 +191,91 @@ function write(file, M) {
   console.log(`${file} · ${M}×${M} · ${MARK.simple ? 'T' : '[T]'} · ${(png.length / 1024).toFixed(1)}KB`)
 }
 
+/* ── ICO ────────────────────────────────────────────────────
+   ★ 왜 직접 굽나: 전에는 CI가 `tauri icon assets/logo.png`으로 만들었다.
+     그건 1024 그림을 **축소**하는 것이라, 16·32px에서 대괄호가 그대로 뭉갠다 —
+     하필 작업표시줄·alt-tab·탐색기에서 제일 자주 보이는 크기다.
+     여기서 크기마다 직접 그리면 그 크기에 맞는 원도(작으면 T만)가 들어간다.
+
+   ICO는 그림 여러 장을 담는 상자다. 헤더 6바이트 + 장마다 16바이트 목록 +
+   그림 데이터. 큰 장은 PNG로, 작은 장은 BMP(DIB)로 넣는다 —
+   윈도우는 둘 다 읽지만 작은 크기는 BMP 쪽이 호환이 넓다. */
+
+/** ICO 안의 BMP 한 장. 위아래가 뒤집힌 BGRA + 1비트 마스크(우리는 알파를 쓰므로 전부 0). */
+function dib(M) {
+  const px = pixels(M)
+  const header = Buffer.alloc(40)
+  header.writeUInt32LE(40, 0)
+  header.writeInt32LE(M, 4)
+  header.writeInt32LE(M * 2, 8) // XOR + AND 를 합친 높이
+  header.writeUInt16LE(1, 12) // 평면
+  header.writeUInt16LE(32, 14) // 비트수
+  const xor = Buffer.alloc(M * M * 4)
+  for (let y = 0; y < M; y++) {
+    for (let x = 0; x < M; x++) {
+      const s = (y * M + x) * 4
+      const d = ((M - 1 - y) * M + x) * 4 // 아래에서 위로
+      xor[d] = px[s + 2] // B
+      xor[d + 1] = px[s + 1] // G
+      xor[d + 2] = px[s] // R
+      xor[d + 3] = px[s + 3] // A
+    }
+  }
+  // AND 마스크: 줄마다 4바이트 경계로 맞춘다. 알파가 있으니 전부 0(불투명)이면 된다.
+  const maskRow = Math.ceil(M / 32) * 4
+  const mask = Buffer.alloc(maskRow * M)
+  header.writeUInt32LE(xor.length + mask.length, 20)
+  return Buffer.concat([header, xor, mask])
+}
+
+function ico(sizes) {
+  const images = sizes.map((M) => ({
+    M,
+    // 128 이상은 PNG로 — 생 BMP로 넣으면 파일이 급격히 커진다(256px 한 장에 256KB).
+    data: M >= 128 ? encode(M) : dib(M),
+  }))
+  const head = Buffer.alloc(6)
+  head.writeUInt16LE(0, 0) // 예약
+  head.writeUInt16LE(1, 2) // 1 = 아이콘
+  head.writeUInt16LE(images.length, 4)
+
+  let offset = 6 + images.length * 16
+  const dir = Buffer.concat(
+    images.map(({ M, data }) => {
+      const e = Buffer.alloc(16)
+      e[0] = M >= 256 ? 0 : M // 256은 0으로 적는다(1바이트라 안 들어간다)
+      e[1] = M >= 256 ? 0 : M
+      e.writeUInt16LE(1, 4) // 평면
+      e.writeUInt16LE(32, 6) // 비트수
+      e.writeUInt32LE(data.length, 8)
+      e.writeUInt32LE(offset, 12)
+      offset += data.length
+      return e
+    })
+  )
+  return Buffer.concat([head, dir, ...images.map((i) => i.data)])
+}
+
 mkdirSync('assets', { recursive: true })
 mkdirSync('src-tauri/icons', { recursive: true })
 
-// 앱 아이콘 원본 — CI가 이걸로 `tauri icon`을 돌려 전 크기를 만든다.
+// 앱 아이콘 원본 — 스토어·설치 화면처럼 크게 보는 자리.
 write('assets/logo.png', N)
+
+// tauri.conf.json의 bundle.icon 이 가리키는 파일들. 크기마다 직접 그린다.
+write('src-tauri/icons/32x32.png', 32)
+write('src-tauri/icons/128x128.png', 128)
+write('src-tauri/icons/128x128@2x.png', 256)
 
 /* ★ 트레이는 여기서 같이 굽는다.
    전에는 손으로 만들어 커밋해뒀다. 그래서 로고를 바꿔도 **트레이만 옛 로고로
    남았다.** 자동으로 만들어지지 않는 자산은 반드시 언젠가 뒤처진다. */
 write('src-tauri/icons/tray.png', 32)
+
+// exe에 박히는 아이콘. 윈도우가 자리마다 알아서 골라 쓴다.
+const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
+const icoBuf = ico(ICO_SIZES)
+writeFileSync('src-tauri/icons/icon.ico', icoBuf)
+console.log(
+  `src-tauri/icons/icon.ico · ${ICO_SIZES.join('·')} · ${(icoBuf.length / 1024).toFixed(1)}KB`
+)
