@@ -218,8 +218,14 @@
           backdrop-filter:blur(16px) saturate(160%);
           border-bottom:1px solid var(--line)}
   .topbar .wrap{display:flex;align-items:center;gap:var(--s-5);height:60px}
+  /* 도형은 scripts/lib/brand-mark.mjs에서 뽑는다 — 앱 아이콘·파비콘과 같은 정의다. */
   .brand{font-family:var(--font-display);font-weight:var(--w-num);font-size:var(--t-title);
-         letter-spacing:-.035em;white-space:nowrap;color:var(--ink)}
+         letter-spacing:-.035em;white-space:nowrap;color:var(--ink);
+         display:inline-flex;align-items:center;gap:8px}
+  .brand .mk{width:24px;height:24px;border-radius:7px;flex:none;
+             background:linear-gradient(145deg,var(--accent),var(--accent-2));
+             display:grid;place-items:center;color:var(--accent-ink)}
+  .brand .mkv{width:16px;height:16px}
   .brand .dot{color:var(--accent)}
   .nav{display:flex;gap:2px;margin-left:auto;padding:3px;border-radius:var(--r-full);
        background:var(--surface-2);overflow-x:auto;scrollbar-width:none;max-width:100%}
@@ -1046,7 +1052,7 @@
      늘어놓으면 좁은 창에서 잘리기도 한다. -->
 <div class="shell">
   <aside class="side">
-    <a class="brand" href="/">테라클린<span class="dot">.</span></a>
+    <a class="brand" href="/"><span class="mk"><svg class="mkv" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22.72 12.16L12.8 12.16M12.8 12.16L12.8 51.84M12.8 51.84L22.72 51.84M41.28 12.16L51.2 12.16M51.2 12.16L51.2 51.84M51.2 51.84L41.28 51.84" stroke-width="6.4"/><path d="M25.28 24.32L38.72 24.32M32 24.32L32 41.28" stroke-width="7.68"/></svg></span>테라클린<span class="dot">.</span></a>
     <nav class="nav">
       <button data-go="home" class="on"><svg class="ic"><use href="#i-home"/></svg>홈</button>
       <button data-go="hidden"><svg class="ic"><use href="#i-hidden"/></svg>숨은 공간</button>

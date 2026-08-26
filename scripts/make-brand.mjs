@@ -33,9 +33,9 @@ const ACC3 = [91, 141, 239]
 const SAFE = [74, 222, 128]
 const AMB = [251, 191, 36]
 const LOCK = [251, 113, 133]
+import { markAt, TEAL_TOP, TEAL_BOT } from './lib/brand-mark.mjs'
+
 const WHITE = [255, 255, 255]
-const TEAL_TOP = [14, 138, 147]
-const TEAL_BOT = [8, 96, 103]
 
 /* ── SDF 헬퍼 ────────────────────────────────────────────────
    좌표계는 픽셀, y는 아래로 증가(이미지 좌표). */
@@ -210,15 +210,16 @@ const OGW = 1200
 const OGH = 630
 
 const TILE = { cx: 84 + 32, cy: 76 + 32, hw: 32, hh: 32, r: 14 }
-const CHECK = [
-  [TILE.cx - 14, TILE.cy + 1, TILE.cx - 4, TILE.cy + 11],
-  [TILE.cx - 4, TILE.cy + 11, TILE.cx + 15, TILE.cy - 11],
-]
+/* 마크는 scripts/lib/brand-mark.mjs 한 곳에만 적혀 있다 — 앱 아이콘·트레이도 같은 정의다. */
+const OG_MARK = markAt(TILE.hw * 2, { cx: TILE.cx, cy: TILE.cy })
 const WORDMARK = layoutText('TERACLEAN', 172, 120, 26, { tracking: 0.09 })
 const KICKER = layoutText('SAFE TO DELETE', 84, 252, 19, { tracking: 0.24 })
 const BIGNUM = layoutText('14.6 GB', 80, 348, 74, { tracking: 0.03 })
 const LOCKED = layoutText('LOCKED 41.8 GB · UNTOUCHED', 84, 428, 17, { tracking: 0.13 })
-const SPEC = layoutText('FREE · WINDOWS 10 / 11 · 30 DAY UNDO · 100% ON DEVICE', 84, 556, 17, { tracking: 0.11 })
+/* ★ '30 DAY UNDO'가 적혀 있었다. 앱은 이제 보관하지 않고 곧바로 지운다 —
+     없는 기능을 링크 미리보기가 광고하고 있었던 것이다. 화면이 동작과 다른 말을
+     하면, 맞는 말을 해도 안 믿게 된다. */
+const SPEC = layoutText('FREE · WINDOWS 10 / 11 · SHOWS WHY FIRST · 100% ON DEVICE', 84, 556, 17, { tracking: 0.11 })
 const RULE = { x0: 84, x1: 84 + 470, y: 396 }
 
 const CARD = { x0: 668, y0: 140, x1: 1116, y1: 492 }
@@ -331,10 +332,15 @@ function ogSample(x, y, dst) {
     const t = clamp01((y - (TILE.cy - TILE.hh)) / (TILE.hh * 2))
     const c = mix(TEAL_TOP, TEAL_BOT, t)
     over(dst, c[0], c[1], c[2], tileCov)
-    let dChk = Infinity
-    for (const [ax, ay, bx, by] of CHECK) dChk = Math.min(dChk, sdSegment(x, y, ax, ay, bx, by))
-    const chkCov = cov(dChk - 3.8)
-    if (chkCov > 0) over(dst, WHITE[0], WHITE[1], WHITE[2], chkCov)
+    // 대괄호와 T를 따로 잰다 — 굵기가 다르다. 한 번에 재면 T가 안 살아난다.
+    let dB = Infinity
+    for (const [ax, ay, bx, by] of OG_MARK.bracket) dB = Math.min(dB, sdSegment(x, y, ax, ay, bx, by))
+    const bCov = cov(dB - OG_MARK.bracketHalf)
+    if (bCov > 0) over(dst, WHITE[0], WHITE[1], WHITE[2], bCov)
+    let dT = Infinity
+    for (const [ax, ay, bx, by] of OG_MARK.tee) dT = Math.min(dT, sdSegment(x, y, ax, ay, bx, by))
+    const tCov = cov(dT - OG_MARK.teeHalf)
+    if (tCov > 0) over(dst, WHITE[0], WHITE[1], WHITE[2], tCov)
   }
 
   // 글자
@@ -345,7 +351,9 @@ function ogSample(x, y, dst) {
   strokeInto(dst, x, y, SPEC, 1.4, () => MUTED)
 }
 
-/* ── 파비콘: 로고 타일 + 체크 (SDF라 크기별로 직접 렌더) ────── */
+/* ── 파비콘: 로고 타일 + 브래킷 T (SDF라 크기별로 직접 렌더) ──
+   ★ 32px 탭에서는 대괄호가 뭉갠다. 그래서 markAt이 타일 크기를 보고 원도를
+     고른다 — 작으면 T만, 크면 [T]. 줄이는 게 아니라 다른 그림을 그리는 것이다. */
 function iconSample(x, y, N, dst) {
   dst[0] = dst[1] = dst[2] = dst[3] = 0
   const m = N * 0.055 // 여백을 거의 없애 작은 탭에서도 꽉 차 보이게
@@ -354,15 +362,15 @@ function iconSample(x, y, N, dst) {
   if (c > 0) {
     const col = mix(TEAL_TOP, TEAL_BOT, clamp01(y / N))
     over(dst, col[0], col[1], col[2], c)
-    const s = N / 32
-    const chk = [
-      [N / 2 - 7.2 * s, N / 2 + 0.4 * s, N / 2 - 2 * s, N / 2 + 5.6 * s],
-      [N / 2 - 2 * s, N / 2 + 5.6 * s, N / 2 + 7.6 * s, N / 2 - 5.8 * s],
-    ]
-    let dc = Infinity
-    for (const [ax, ay, bx, by] of chk) dc = Math.min(dc, sdSegment(x, y, ax, ay, bx, by))
-    const cc = cov(dc - 2.1 * s)
-    if (cc > 0) over(dst, WHITE[0], WHITE[1], WHITE[2], cc)
+    const M = markAt(hw * 2, { cx: N / 2, cy: N / 2 })
+    let dB = Infinity
+    for (const [ax, ay, bx, by] of M.bracket) dB = Math.min(dB, sdSegment(x, y, ax, ay, bx, by))
+    const bCov = cov(dB - M.bracketHalf)
+    if (bCov > 0) over(dst, WHITE[0], WHITE[1], WHITE[2], bCov)
+    let dT = Infinity
+    for (const [ax, ay, bx, by] of M.tee) dT = Math.min(dT, sdSegment(x, y, ax, ay, bx, by))
+    const tCov = cov(dT - M.teeHalf)
+    if (tCov > 0) over(dst, WHITE[0], WHITE[1], WHITE[2], tCov)
   }
 }
 

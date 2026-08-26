@@ -126,10 +126,12 @@
   .bar{display:flex;align-items:center;height:64px;gap:var(--s-2)}
   .logo{display:flex;align-items:center;gap:10px;font-family:var(--font-display);
         font-weight:850;font-size:var(--t-lg);letter-spacing:-.035em;flex:none}
+  /* ★ 브래킷 T — 도형은 scripts/lib/brand-mark.mjs에서 뽑아 붙인다(손으로 그리지 않는다).
+       ✓ 글자를 쓰던 자리다. 글자는 브랜드가 아니고, 앱 아이콘·파비콘과도 따로 놀았다. */
   .logo .mk{width:26px;height:26px;border-radius:8px;
             background:linear-gradient(145deg,var(--accent),var(--accent-2));
-            display:grid;place-items:center;color:var(--accent-ink);
-            font-size:14px;font-weight:900}
+            display:grid;place-items:center;color:var(--accent-ink);flex:none}
+  .logo .mkv{width:17px;height:17px}
   .bar nav{display:none;gap:var(--s-5);margin-left:var(--s-6);
            font-size:var(--t-md);color:var(--muted);font-weight:600}
   .bar nav a{transition:color var(--fast)}
@@ -354,7 +356,8 @@
   /* 창틀 (Windows 11) */
   .s-chrome{display:flex;align-items:center;gap:.6em;height:2.6em;padding:0 .9em;background:#E9EEF0;border-bottom:1px solid var(--s-line)}
   .s-chrome .ic{width:1.3em;height:1.3em;border-radius:.35em;background:linear-gradient(145deg,#0B6E72,#16A6AC);
-    color:#fff;display:grid;place-items:center;font-size:.8em;font-weight:900;flex:none}
+    color:#fff;display:grid;place-items:center;flex:none}
+  .s-chrome .ic .mkv{width:.85em;height:.85em}
   .s-chrome .nm{font-size:.85em;font-weight:650;color:var(--s-ink-2)}
   .s-chrome .wb{margin-left:auto;display:flex;gap:1.15em;color:#78878F;font-size:.78em;letter-spacing:0}
 
@@ -484,7 +487,7 @@
 
 <header id="hdr">
   <div class="wrap bar">
-    <a class="logo" href="/"><span class="mk" aria-hidden="true">✓</span>테라클린</a>
+    <a class="logo" href="/"><span class="mk"><svg class="mkv" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22.72 12.16L12.8 12.16M12.8 12.16L12.8 51.84M12.8 51.84L22.72 51.84M41.28 12.16L51.2 12.16M51.2 12.16L51.2 51.84M51.2 51.84L41.28 51.84" stroke-width="6.4"/><path d="M25.28 24.32L38.72 24.32M32 24.32L32 41.28" stroke-width="7.68"/></svg></span>테라클린</a>
     <nav aria-label="주요 메뉴">
       <a href="#why">왜 다른가</a>
       <a href="#how">작동 방식</a>
@@ -521,7 +524,7 @@
     <div class="shotwrap reveal">
       <div class="shot" role="img" aria-label="테라클린 앱 홈 화면: 이 폴더에서 정리 가능 14.6GB(지금 즉시 2.1GB, 물어보면 12.5GB). 확신도 3-존 막대 — 존 A 안전 34.9GB, 존 B 애매 12.5GB, 존 C 잠금 41.8GB.">
         <div class="s-chrome" aria-hidden="true">
-          <span class="ic">✓</span><span class="nm">테라클린</span>
+          <span class="ic"><svg class="mkv" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22.72 12.16L12.8 12.16M12.8 12.16L12.8 51.84M12.8 51.84L22.72 51.84M41.28 12.16L51.2 12.16M51.2 12.16L51.2 51.84M51.2 51.84L41.28 51.84" stroke-width="6.4"/><path d="M25.28 24.32L38.72 24.32M32 24.32L32 41.28" stroke-width="7.68"/></svg></span><span class="nm">테라클린</span>
           <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
         </div>
         <div aria-hidden="true">
@@ -613,7 +616,7 @@
     <div class="shotwrap narrow reveal">
       <div class="shot" role="img" aria-label="테라클린 앱 숨은 공간 탭: 최대절전 파일 hiberfil.sys 12.7GB를 찾아, 이게 뭔지·왜 큰지·뭐가 쓰는지·지우면 뭐가 달라지는지·되돌릴 수 있는지·안 지우면 어떤지를 설명한다.">
         <div class="s-chrome" aria-hidden="true">
-          <span class="ic">✓</span><span class="nm">테라클린</span>
+          <span class="ic"><svg class="mkv" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22.72 12.16L12.8 12.16M12.8 12.16L12.8 51.84M12.8 51.84L22.72 51.84M41.28 12.16L51.2 12.16M51.2 12.16L51.2 51.84M51.2 51.84L41.28 51.84" stroke-width="6.4"/><path d="M25.28 24.32L38.72 24.32M32 24.32L32 41.28" stroke-width="7.68"/></svg></span><span class="nm">테라클린</span>
           <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
         </div>
         <div aria-hidden="true">
@@ -695,7 +698,7 @@
     <div class="shotwrap narrow reveal">
       <div class="shot" role="img" aria-label="테라클린 앱 정리 계획 화면: 지금 정리 가능 2.1GB, 물어보면 정리 가능 12.5GB, 지켜드린 것 41.8GB. 자동 정리 대상은 전부 규칙이 확증한 캐시라는 안내와, 지켜드린 항목 목록.">
         <div class="s-chrome" aria-hidden="true">
-          <span class="ic">✓</span><span class="nm">테라클린</span>
+          <span class="ic"><svg class="mkv" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22.72 12.16L12.8 12.16M12.8 12.16L12.8 51.84M12.8 51.84L22.72 51.84M41.28 12.16L51.2 12.16M51.2 12.16L51.2 51.84M51.2 51.84L41.28 51.84" stroke-width="6.4"/><path d="M25.28 24.32L38.72 24.32M32 24.32L32 41.28" stroke-width="7.68"/></svg></span><span class="nm">테라클린</span>
           <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
         </div>
         <div class="s-top" aria-hidden="true">
@@ -753,7 +756,7 @@
     <div class="shotwrap narrow reveal">
       <div class="shot" role="img" aria-label="테라클린 앱 질문 화면: 질문 1은 설치 파일 32개 8.4GB를 지울지 묻고 '네, 지워도 돼요'가 선택된 상태, 질문 2는 오래 조용한 개발 폴더 6곳 4.1GB를 아직 쓰는지 묻는다.">
         <div class="s-chrome" aria-hidden="true">
-          <span class="ic">✓</span><span class="nm">테라클린</span>
+          <span class="ic"><svg class="mkv" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22.72 12.16L12.8 12.16M12.8 12.16L12.8 51.84M12.8 51.84L22.72 51.84M41.28 12.16L51.2 12.16M51.2 12.16L51.2 51.84M51.2 51.84L41.28 51.84" stroke-width="6.4"/><path d="M25.28 24.32L38.72 24.32M32 24.32L32 41.28" stroke-width="7.68"/></svg></span><span class="nm">테라클린</span>
           <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
         </div>
         <div class="s-top" aria-hidden="true">
@@ -903,7 +906,7 @@
       <div class="reveal">
         <div class="shot" role="img" aria-label="테라클린 앱 안 쓴 프로그램 탭: 제거 후보 3개 6.2GB 목록. 각 항목에 몇 개월째 실행하지 않았는지 근거가 적혀 있고, 제안하지 않은 125개의 이유도 펼쳐 볼 수 있다.">
           <div class="s-chrome" aria-hidden="true">
-            <span class="ic">✓</span><span class="nm">테라클린</span>
+            <span class="ic"><svg class="mkv" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22.72 12.16L12.8 12.16M12.8 12.16L12.8 51.84M12.8 51.84L22.72 51.84M41.28 12.16L51.2 12.16M51.2 12.16L51.2 51.84M51.2 51.84L41.28 51.84" stroke-width="6.4"/><path d="M25.28 24.32L38.72 24.32M32 24.32L32 41.28" stroke-width="7.68"/></svg></span><span class="nm">테라클린</span>
             <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
           </div>
           <div aria-hidden="true">
@@ -951,7 +954,7 @@
       <div class="reveal">
         <div class="shot" role="img" aria-label="테라클린 앱 드라이브 옮기기 탭: 18개 24.6GB를 D 드라이브로 옮기는 계획. 지우지 않고 옮기며, 위험해서 제외한 항목 212개가 함께 표시된다.">
           <div class="s-chrome" aria-hidden="true">
-            <span class="ic">✓</span><span class="nm">테라클린</span>
+            <span class="ic"><svg class="mkv" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22.72 12.16L12.8 12.16M12.8 12.16L12.8 51.84M12.8 51.84L22.72 51.84M41.28 12.16L51.2 12.16M51.2 12.16L51.2 51.84M51.2 51.84L41.28 51.84" stroke-width="6.4"/><path d="M25.28 24.32L38.72 24.32M32 24.32L32 41.28" stroke-width="7.68"/></svg></span><span class="nm">테라클린</span>
             <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
           </div>
           <div aria-hidden="true">
@@ -1066,7 +1069,7 @@
       <!-- 앱 화면 — 정리를 끝낸 직후 상태 -->
       <div class="shot sm" style="max-width:560px;margin:32px auto 0" role="img" aria-label="테라클린 앱 정리 완료 화면: 1,284개를 격리했고, 지금 즉시 확보는 0, 30일 뒤 2.1GB가 최종 확보되며 그 사이 언제든 되돌릴 수 있다는 안내.">
         <div class="s-chrome" aria-hidden="true">
-          <span class="ic">✓</span><span class="nm">테라클린</span>
+          <span class="ic"><svg class="mkv" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22.72 12.16L12.8 12.16M12.8 12.16L12.8 51.84M12.8 51.84L22.72 51.84M41.28 12.16L51.2 12.16M51.2 12.16L51.2 51.84M51.2 51.84L41.28 51.84" stroke-width="6.4"/><path d="M25.28 24.32L38.72 24.32M32 24.32L32 41.28" stroke-width="7.68"/></svg></span><span class="nm">테라클린</span>
           <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
         </div>
         <div class="s-main" aria-hidden="true">
@@ -1103,7 +1106,7 @@
 
 <footer>
   <div class="wrap foot">
-    <a class="logo" href="/"><span class="mk" aria-hidden="true">✓</span>테라클린</a>
+    <a class="logo" href="/"><span class="mk"><svg class="mkv" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22.72 12.16L12.8 12.16M12.8 12.16L12.8 51.84M12.8 51.84L22.72 51.84M41.28 12.16L51.2 12.16M51.2 12.16L51.2 51.84M51.2 51.84L41.28 51.84" stroke-width="6.4"/><path d="M25.28 24.32L38.72 24.32M32 24.32L32 41.28" stroke-width="7.68"/></svg></span>테라클린</a>
     <div class="sp"></div>
     <nav aria-label="바닥글 메뉴" style="display:flex;gap:20px;flex-wrap:wrap">
       <a href="#roadmap">로드맵</a>
