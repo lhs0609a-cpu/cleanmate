@@ -18,7 +18,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "app:dev": "tauri dev",
-    "app:build": "tauri build"
+    "app:build": "tauri build",
+    "release:prep": "node scripts/publish-release.mjs",
+    "stats:downloads": "node scripts/download-counts.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

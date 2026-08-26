@@ -541,6 +541,14 @@
      막대가 두 상태다. 진행률을 아직 모를 때(브라우저 데모·구버전 엔진)는
      '돌고 있다'만 말하는 무한 막대, 알게 되면 실제 폭을 가진 막대.
      지어낸 진행률을 그리지 않으면서도 아는 건 다 보여준다. */
+  /* 자주 묻는 것 — 화면 아래 어디서나 닿는다(탭을 하나 더 늘리지 않는다) */
+  .help{max-width:720px;margin:var(--s-7) auto 0;padding:0 var(--s-4)}
+  .help h2{font-size:var(--t-title);margin:0 0 var(--s-3)}
+  .help .more{margin-bottom:var(--s-2)}
+  .help-ask{margin-top:var(--s-4);font-size:var(--t-small);color:var(--muted);line-height:1.7}
+  .help-ask a{color:var(--accent)}
+  .help-note{display:block;color:var(--faint);font-size:var(--t-caption)}
+
   .prog{margin-top:var(--s-4)}
   .prog-bar{height:4px;border-radius:var(--r-full);background:var(--surface-3);overflow:hidden}
   .prog-bar span{display:block;height:100%;width:38%;border-radius:var(--r-full);
@@ -550,6 +558,12 @@
   /* 진행률을 알게 된 순간 무한 막대를 실제 막대로 바꾼다.
      폭은 app.ts가 넣는다. transition을 걸어야 1초마다 툭툭 끊기지 않는다. */
   .prog-known .prog-bar span{animation:none;transition:width .9s linear}
+  .prog-stop{display:block;margin:var(--s-3) auto 0;padding:6px 14px;
+             font:inherit;font-size:var(--t-small);color:var(--muted);
+             background:transparent;border:1px solid var(--line-2);
+             border-radius:var(--r-full);cursor:pointer}
+  .prog-stop:hover{color:var(--ink);border-color:var(--muted)}
+  .prog-stop:disabled{opacity:.5;cursor:default}
 
   /* ══ 토스트 ═══════════════════════════════════════════════════
      alert()는 창을 막고 OS 대화상자를 띄운다 — 앱이 아니라 스크립트처럼 보인다. */
@@ -1104,7 +1118,14 @@
       <!-- 스캔 중에만 보이는 진행 표시. 엔진이 진행 상황을 흘려보내므로
            진행률·남은 시간을 실제로 보여준다(app.ts의 startTicker).
            진행 상황이 안 오면 경과 시간 + 무한 막대로 돌아간다. -->
-      <div class="prog" id="prog" hidden><div class="prog-bar"><span></span></div></div>
+      <div class="prog" id="prog" hidden>
+        <div class="prog-bar"><span></span></div>
+        <!-- ★ 스캔은 이 PC 기준 몇 분이 걸린다. 멈출 방법이 없으면 사용자가
+             할 수 있는 일은 작업관리자로 죽이는 것뿐이고, 그렇게 죽인 사람은
+             다시 안 연다. "취소"가 아니라 "여기까지만"인 이유: 누르면 여태
+             훑은 결과가 그대로 나온다 — 없던 일이 되는 게 아니다. -->
+        <button class="prog-stop" id="prog-stop" hidden>여기까지만 보기</button>
+      </div>
       <div id="status"></div>
 
       <div class="privacy">
@@ -1293,6 +1314,55 @@
   </section>
 
 </main>
+
+<!-- ★ 미리 답해두는 세 가지 · 문의 창구
+     여태 문의 통로가 GitHub 이슈뿐이었다. 계정이 필요하고, 영어 화면이고,
+     공개 글이다. 일반 사용자는 그 앞에서 그냥 앱을 지운다 — 그리고 그 불만은
+     우리에게 오지 않고 커뮤니티 글로 간다.
+
+     그런데 실제로 올 질문의 대부분은 셋이다(설치 경고 · 용량 · 되돌리기).
+     미리 답해두면 창구 부담이 아니라 신뢰 자산이 된다. 그래서 문의 버튼보다
+     이 셋을 먼저 놓는다. -->
+<section class="help">
+  <h2>자주 묻는 것</h2>
+
+  <details class="more">
+    <summary>설치할 때 "Windows의 PC 보호" 경고가 떴어요</summary>
+    <div class="more-b">
+      <p>아직 <b>코드 서명 인증서를 못 붙여서</b> 뜨는 경고예요. 바이러스가 발견됐다는
+        뜻이 아니라, 윈도우가 <b>처음 보는 프로그램</b>이라는 뜻입니다.
+        <b>추가 정보 → 실행</b>으로 넘어갈 수 있어요.</p>
+      <p>서명은 준비 중입니다. 그때까지는 릴리스 노트의 <b>SHA-256</b>으로
+        받은 파일이 우리가 만든 그 파일인지 직접 확인하실 수 있어요.</p>
+    </div>
+  </details>
+
+  <details class="more">
+    <summary>정리했는데 남은 용량이 그대로예요</summary>
+    <div class="more-b">
+      <p>지운 만큼은 <b>그 자리에서 바로</b> 빕니다 — 보관함에 쌓아두지 않아요.
+        그런데 탐색기의 남은 용량이 그만큼 안 늘었다면 대개 둘 중 하나예요.</p>
+      <p><b>하나</b>, 우리가 안 건드리는 자리가 차지하고 있는 경우.
+        휴지통·최대 절전·시스템 복원 같은 것들은 파일 목록에 안 보여요 —
+        <b>숨은 공간</b> 탭에서 따로 확인하고 윈도우 정식 도구로 정리할 수 있어요.</p>
+      <p><b>둘</b>, 정리한 드라이브와 보고 있는 드라이브가 다른 경우예요.</p>
+    </div>
+  </details>
+
+  <details class="more">
+    <summary>지운 걸 되돌리고 싶어요</summary>
+    <div class="more-b">
+      <p><b>지운 것은 되돌릴 수 없어요.</b> 숨기지 않고 먼저 말씀드립니다 —
+        그래서 지우기 전에 목록과 이유를 항상 보여드리고, 애매한 건 물어봅니다.</p>
+      <p>되돌릴 수 있는 것은 <b>지우지 않은 것</b>들이에요. 다른 드라이브로 옮긴 것,
+        하나로 합친 것은 <b>되돌리기</b> 탭에서 원래 자리로 돌릴 수 있어요.
+        시작프로그램을 끈 것도 그 탭에서 즉시 되돌아갑니다.</p>
+    </div>
+  </details>
+
+  <p class="help-ask">여기에 없는 문제라면 <a id="support-link" href="#">문의해 주세요</a>.
+    <span class="help-note">보내는 건 적어주신 내용뿐이에요 — 파일 목록이나 경로는 붙지 않습니다.</span></p>
+</section>
 
 <footer>
   테라클린 (TeraClean) — 지워도 되는 것만 지웁니다 · 파일은 기기를 떠나지 않습니다

@@ -12,17 +12,28 @@
  * 안 떠 있으면 그건 사고다. 전부 존 B(물어봄) 아니면 존 C(잠금)로만 간다.
  * 우리가 자동으로 끄는 항목은 없다.
  *
+ * ── 모든 사용자용 항목도 여기서 끈다 (v0.22.0) ──────────────
+ * 예전엔 HKLM(모든 사용자)과 공용 시작 폴더 항목에 "관리자 권한이 필요해요"라는
+ * 딱지만 붙여놨다. **권한이 필요하면 권한을 물어보면 된다.** 딱지는 안내가 아니라
+ * 떠넘기기였다 — 사용자는 그 다음에 뭘 해야 하는지 모른 채 작업관리자를 찾아가야 했다.
+ * (restore-measure에서 "저희가 못 쟀습니다"를 지운 것과 같은 자리다.)
+ *
+ * 그래서 그 항목들도 끄고 켤 수 있다. 다만 **그 순간에만** 승격한다 —
+ * 앱 자체는 여전히 최저 권한으로 돈다(installer PrivilegesRequired=lowest,
+ * docs/배포-아키텍처.md §3). UAC 창에서 취소하면 아무것도 바뀌지 않는다.
+ *
  * ── 무엇을 못 하는지 ─────────────────────────────────────────
- * 1) HKLM(모든 사용자) 항목은 관리자 권한이 있어야 끌 수 있다. 이 앱은 최저
- *    권한으로 설치되므로(installer PrivilegesRequired=lowest) 보여만 준다.
- * 2) 로그온 예약작업(이 PC에 27개)도 마찬가지다 — 대부분 시스템 소유라
- *    권한이 필요하다. 개수만 알려주고 건드리지 않는다.
- * 3) 작업관리자의 "시작 영향(높음/중간/낮음)"은 윈도우 내부 데이터라 못 읽는다.
+ * 1) 로그온 예약작업(이 PC에 27개)은 여전히 개수만 알려준다 — 대부분 시스템
+ *    소유이고, 끄는 것이 StartupApproved처럼 값 하나로 되돌려지지 않는다.
+ * 2) 작업관리자의 "시작 영향(높음/중간/낮음)"은 윈도우 내부 데이터라 못 읽는다.
  *    그래서 부팅 기여 시간을 숫자로 지어내지 않는다. 모르면 모른다고 쓴다.
  */
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { readFile, writeFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { Zone } from '../types.ts'
 
 const exec = promisify(execFile)
@@ -64,8 +75,10 @@ export interface StartupEntry {
   command: string
   source: StartupSource
   enabled: boolean
-  /** 우리 권한(관리자 아님)으로 켜고 끌 수 있나 */
+  /** 켜고 끌 수 있나. 상태를 적을 자리를 아는 항목이면 참이다. */
   canToggle: boolean
+  /** 끌 때 관리자 확인(UAC)이 필요한가 — 모든 사용자용 항목이 그렇다. */
+  needsAdmin: boolean
   /** 실행 파일에서 읽어낸 신원. 못 읽었으면 없다(없는 것과 안 본 것은 다르다). */
   identity?: StartupIdentity
 }
@@ -567,6 +580,11 @@ function Read-Approved($root, $sub) {
 $approvedRun     = Read-Approved 'HKCU' '${APPROVED_RUN}'
 $approvedRunHKLM = Read-Approved 'HKLM' '${APPROVED_RUN}'
 $approvedFolder  = Read-Approved 'HKCU' '${APPROVED_FOLDER}'
+# ★ 공용(모든 사용자) 시작 폴더의 사용/해제는 HKCU가 아니라 HKLM에 적힌다.
+#   여태 여기까지 HKCU 것을 보고 있었다. 그래서 작업관리자에서 꺼둔 공용 항목이
+#   우리 화면에는 '켜짐'으로 떴다. 끄기를 열면서 같이 바로잡는다 —
+#   쓰는 자리와 읽는 자리가 다르면 껐다는 말이 거짓말이 된다.
+$approvedFolderHKLM = Read-Approved 'HKLM' '${APPROVED_FOLDER}'
 
 $entries = New-Object System.Collections.ArrayList
 
@@ -590,8 +608,8 @@ Add-Run 'HKLM' 'hklm-run' $approvedRunHKLM
 
 $shell = New-Object -ComObject WScript.Shell
 $folders = @(
-  @{ path = [Environment]::GetFolderPath('Startup');       source = 'startup-folder' },
-  @{ path = [Environment]::GetFolderPath('CommonStartup'); source = 'common-startup-folder' }
+  @{ path = [Environment]::GetFolderPath('Startup');       source = 'startup-folder';        approved = $approvedFolder },
+  @{ path = [Environment]::GetFolderPath('CommonStartup'); source = 'common-startup-folder'; approved = $approvedFolderHKLM }
 )
 foreach ($f in $folders) {
   foreach ($item in (Get-ChildItem $f.path -File)) {
@@ -605,7 +623,7 @@ foreach ($f in $folders) {
       if ($t) { $target = $t }
     }
     $on = $true
-    if ($approvedFolder.ContainsKey($item.Name)) { $on = $approvedFolder[$item.Name] }
+    if ($f.approved.ContainsKey($item.Name)) { $on = $f.approved[$item.Name] }
     [void]$entries.Add([PSCustomObject]@{
       name = $item.Name; command = "$target"; source = $f.source; enabled = $on
       identity = (Get-Identity (Get-ExePath $target))
@@ -728,8 +746,10 @@ export async function probeStartup(): Promise<StartupReport> {
       command: e.command ?? '',
       source: e.source,
       enabled: !!e.enabled,
-      // HKLM과 공용 시작 폴더는 모든 사용자용이라 관리자 권한이 필요하다
-      canToggle: e.source === 'hkcu-run' || e.source === 'startup-folder',
+      // 상태를 적을 자리를 아는 항목은 전부 끌 수 있다. HKLM·공용 시작 폴더는
+      // 그 순간에만 승격해서 적는다(파일 머리말) — 그래서 여기서 빼지 않는다.
+      canToggle: approvalTarget(e.source) !== null,
+      needsAdmin: needsAdmin(e.source),
       // 실행 파일이 스스로 밝힌 신원. 하나도 못 읽었으면 아예 없다.
       identity: e.identity
         ? {
@@ -776,6 +796,116 @@ export function approvalBytes(enabled: boolean, now = Date.now()): number[] {
 export interface ToggleResult {
   id: string
   enabled: boolean
+  /** 관리자 확인(UAC)을 거쳐서 바꿨나. 화면이 "권한을 받아 껐어요"라고 말할 근거다. */
+  elevated: boolean
+}
+
+/**
+ * 항목이 사는 곳 → **상태를 적을 자리.**
+ *
+ * 넷 다 자리가 있다. 모든 사용자용(HKLM) 두 개는 쓰는 데 관리자 권한이 필요할 뿐이다.
+ * 자리를 모르면 null — 모르는 곳에는 아무것도 안 쓴다.
+ */
+export function approvalTarget(
+  source: StartupSource
+): { hive: 'HKCU' | 'HKLM'; sub: string } | null {
+  switch (source) {
+    case 'hkcu-run':
+      return { hive: 'HKCU', sub: APPROVED_RUN }
+    case 'startup-folder':
+      return { hive: 'HKCU', sub: APPROVED_FOLDER }
+    case 'hklm-run':
+      return { hive: 'HKLM', sub: APPROVED_RUN }
+    case 'common-startup-folder':
+      return { hive: 'HKLM', sub: APPROVED_FOLDER }
+    default:
+      return null
+  }
+}
+
+/** 끄는 데 관리자 확인이 필요한 항목인가. 화면이 미리 말해주려고 쓴다. */
+export function needsAdmin(source: StartupSource): boolean {
+  return approvalTarget(source)?.hive === 'HKLM'
+}
+
+/**
+ * 모든 사용자용 항목의 상태를 **관리자 권한으로** 적는다.
+ *
+ * ★ 이름을 스크립트에 이어붙이지 않는다. 시작프로그램 이름에는 따옴표도 공백도
+ *   한글도 들어갈 수 있고, 그걸 스크립트 본문에 붙이는 순간 남의 이름으로 아무 명령이나
+ *   실행시킬 수 있는 통로가 된다. HKCU 쪽은 환경변수로 넘기지만(아래) 여기서는 그럴 수 없다 —
+ *   승격된 프로세스는 **별도 프로세스**라 우리 환경변수가 그대로 간다고 믿을 수 없다.
+ *   그래서 값은 임시 파일(JSON)로 넘기고, 스크립트에 들어가는 유일한 문자열은
+ *   **우리가 만든 임시 경로**뿐이다. (같은 이유·같은 방식 — engine-cli.ts의 measureRestoreElevated)
+ *
+ * ★ 취소와 실패를 갈라서 말한다. 둘 다 "안 됐어요"로 뭉뚱그리면, 승격된 쪽에서 터진 걸
+ *   사용자는 자기가 취소한 줄 안다(v0.19.x에서 같은 자리를 한 번 고쳤다).
+ *   승격된 쪽 오류는 우리 파이프로 안 오니까 파일에 적게 하고, 종료 코드로 구분한다.
+ */
+const ELEVATED_FAILED = 7
+
+async function setApprovedElevated(sub: string, name: string, bytes: number[]): Promise<void> {
+  const stamp = `${process.pid}-${Date.now()}`
+  const inPath = join(tmpdir(), `teraclean-startup-${stamp}.json`)
+  const logPath = join(tmpdir(), `teraclean-startup-${stamp}.err`)
+  // 파워셸 홑따옴표 문자열 안에서 따옴표를 닫는 유일한 문자다. 우리가 만든 경로라
+  // 낄 일이 없지만, 스크립트에 값이 들어가는 자리는 여기뿐이라 막아둔다.
+  const lit = (p: string) => p.replace(/'/g, "''")
+
+  const cleanup = async () => {
+    for (const f of [inPath, logPath]) {
+      try { await rm(f, { force: true }) } catch { /* 임시 파일 청소 실패는 삼킨다 */ }
+    }
+  }
+
+  await writeFile(inPath, JSON.stringify({ sub, name, bytes }), 'utf8')
+
+  const child = [
+    "$ErrorActionPreference = 'Stop'",
+    'try {',
+    `  $d = Get-Content -LiteralPath '${lit(inPath)}' -Raw -Encoding UTF8 | ConvertFrom-Json`,
+    // 파워셸 홑따옴표 안에서는 역슬래시가 있는 그대로다 — JS 문자열이라 여기선 두 번 쓴다.
+    "  $key = 'HKLM:\\' + $d.sub",
+    '  if (-not (Test-Path -LiteralPath $key)) { New-Item -Path $key -Force | Out-Null }',
+    '  Set-ItemProperty -LiteralPath $key -Name $d.name -Value ([byte[]]$d.bytes) -Type Binary',
+    '} catch {',
+    `  [System.IO.File]::WriteAllText('${lit(logPath)}', $_.Exception.Message)`,
+    `  exit ${ELEVATED_FAILED}`,
+    '}',
+  ].join('\n')
+  /* ★ -EncodedCommand로 넘긴다. 스크립트를 -Command 인자로 그냥 넘기면 따옴표가
+     파워셸을 두 번 지나며 망가진다(바깥 파워셸 → Start-Process → 안쪽 파워셸).
+     -File은 실행 정책에 막히는 PC가 있어서 안 쓴다. */
+  const encoded = Buffer.from(child, 'utf16le').toString('base64')
+
+  try {
+    await exec(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        "$ErrorActionPreference='Stop'; $p = Start-Process powershell -ArgumentList " +
+          "'-NoProfile','-NonInteractive','-EncodedCommand','" + encoded +
+          "' -Verb RunAs -Wait -PassThru -WindowStyle Hidden; if ($p.ExitCode -ne 0) { exit $p.ExitCode }",
+      ],
+      { windowsHide: true }
+    )
+  } catch (err) {
+    let reason = ''
+    try { reason = (await readFile(logPath, 'utf8')).trim() } catch { /* 취소면 파일이 없다 */ }
+    await cleanup()
+    if ((err as { code?: number }).code === ELEVATED_FAILED) {
+      // 권한은 받았다. 못 바꾼 건 다른 이유다 — 그 이유를 그대로 전한다.
+      throw new Error(
+        `관리자 확인은 받았는데 바꾸지 못했어요${reason ? `: ${reason}` : '.'} 아무것도 바뀌지 않았습니다.`
+      )
+    }
+    throw new Error(
+      '관리자 확인이 취소됐어요. 아무것도 바뀌지 않았습니다 — 다시 눌러 "예"를 선택해 주세요.'
+    )
+  }
+  await cleanup()
 }
 
 /**
@@ -790,12 +920,20 @@ export async function setStartupEnabled(id: string, enabled: boolean): Promise<T
   const source = id.slice(0, sep)
   const name = id.slice(sep + 1)
 
-  const sub =
-    source === 'hkcu-run' ? APPROVED_RUN : source === 'startup-folder' ? APPROVED_FOLDER : null
-  if (!sub) {
-    throw new Error('이 항목은 모든 사용자용이라 관리자 권한이 필요합니다. 작업관리자에서 꺼주세요.')
+  const target = approvalTarget(source as StartupSource)
+  if (!target) {
+    // 자리를 모르는 항목이다. 아무 데나 써보지 않는다.
+    throw new Error('이 항목의 상태를 어디에 적어야 할지 몰라서 건드리지 않았어요.')
   }
 
+  /* 모든 사용자용 항목 — 그 순간에만 승격한다. UAC 창은 윈도우가 띄우고,
+     거기서 취소하면 아무것도 바뀌지 않는다. */
+  if (target.hive === 'HKLM') {
+    await setApprovedElevated(target.sub, name, approvalBytes(enabled))
+    return { id, enabled, elevated: true }
+  }
+
+  const sub = target.sub
   const script = `
     $ErrorActionPreference = 'Stop'
     $key = 'HKCU:\\' + $env:TC_SUB
@@ -813,5 +951,5 @@ export async function setStartupEnabled(id: string, enabled: boolean): Promise<T
     },
   })
 
-  return { id, enabled }
+  return { id, enabled, elevated: false }
 }

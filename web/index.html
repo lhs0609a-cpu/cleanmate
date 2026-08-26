@@ -304,6 +304,16 @@
         font-size:var(--t-md);color:var(--muted)}
   .foot .sp{margin-left:auto}
   .foot a:hover{color:var(--accent)}
+  /* 설치 직전 경고 예고 — 놀라게 두지 않는다 */
+  .warn-ahead{max-width:560px;margin:28px auto 0;text-align:left;
+              background:var(--surface);border:1px solid var(--line-2);
+              border-radius:var(--r-md);padding:20px 22px}
+  .warn-ahead h3{font-size:var(--t-md);margin:0 0 8px}
+  .warn-ahead p{font-size:var(--t-sm);line-height:1.7;color:var(--ink-2);margin:0 0 8px}
+  .warn-ahead p:last-child{margin-bottom:0}
+  .warn-ahead .how{color:var(--ink)}
+  .warn-ahead .why{color:var(--muted)}
+
   .fineprint{margin-top:var(--s-4);font-size:var(--t-xs);color:var(--faint);line-height:1.8}
 
   /* ── 앱 화면 목업(shot) ──────────────────────────────────────
@@ -1069,10 +1079,23 @@
         </div>
       </div>
 
-      <a class="btn btn-pri btn-lg" id="final-dl" href="https://github.com/lhs0609a-cpu/teraclean-releases/releases">Windows용 무료 다운로드</a>
+      <a class="btn btn-pri btn-lg" id="final-dl" href="https://github.com/lhs0609a-cpu/teraclean-releases/releases/latest/download/TeraClean-Setup.exe">Windows용 무료 다운로드</a>
       <div class="meta" id="final-ver" aria-live="polite">최신 버전 확인 중…</div>
     </div>
-    <p class="center fineprint">Windows 10/11 · 설치 시 "알 수 없는 게시자" 경고가 뜨면 <b style="color:var(--ink-2)">추가 정보 → 실행</b>을 눌러주세요 (코드 서명 준비 중).</p>
+      <!-- ★ 경고를 각주로 숨기지 않는다.
+           받은 사람의 절반 가까이가 다음 화면에서 멈춘다. 그런데 그 경고는
+           우리가 나쁜 짓을 해서가 아니라 아직 서명을 못 붙여서 뜨는 것이고,
+           그 사실을 **먼저** 말하는 편이 신뢰를 파는 제품답다.
+           숨기면 사용자는 검색창으로 가고, 거기서 우리 얘기를 듣게 된다. -->
+      <div class="warn-ahead">
+        <h3>받으면 이 화면이 한 번 뜹니다</h3>
+        <p><b>"Windows의 PC 보호"</b> — 아직 코드 서명 인증서를 못 붙여서 뜨는 경고예요.
+          바이러스가 발견됐다는 뜻이 아니라, <b>윈도우가 처음 보는 프로그램</b>이라는 뜻입니다.</p>
+        <p class="how"><b>추가 정보</b>를 누르면 <b>실행</b> 버튼이 나옵니다.</p>
+        <p class="why">서명은 준비 중이고, 진행 상황은 여기에 그대로 적어둘게요.
+          파일이 바뀌지 않았는지 직접 확인하고 싶으시면 릴리스 노트의 SHA-256을 대조하세요.</p>
+      </div>
+    <p class="center fineprint">Windows 10/11 · 무료 · 파일은 기기를 떠나지 않습니다</p>
   </div>
 </section>
 

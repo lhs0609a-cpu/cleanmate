@@ -25,7 +25,21 @@ export {} // 모듈로 취급되게 (import 없어도)
  * 그래서 설치파일만 두는 공개 저장소를 따로 뒀다.
  */
 const REPO = 'lhs0609a-cpu/teraclean-releases'
-const RELEASES_PAGE = `https://github.com/${REPO}/releases`
+/**
+ * ★ API가 안 될 때의 폴백 — 릴리스 '페이지'가 아니라 **설치파일 자체**로 보낸다.
+ *
+ * 왜 바꿨나: 폴백이 릴리스 목록 페이지였다. 개발자에겐 그게 릴리스 페이지지만
+ * 일반 사용자에겐 영어 변경 이력과 파일 여러 개가 늘어선 화면이다 —
+ * "어느 걸 받아야 되죠?"가 여기서 나온다. 그리고 폴백은 드물지 않다:
+ * JS를 끈 사람, 사내망에서 api.github.com이 막힌 사람, 회사 공용 IP라
+ * 시간당 호출 한도(60회)를 이미 쓴 사람이 전부 이 길로 온다.
+ *
+ * `releases/latest/download/<이름>`은 GitHub이 공식 지원하는 고정 주소다 —
+ * 항상 최신 릴리스의 그 이름 자산으로 302한다. 그래서 릴리스마다 **같은 이름**의
+ * 사본을 반드시 함께 올린다(scripts/publish-release.mjs가 만들어 준다).
+ */
+const SETUP_NAME = 'TeraClean-Setup.exe'
+const LATEST_FILE = `https://github.com/${REPO}/releases/latest/download/${SETUP_NAME}`
 const LATEST_API = `https://api.github.com/repos/${REPO}/releases/latest`
 
 interface LatestInfo {
@@ -149,14 +163,15 @@ async function main() {
   }
 
   const latest = await fetchLatest()
-  const winUrl = latest ? latest.url : RELEASES_PAGE
+  const winUrl = latest ? latest.url : LATEST_FILE
 
   setDownload(els.heroDl, winUrl)
   setDownload(els.navDl, winUrl)
   setDownload(els.finalDl, winUrl)
   const label = latest
     ? `최신 버전 v${latest.version}${latest.date ? ` · ${latest.date}` : ''} · Windows 10/11`
-    : '릴리스 페이지에서 최신 버전 받기'
+    // 버전을 못 읽었을 뿐이지 받을 수는 있다. "페이지로 가세요"라고 떠넘기지 않는다.
+    : 'Windows 10/11 · 최신 버전 내려받기'
   if (els.heroVer) els.heroVer.textContent = label
   if (els.finalVer) els.finalVer.textContent = label
 

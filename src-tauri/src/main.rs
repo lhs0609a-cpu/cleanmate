@@ -20,6 +20,44 @@ use tauri::{
     Emitter, Manager, WindowEvent,
 };
 
+/* ── 도는 엔진의 취소 통로 ──────────────────────────────────
+   긴 스캔을 세우려면 이미 떠 있는 자식에게 말을 걸어야 한다. stdout은 결과,
+   stderr는 진행 상황이라 남은 통로는 stdin뿐이다. 여기 그 손잡이를 맡아둔다.
+
+   ★ 왜 프로세스를 죽이지 않나: 죽이면 여태 훑은 결과가 함께 사라진다.
+     "여기까지만 보기"를 누른 사람에게 빈 화면을 주면 취소가 벌이 된다.
+     엔진은 신호를 받으면 스스로 멈추고 그 시점까지의 목록을 정상 결과로 낸다. */
+static JOBS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, tokio::process::ChildStdin>>,
+> = std::sync::OnceLock::new();
+
+fn jobs() -> &'static std::sync::Mutex<std::collections::HashMap<String, tokio::process::ChildStdin>>
+{
+    JOBS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// 도는 엔진을 세운다. 없는 일감이면 조용히 지나간다 —
+/// 이미 끝난 스캔을 세우려 한 것뿐이고, 그건 실패가 아니다.
+#[tauri::command]
+async fn cancel_engine(job: String) -> Result<bool, String> {
+    use tokio::io::AsyncWriteExt;
+
+    // ★ 락을 들고 await하지 않는다. 손잡이를 꺼내 온 뒤에 쓴다.
+    //   (한 번 세우면 그 일감에 더 할 말이 없으므로 도로 넣지 않는다)
+    let taken = { jobs().lock().map_err(|_| "취소 장부를 열지 못했어요")?.remove(&job) };
+    match taken {
+        Some(mut stdin) => {
+            stdin
+                .write_all(b"cancel\n")
+                .await
+                .map_err(|e| format!("멈추라고 전하지 못했어요: {e}"))?;
+            let _ = stdin.flush().await;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
 /// 창을 다시 꺼내 온다. 트레이 메뉴·두 번째 실행 둘 다 여기로 온다.
 fn show_main(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
@@ -338,6 +376,8 @@ async fn run_engine(
     app: tauri::AppHandle,
     command: String,
     args: Vec<String>,
+    // 세울 수 있어야 하는 긴 명령만 이름을 달고 온다. 없으면 예전 그대로 돈다.
+    job: Option<String>,
 ) -> Result<serde_json::Value, String> {
     use tokio::io::{AsyncBufReadExt, BufReader};
 
@@ -360,8 +400,21 @@ async fn run_engine(
         .args(&args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        // 일감 이름이 있을 때만 stdin을 연다. 안 세우는 명령에 파이프를 달 이유가 없다.
+        .stdin(if job.is_some() {
+            std::process::Stdio::piped()
+        } else {
+            std::process::Stdio::null()
+        })
         .spawn()
         .map_err(|e| format!("엔진을 실행하지 못했어요: {e}"))?;
+
+    // 손잡이를 장부에 맡긴다. 화면이 cancel_engine(job)을 부르면 여기로 닿는다.
+    if let (Some(name), Some(stdin)) = (job.clone(), child.stdin.take()) {
+        if let Ok(mut map) = jobs().lock() {
+            map.insert(name, stdin);
+        }
+    }
 
     // ★ stderr를 반드시 계속 읽어야 한다. 파이프에는 크기가 있어서, 안 읽으면
     //   버퍼가 차는 순간 엔진이 write에서 멈춘다(교착). 진행 상황을 안 쓰는
@@ -385,6 +438,13 @@ async fn run_engine(
         .wait_with_output()
         .await
         .map_err(|e| format!("엔진이 비정상 종료했어요: {e}"))?;
+
+    // 끝난 일감은 장부에서 뺀다. 안 그러면 다음 스캔이 죽은 손잡이를 물려받는다.
+    if let Some(name) = job.as_ref() {
+        if let Ok(mut map) = jobs().lock() {
+            map.remove(name);
+        }
+    }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     serde_json::from_str::<serde_json::Value>(&stdout)
@@ -440,6 +500,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             apply_update,
+            cancel_engine,
             download_update,
             fetch_update_manifest,
             run_engine,

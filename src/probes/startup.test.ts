@@ -10,10 +10,11 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   judgeStartup, approvalBytes, scriptArgOf, fileLabel, shortLabel, signatureNote,
-  withRo, withGa, withEun,
-  type StartupEntry, type StartupIdentity,
+  withRo, withGa, withEun, approvalTarget, needsAdmin,
+  type StartupEntry, type StartupIdentity, type StartupSource,
 } from './startup.ts'
 
 const entry = (name: string, over: Partial<StartupEntry> = {}): StartupEntry => ({
@@ -23,6 +24,7 @@ const entry = (name: string, over: Partial<StartupEntry> = {}): StartupEntry => 
   source: 'hkcu-run',
   enabled: true,
   canToggle: true,
+  needsAdmin: false,
   ...over,
 })
 
@@ -101,6 +103,62 @@ test('★ 끄기 값은 작업관리자와 같은 형식이다 — 다르면 되
     '해제 시각(FILETIME)이 들어가야 작업관리자가 같은 상태로 읽는다'
   )
   assert.ok(off.every((b) => Number.isInteger(b) && b >= 0 && b <= 255), '전부 유효한 바이트')
+})
+
+/* ── 모든 사용자용 항목도 끈다 (v0.22.0) ─────────────────────
+   전에는 HKLM·공용 시작 폴더에 "관리자 권한이 필요해요" 딱지만 붙이고 끝냈다.
+   권한이 필요하면 권한을 물어보면 된다 — 알려만 주고 세워두는 건 안내가 아니다. */
+
+test('★ 네 갈래 모두 상태를 적을 자리가 있다 — "못 끕니다"로 끝내지 않는다', () => {
+  const sources: StartupSource[] = ['hkcu-run', 'hklm-run', 'startup-folder', 'common-startup-folder']
+  for (const src of sources) {
+    const t = approvalTarget(src)
+    assert.ok(t, `${src}의 자리를 모른다 — 그러면 화면에서 끄지 못한다`)
+    assert.match(t!.sub, /StartupApproved/, `${src}가 엉뚱한 자리를 가리킨다`)
+  }
+})
+
+test('★ 모든 사용자용은 HKLM에 적는다 — 읽는 자리와 쓰는 자리가 같아야 한다', () => {
+  /* 공용 시작 폴더의 상태를 HKCU에 적으면, 껐다고 말해놓고 다음 부팅에 그대로 뜬다.
+     실제로 읽는 쪽이 HKCU를 보고 있었다(작업관리자에서 꺼둔 공용 항목이 '켜짐'으로 떴다). */
+  assert.equal(approvalTarget('hklm-run')!.hive, 'HKLM')
+  assert.equal(approvalTarget('common-startup-folder')!.hive, 'HKLM')
+  assert.equal(approvalTarget('hkcu-run')!.hive, 'HKCU')
+  assert.equal(approvalTarget('startup-folder')!.hive, 'HKCU')
+})
+
+test('★ 관리자 확인이 필요한 항목을 미리 알 수 있다 — 누른 뒤에 놀라면 안 된다', () => {
+  assert.equal(needsAdmin('hklm-run'), true)
+  assert.equal(needsAdmin('common-startup-folder'), true)
+  assert.equal(needsAdmin('hkcu-run'), false)
+  assert.equal(needsAdmin('startup-folder'), false)
+})
+
+test('★ 관리자 확인이 필요해도 끄자고 제안할 수 있다 — 권한은 물어보면 되는 것이다', () => {
+  const v = judgeStartup(entry('KakaoTalk', {
+    id: 'hklm-run|KakaoTalk', source: 'hklm-run', needsAdmin: true,
+  }))
+  assert.equal(v.suggestible, true, 'HKLM이라는 이유만으로 제안에서 빼면 안 된다')
+})
+
+test('★ 승격 스크립트에 항목 이름을 이어붙이지 않는다 — 남의 이름이 명령이 되면 안 된다', () => {
+  /* 시작프로그램 이름에는 따옴표도 공백도 한글도 들어간다. 그걸 파워셸 스크립트
+     본문에 붙이는 순간, 남의 이름으로 아무 명령이나 **관리자 권한으로** 실행시킬 수
+     있는 통로가 된다. 값은 임시 파일로 넘기고, 스크립트에 들어가는 문자열은
+     우리가 만든 경로뿐이어야 한다. 타입이 못 잡는 종류라 소스에서 못 박는다. */
+  const src = readFileSync(new URL('./startup.ts', import.meta.url), 'utf8')
+  const from = src.indexOf('async function setApprovedElevated(')
+  assert.ok(from > 0, 'setApprovedElevated를 찾지 못했다 — 이름이 바뀌었으면 이 테스트도 고쳐야 한다')
+  // 함수 하나만 본다 — 파일 전체를 검사하면 다른 자리의 문자열에 걸린다.
+  const body = src.slice(from, from + 3000)
+
+  assert.doesNotMatch(body, /[$][{]\s*name\s*[}]/, '이름을 스크립트에 이어붙이고 있다')
+  assert.doesNotMatch(body, /[$][{]\s*sub\s*[}]/, '레지스트리 자리를 스크립트에 이어붙이고 있다')
+  assert.match(
+    body,
+    /JSON\.stringify\(\{ sub, name, bytes \}\)/,
+    '값을 파일로 넘기지 않고 있다'
+  )
 })
 
 test('모든 판정에는 끄면 뭐가 달라지는지가 반드시 붙는다', () => {

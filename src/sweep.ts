@@ -61,6 +61,10 @@ export interface SweepPlan {
   }
   scannedFiles: number
   elapsedMs: number
+  /** 다 훑지 못했나. 이 계획을 '전부'라고 말하면 안 되는 신호다 */
+  truncated?: boolean
+  /** 왜 덜 훑었나 — 사용자가 세운 것과 시간이 모자란 것은 화면에 쓸 말이 다르다 */
+  stoppedBy?: 'deadline' | 'cancel'
 }
 
 /**
@@ -69,9 +73,12 @@ export interface SweepPlan {
  */
 export async function planSweep(
   root: string,
-  opts: { onProgress?: (count: number, currentDir: string) => void } = {}
+  opts: { onProgress?: (count: number, currentDir: string) => void; signal?: AbortSignal } = {}
 ): Promise<SweepPlan> {
-  const scanned = await scan(root, opts.onProgress ? { onProgress: opts.onProgress } : {})
+  const scanned = await scan(root, {
+    ...(opts.onProgress ? { onProgress: opts.onProgress } : {}),
+    ...(opts.signal ? { signal: opts.signal } : {}),
+  })
 
   const items: SweepItem[] = []
   let bytes = 0
@@ -111,7 +118,14 @@ export async function planSweep(
   // 큰 것부터. 사용자가 목록을 위에서부터 훑으면 중요한 게 먼저 보인다.
   items.sort((a, b) => b.size - a.size)
 
-  return { items, bytes, skipped, scannedFiles: scanned.files.length, elapsedMs: scanned.elapsedMs }
+  return {
+    items,
+    bytes,
+    skipped,
+    scannedFiles: scanned.files.length,
+    elapsedMs: scanned.elapsedMs,
+    ...(scanned.truncated ? { truncated: true, stoppedBy: scanned.stoppedBy } : {}),
+  }
 }
 
 export interface SweepResult {

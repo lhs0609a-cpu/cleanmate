@@ -33,7 +33,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.21.0'
+const APP_VERSION = '0.22.0'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -64,10 +64,52 @@ function errText(err: unknown): string {
 }
 
 /** 엔진 사이드카 호출 (데스크톱 전용). JSON {ok,data|error} 규약. */
-async function engine(command: string, args: string[] = []): Promise<any> {
-  const res = await TAURI.core.invoke('run_engine', { command, args })
+/**
+ * @param job 세울 수 있어야 하는 긴 명령에만 붙인다. 이름이 있으면 Rust가
+ *   그 엔진의 stdin을 붙잡아 두고, cancelEngine(job)이 "cancel"을 흘려보낸다.
+ */
+async function engine(command: string, args: string[] = [], job?: string): Promise<any> {
+  const res = await TAURI.core.invoke('run_engine', { command, args, job: job ?? null })
   if (!res || res.ok === false) throw new Error(res?.error || '엔진 오류')
   return res.data
+}
+
+/* ── 문의 창구 ────────────────────────────────────────────────
+   ★ 여기에 이메일 주소를 넣으면 그쪽으로 간다. 비워두면 지금처럼 GitHub 이슈다.
+
+   왜 이렇게 두나: GitHub 이슈는 계정이 필요하고 영어 화면이고 공개 글이라,
+   일반 사용자에게는 창구가 없는 것과 같다. 다만 없는 주소를 지어내면 문의가
+   허공으로 가므로, 주소가 정해지기 전까지는 되는 길(이슈)을 그대로 쓴다. */
+const SUPPORT_EMAIL = '' // 예: 'help@teraclean.app'
+const SUPPORT_ISSUES = 'https://github.com/lhs0609a-cpu/teraclean-releases/issues/new'
+
+function setupSupportLink() {
+  const a = document.getElementById('support-link') as HTMLAnchorElement | null
+  if (!a) return
+  // 버전을 미리 적어 보낸다. 문의의 첫 왕복이 "버전이 뭐예요?"로 새는 걸 막는다.
+  const v = APP_VERSION ? `v${APP_VERSION}` : '버전 미상'
+  const where = inTauri ? '데스크톱 앱' : '브라우저 체험'
+  if (SUPPORT_EMAIL) {
+    const subject = encodeURIComponent(`[테라클린 ${v}] 문의`)
+    const body = encodeURIComponent(
+      `무슨 일이 있었나요?\n\n\n---\n${where} · ${v}\n(이 아래 줄은 지우지 말아주세요 — 어떤 환경인지 아는 데 씁니다)`
+    )
+    a.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`
+  } else {
+    a.href = `${SUPPORT_ISSUES}?title=${encodeURIComponent(`[${v}] `)}`
+    a.target = '_blank'
+    a.rel = 'noopener'
+  }
+}
+setupSupportLink()
+
+/** 도는 엔진을 세운다. 이미 끝났으면 아무 일도 안 일어난다 — 그건 실패가 아니다. */
+async function cancelEngine(job: string): Promise<void> {
+  try {
+    await TAURI.core.invoke('cancel_engine', { job })
+  } catch {
+    /* 못 세워도 스캔은 제 시간에 끝난다. 실패를 사용자에게 떠넘기지 않는다. */
+  }
 }
 
 /* ── 공통 리포트 형태 ─────────────────────────────────────── */
@@ -94,6 +136,10 @@ interface Report {
     samples: { path: string; size: number }[]
   }[]
   proposalRest?: { bytes: number; count: number; cards: number }
+  /** 다 훑지 못했다. 이 숫자들을 '전부'라고 쓰면 안 되는 신호다 */
+  truncated?: boolean
+  /** 왜 덜 훑었나 — 사용자가 세운 것과 시간이 모자란 것은 할 말이 다르다 */
+  stoppedBy?: 'deadline' | 'cancel'
   questions: Question[]
   kept: { meaning: string; bytes: number }[]
 }
@@ -267,10 +313,20 @@ function renderReport(r: Report) {
   const where = r.roots?.length
     ? `<b style="color:var(--ink)">본 곳 ${r.roots.length}곳</b>: ${r.roots.map((x) => esc(x.path)).join(' · ')}<br>`
     : ''
+  /* ★ 덜 훑었으면 그 사실이 맨 위에 온다.
+     "정리 가능 1.9GB"는 다 훑었을 때만 참인 문장이다. 멈춘 사람에게 그대로
+     보여주면 화면이 아는 척을 하는 셈이고, 그건 이 제품이 파는 것과 정반대다. */
+  const stopped =
+    r.stoppedBy === 'cancel'
+      ? '<b style="color:var(--amb)">여기까지만 훑었어요</b> — 아래 숫자는 멈추기 전까지 본 것뿐이에요. 다시 누르면 처음부터 훑어요.<br>'
+      : r.truncated
+        ? '<b style="color:var(--amb)">다 훑지 못했어요</b> — 시간이 모자라 도중에 멈췄어요. 아래는 본 것까지의 결과예요.<br>'
+        : ''
+
   // ★ "문 앞에 내놓고"는 격리 시절의 말이다. 이제 확실한 건 진짜로 지운다 —
   //   화면이 동작과 다른 말을 하면, 맞는 말을 해도 안 믿게 된다.
   $('plan-lede').innerHTML =
-    where + '확실한 건 알아서 지우고(용량이 바로 빕니다), 애매한 건 아래에서 물어봅니다.'
+    stopped + where + '확실한 건 알아서 지우고(용량이 바로 빕니다), 애매한 건 아래에서 물어봅니다.'
   $('plan3').innerHTML = `
     <div class="stat"><div class="n g">${fmtBytes(r.plan.autoBytes)}</div><div class="l">지금 정리 가능<br>확실한 임시 파일 ${r.plan.autoCount.toLocaleString()}개 · 규칙으로 확인한 것만</div></div>
     <div class="stat"><div class="n a">${fmtBytes(r.plan.askBytes)}</div><div class="l">물어보면 정리 가능<br>애매한 ${r.plan.askCount.toLocaleString()}개 · 아래 질문으로</div></div>
@@ -1463,15 +1519,32 @@ if (inTauri) {
  * 진행 상황이 안 오면(구버전 엔진·진행을 안 내는 명령) 예전처럼 경과 시간만
  * 보여주고 막대는 무한 막대로 둔다 — 없는 진행률을 지어내지 않는다는 원칙은 그대로다.
  */
-function startTicker(prefix: string): () => void {
+/**
+ * @param onStop 있으면 '여기까지만 보기' 버튼이 뜬다. 없으면 안 뜬다 —
+ *   세울 수 없는 작업에 멈춤 버튼을 보여주면 그건 거짓 약속이다.
+ */
+function startTicker(prefix: string, onStop?: () => void): () => void {
   const started = Date.now()
   lastProgress = null
   let shownPct = 0 // 뒤로 가지 않게 여기서 한 번 더 잠근다
   const box = $('prog') as HTMLElement
   const fill = box.querySelector('span') as HTMLElement
+  const stop = $('prog-stop') as HTMLButtonElement
   box.hidden = false
   box.classList.remove('prog-known')
   fill.style.width = ''
+
+  stop.hidden = !onStop
+  stop.disabled = false
+  stop.textContent = '여기까지만 보기'
+  const onClick = () => {
+    // 두 번 누를 일이 없다. 그리고 눌린 뒤엔 '멈추는 중'이라고 말한다 —
+    // 아무 반응이 없으면 사용자는 안 먹혔다고 생각하고 또 누른다.
+    stop.disabled = true
+    stop.textContent = '멈추는 중…'
+    onStop?.()
+  }
+  if (onStop) stop.addEventListener('click', onClick)
 
   const paint = () => {
     const elapsed = fmtDuration((Date.now() - started) / 1000)
@@ -1521,6 +1594,8 @@ function startTicker(prefix: string): () => void {
     box.classList.remove('prog-known')
     fill.style.width = ''
     lastProgress = null
+    stop.hidden = true
+    if (onStop) stop.removeEventListener('click', onClick)
   }
 }
 
@@ -1548,21 +1623,27 @@ async function runScan(pickFolder = false) {
     let report: Report
     if (inTauri) {
       let paths: string[] = []
+      /* 이 스캔의 이름. Rust가 이 이름으로 엔진의 stdin을 붙잡아 둔다.
+         스캔마다 새로 만든다 — 지난 스캔의 이름으로 세우면 엉뚱한 걸 세운다. */
+      const job = `scan-${Date.now()}`
+      const stopScan = () => cancelEngine(job)
       if (pickFolder) {
         const path = await TAURI.dialog.open({ directory: true, title: '정리할 폴더 고르기' })
         if (!path) { $('status').textContent = ''; return }
         scannedPath = path as string
         paths = [scannedPath]
-        stopTicker = startTicker('분석 중')
+        stopTicker = startTicker('분석 중', stopScan)
       } else {
         scannedPath = null // 기본 스캔은 여러 곳이라 경로 하나로 특정되지 않는다
-        stopTicker = startTicker(await describeDefaultRoots())
+        stopTicker = startTicker(await describeDefaultRoots(), stopScan)
       }
-      report = (await engine('scan-plan', paths)) as Report
+      report = (await engine('scan-plan', paths, job)) as Report
       stopTicker(); stopTicker = null
       $('status').textContent =
         `${report.scannedFiles.toLocaleString()}개 · ${Math.round(report.elapsedMs / 1000)}초` +
-        (report.roots?.length ? ` · ${report.roots.length}곳` : '')
+        (report.roots?.length ? ` · ${report.roots.length}곳` : '') +
+        // 덜 훑었으면 숫자 옆에 바로 붙인다. 아래 안내만으로는 이 줄이 거짓말이 된다.
+        (report.stoppedBy === 'cancel' ? ' · 여기까지만 훑었어요' : '')
     } else {
       $('status').textContent = '읽는 중...'
       const dir = await pickDirectory()
@@ -2294,9 +2375,18 @@ async function loadStartup(quiet = false) {
       const i = entries.indexOf(e)
       const v = e.verdict
       const tone = v.zone === 'LOCKED' ? 'var(--lock)' : v.suggestible ? 'var(--amb)' : 'var(--muted)'
+      /* ★ 예전엔 모든 사용자용 항목에 "관리자 권한이 필요해요" 딱지만 붙어 있었다.
+         알려주기만 하고 아무것도 못 하게 하는 건 안내가 아니라 떠넘기기다 — 사용자는
+         그 다음에 뭘 해야 하는지 모른 채 작업관리자를 찾아가야 했다.
+         이제 여기서 끈다. 대신 **누르기 전에** 확인 창이 뜬다고 말한다. */
+      const label = e.enabled ? '끄기' : '다시 켜기'
       const btn = !e.canToggle
-        ? `<span class="pill desk" style="margin-top:8px">모든 사용자용이라 관리자 권한이 필요해요</span>`
-        : `<button class="opt" data-toggle="${i}" style="margin-top:8px">${e.enabled ? '끄기' : '다시 켜기'}</button>`
+        ? `<span class="pill desk" style="margin-top:8px">이 항목은 저희가 끄지 못해요</span>`
+        : `<button class="opt" data-toggle="${i}" style="margin-top:8px">${
+            label}${e.needsAdmin ? ' (관리자 확인)' : ''}</button>${
+            e.needsAdmin
+              ? `<div class="t-small" style="color:var(--muted);margin-top:6px">모든 사용자용이라 윈도우 확인 창이 한 번 떠요. “예”를 누르면 여기서 바로 꺼집니다. 취소하면 아무것도 안 바뀌어요.</div>`
+              : ''}`
       return `<div class="row">
         <div class="row-main">
           <div class="row-t">
@@ -2346,12 +2436,19 @@ async function loadStartup(quiet = false) {
     host.querySelectorAll<HTMLButtonElement>('[data-toggle]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const e = entries[+btn.dataset.toggle!]
+        const was = e.enabled
         btn.disabled = true
         // 무엇을 건드리는지 버튼에 그대로 쓴다 — 엉뚱한 걸 껐던 적이 있다(row 머리말).
-        btn.textContent = e.enabled ? `“${e.name}” 끄는 중…` : `“${e.name}” 켜는 중…`
+        // 승격이 필요한 항목은 여기서 멈춰 보인다. 그래서 왜 멈췄는지도 같이 쓴다.
+        btn.textContent =
+          (was ? `“${e.name}” 끄는 중…` : `“${e.name}” 켜는 중…`) +
+          (e.needsAdmin ? ' 확인 창에서 “예”를 눌러주세요' : '')
         try {
-          await engine('startup-set', [e.id, e.enabled ? 'off' : 'on'])
-          toast(`“${e.name}”을(를) ${e.enabled ? '껐어요' : '다시 켰어요'}`, 'good')
+          const r = await engine('startup-set', [e.id, was ? 'off' : 'on'])
+          toast(
+            `${r?.elevated ? '관리자 확인을 받아 ' : ''}“${e.name}”을(를) ${was ? '껐어요' : '다시 켰어요'}`,
+            'good'
+          )
           startupLoaded = false
           // 실제 상태를 다시 읽는다 — 화면만 바꾸지 않는다.
           // 다만 읽는 동안 목록을 지우지는 않는다(quiet).
@@ -2359,7 +2456,7 @@ async function loadStartup(quiet = false) {
         } catch (err) {
           toast('바꾸지 못했어요: ' + errText(err), 'bad')
           btn.disabled = false
-          btn.textContent = e.enabled ? '끄기' : '다시 켜기'
+          btn.textContent = (was ? '끄기' : '다시 켜기') + (e.needsAdmin ? ' (관리자 확인)' : '')
         }
       })
     })

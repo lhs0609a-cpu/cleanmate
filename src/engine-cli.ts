@@ -777,6 +777,34 @@ function progress(data: unknown): void {
   }
 }
 
+/* ── 취소 통로 ────────────────────────────────────────────────
+   stdout은 결과, stderr는 진행 상황이다. 남은 통로는 stdin뿐이라 취소는 여기로 받는다.
+   Rust(main.rs)가 자식의 stdin에 "cancel"을 한 줄 쓰면 여기가 신호를 세운다.
+
+   ★ 왜 프로세스를 죽이지 않나: 죽이면 여태 훑은 결과가 함께 사라진다. 사용자는
+     "여기까지만 보자"고 누른 것이지 "없던 일로 하자"고 누른 게 아니다.
+     엔진이 스스로 멈추면 그 시점까지의 목록을 정상 결과로 돌려줄 수 있다. */
+
+/** 긴 명령에서만 부른다. 신호를 안 쓰는 명령에 stdin을 열어둘 이유가 없다. */
+function cancelSignal(): AbortSignal {
+  const ac = new AbortController()
+  try {
+    process.stdin.setEncoding('utf8')
+    process.stdin.on('data', (chunk: string) => {
+      if (chunk.includes('cancel')) ac.abort()
+    })
+    // 파이프가 끊기는 건 흔한 일이다(창이 먼저 닫힘). 그걸로 엔진이 죽으면 안 된다.
+    process.stdin.on('error', () => {})
+    process.stdin.resume()
+    // ★ unref가 없으면 stdin이 열려 있다는 이유로 프로세스가 안 끝난다 —
+    //   결과 JSON을 다 쓰고도 앱이 영원히 기다리게 된다.
+    process.stdin.unref()
+  } catch {
+    /* stdin이 없는 환경(파이프 없이 실행)에서도 스캔은 그대로 돌아야 한다. */
+  }
+  return ac.signal
+}
+
 /** 앱 데이터 폴더의 파일 하나. 서버에 안 올린다 — 무엇도 기기를 떠나지 않는다. */
 function appDataFile(name: string): string {
   const base =
@@ -1108,7 +1136,7 @@ async function presentDefaultRoots() {
  * 질문(클러스터링)은 전부 모아놓고 계산해야 의미가 있다 — 폴더마다 따로
  * 물어보면 같은 질문이 5번 나온다.
  */
-async function scanPlan(paths: string[]) {
+async function scanPlan(paths: string[], signal?: AbortSignal) {
   let safeB = 0, safeC = 0, ambB = 0, ambC = 0, lockB = 0, lockC = 0
   let autoB = 0, autoC = 0, inferB = 0
   let scannedFiles = 0, elapsedMs = 0
@@ -1133,8 +1161,11 @@ async function scanPlan(paths: string[]) {
   const started = Date.now()
   let doneFiles = 0
   let lastEmit = 0
+  /** 사용자가 "여기까지만 보기"를 눌렀나. 눌렀으면 남은 폴더는 훑지 않는다. */
+  let stoppedBy: 'cancel' | undefined
 
   for (const [rootIndex, path] of paths.entries()) {
+    if (stoppedBy) break // 세운 뒤에는 새 폴더를 열지 않는다
     /**
      * 훑는 도중에 진행 상황을 내보낸다.
      *
@@ -1153,11 +1184,14 @@ async function scanPlan(paths: string[]) {
       progress({ t: 'scan', ...view, rootIndex, rootCount: paths.length, root: path, dir: currentDir })
     }
 
-    const scanned = await scan(path, { onProgress })
+    const scanned = await scan(path, { onProgress, ...(signal ? { signal } : {}) })
+    if (scanned.stoppedBy === 'cancel') stoppedBy = 'cancel'
     doneFiles += scanned.files.length
     scannedFiles += scanned.files.length
     elapsedMs += scanned.elapsedMs
     roots.push({ path, files: scanned.files.length, bytes: scanned.totalBytes })
+    // 세웠으면 남은 폴더는 시작도 하지 않는다. 다만 방금 훑은 것까지는
+    // 아래에서 그대로 분류한다 — 모은 것을 버리면 취소가 벌이 된다.
 
     for (const f of scanned.files) {
       /* ★ 지나가는 김에 '이 프로젝트를 아직 쓰나'를 센다.
@@ -1317,6 +1351,9 @@ async function scanPlan(paths: string[]) {
     roots,
     scannedFiles,
     elapsedMs,
+    /* ★ 덜 훑었다는 사실을 결과에 붙여 보낸다. 이게 없으면 화면이 "이게 전부"라고
+       말하게 된다 — 중단한 사람에게 그건 거짓말이다. */
+    ...(stoppedBy ? { truncated: true, stoppedBy } : {}),
     zones: {
       safe: { bytes: safeB, count: safeC },
       ambig: { bytes: ambB, count: ambC },
@@ -1497,7 +1534,7 @@ async function main() {
         // 인자가 없으면 '이 PC 기본 스캔'이다. 폴더를 못 고르는 사람을 위한 기본값.
         const paths = args.length ? args : (await presentDefaultRoots()).map((r) => r.path)
         if (!paths.length) fail('훑을 폴더를 찾지 못했습니다.')
-        out(await scanPlan(paths))
+        out(await scanPlan(paths, cancelSignal()))
         break
       }
       case 'apply-sweep': {
@@ -1529,6 +1566,9 @@ async function main() {
           progress({ t: 'sweep-plan', cached: true, total: items.length })
         } else {
           items = []
+          /* 캐시가 없어 다시 훑을 때만 신호가 필요하다. 지우기 자체는 안 세운다 —
+             중간에 세우면 '옮겼는데 안 지운' 것이 남는다(sweep.ts의 묶음 주석). */
+          const sweepSignal = cancelSignal()
           const started = Date.now()
           let lastEmit = 0
           const weights = await readScanStats()
@@ -1544,7 +1584,7 @@ async function main() {
               })
               progress({ t: 'scan', ...view, rootIndex, rootCount: paths.length, root: path, dir: currentDir })
             }
-            const plan = await planSweep(path, { onProgress })
+            const plan = await planSweep(path, { onProgress, signal: sweepSignal })
             doneFiles += plan.scannedFiles
             // 펼치지 않고 하나씩 — 캐시 목록은 십수만 개가 될 수 있다
             for (const it of plan.items) items.push(it)
@@ -2105,6 +2145,13 @@ async function main() {
         out({ today, ...planToday(next, today), total: ROUTINES.length })
         break
       }
+      /**
+       * 시작프로그램 켜기/끄기.
+       *
+       * 모든 사용자용(HKLM·공용 시작 폴더) 항목은 프로브가 그 순간에만 승격해서 적는다.
+       * 취소·실패는 갈라서 말한다 — 둘 다 "안 됐어요"로 뭉뚱그리면 승격된 쪽에서 터진 걸
+       * 사용자가 자기가 취소한 줄 안다(probes/startup.ts의 setApprovedElevated).
+       */
       case 'startup-set': {
         if (!args[0] || !args[1]) fail('항목 id와 on|off가 필요합니다.')
         if (args[1] !== 'on' && args[1] !== 'off') fail("두 번째 인자는 on 또는 off여야 합니다.")
