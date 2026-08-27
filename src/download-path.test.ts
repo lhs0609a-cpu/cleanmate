@@ -95,3 +95,65 @@ test('문의에 버전이 실려 간다', () => {
   assert.match(app, /const v = APP_VERSION/, '문의에 버전을 안 싣는다')
   assert.match(app, /function setupSupportLink/, '문의 링크를 안 채운다')
 })
+
+/* ★ 여기까지는 전부 '이름이 서로 맞는가'만 봤다. 그런데 이름이 다 맞아도
+   릴리스에 그 파일이 **안 올라가면** 폴백은 404다.
+
+   실제로 v0.22.0이 그랬다. 사본을 만드는 스크립트는 있었지만(publish-release.mjs)
+   CI가 부르질 않아서, 여태 사람이 손으로 올려 왔다. 한 번 잊자 바로 깨졌고
+   — JS가 도는 개발자 브라우저에서는 그 404가 끝내 안 보였다.
+
+   그래서 '올리는 쪽'도 여기서 잠근다. */
+
+/** 게시 단계(action-gh-release)의 files 목록만 잘라낸다.
+ *
+ *  ★ 파일 전체를 includes로 훑으면 안 된다. 사본을 만드는 단계에도 같은 경로
+ *    문자열이 있어서(DST=...), 정작 files 목록에서 줄이 빠져도 통과한다.
+ *    처음 이 테스트를 그렇게 썼다가 실제로 그 구멍을 놓쳤다 — 일부러 줄을
+ *    지워 보고서야 알았다. 그래서 블록을 잘라서 본다. */
+function releaseFiles(): string[] {
+  const wf = read('.github/workflows/release.yml')
+  const at = wf.indexOf('action-gh-release')
+  assert.ok(at > 0, 'release.yml에 게시 단계가 없다')
+
+  const head = wf.indexOf('files: |', at)
+  assert.ok(head > 0, '게시 단계에 files 목록이 없다')
+
+  const lines = wf.slice(head + 'files: |'.length).split('\n').slice(1)
+  const out: string[] = []
+  for (const l of lines) {
+    const t = l.trim()
+    // 목록은 들여쓴 줄이 이어진다. 들여쓰기가 끝나면 다음 키(body: 등)다.
+    if (!t || !/^\s{12,}\S/.test(l)) break
+    out.push(t)
+  }
+  return out
+}
+
+test('★ 릴리스 워크플로가 고정 이름 사본을 실제로 올린다', () => {
+  const name = landingSetupName()
+  const files = releaseFiles()
+
+  assert.ok(files.length > 0, 'files 목록을 못 읽었다')
+  assert.ok(
+    files.includes(`dist-installer/${name}`),
+    `★ release.yml의 files에 ${name}이 없다 — 폴백 링크가 404가 된다. 실제: ${files.join(', ')}`
+  )
+})
+
+test('고정 이름 사본을 만드는 단계가 있다 — 올릴 파일 자체가 생겨야 한다', () => {
+  const wf = read('.github/workflows/release.yml')
+  assert.match(wf, /cp "\$SRC" "\$DST"/, '사본을 만드는 단계가 없다')
+})
+
+test('고정 이름 사본은 해시 계산 뒤에 만든다 — 앞에서 만들면 바이트가 갈린다', () => {
+  const wf = read('.github/workflows/release.yml')
+  const copyAt = wf.indexOf('고정 이름 사본 만들기')
+  const manifestAt = wf.indexOf('업데이트 장부(latest.json) 생성')
+
+  assert.ok(copyAt > 0 && manifestAt > 0, '두 단계가 다 있어야 한다')
+  assert.ok(
+    copyAt > manifestAt,
+    '★ 사본이 서명·해시 계산보다 앞에 있다 — 고정 이름으로 받은 사람만 업데이트가 거절된다'
+  )
+})
