@@ -87,7 +87,7 @@ import { defaultRoots } from './presets.ts'
 import { buildBreakdown } from './breakdown.ts'
 import { groupByKind, describeMix, kindOf } from './kinds.ts'
 import { ownerOf, ownerHeadline } from './owners.ts'
-import { computeProgress, type RootWeight } from './progress.ts'
+import { computeProgress, stepProgress, timeProgress, type RootWeight } from './progress.ts'
 import { analyze, type AnalyzeFile } from './analyze.ts'
 import { UNKNOWN_EXPLAIN } from './content/unknowns.ts'
 import { gatherFacts } from './probes/facts.ts'
@@ -992,6 +992,130 @@ async function writeScanStats(roots: RootWeight[]): Promise<void> {
   }
 }
 
+/* ── 명령마다 '지난번에 얼마나 걸렸나' ─────────────────────────
+   ★ 왜 필요했나
+     화면 대부분은 "…읽는 중…" 한 줄로 몇 분을 버텼다. 스캔에는 진행률이
+     붙어 있었지만, 그건 파일을 하나씩 세는 구조라 가능했던 것이다. 안 쓴
+     프로그램·시작프로그램·되돌리기는 파워셸이나 레지스트리에 통째로 맡기는
+     조회라 안에서 몇 개째인지 볼 수가 없다.
+
+     그래도 **지난번에 몇 초 걸렸는지**는 잴 수 있다. 그걸 적어두고 다음번
+     진행률의 근거로 쓴다(progress.ts timeProgress). 지어낸 숫자가 아니라
+     이 컴퓨터에서 실제로 나온 값이라, 두 번째 실행부터는 꽤 잘 맞는다.
+
+     첫 실행에는 기록이 없어서 %가 안 뜬다. 그건 아는 척하지 않는 것이지
+     기능이 빠진 게 아니다 — 화면은 그때 경과 시간과 지금 하는 일을 말한다. */
+
+/** 명령 이름 → 지난번 소요 시간(ms) */
+async function readTaskStats(): Promise<Record<string, number>> {
+  try {
+    const parsed = JSON.parse(await readFile(appDataFile('task-stats.json'), 'utf8'))
+    return parsed && typeof parsed === 'object' && parsed.tasks ? parsed.tasks : {}
+  } catch {
+    return {} // 기록이 없으면 없는 대로. 첫 실행이 실패하면 안 된다.
+  }
+}
+
+/**
+ * 이번에 걸린 시간을 적어둔다.
+ *
+ * ★ 그대로 덮어쓰지 않고 지난 값과 섞는다(7:3). 어쩌다 한 번 느렸다고
+ *   다음 진행률이 통째로 어긋나면 안 되고, 컴퓨터가 정말 느려졌다면
+ *   몇 번 만에 따라가야 한다. 한 번의 이상값에 휘둘리지 않으면서 변화는 쫓는 값이다.
+ */
+async function writeTaskStat(cmd: string, ms: number): Promise<void> {
+  try {
+    const tasks = await readTaskStats()
+    const prev = tasks[cmd]
+    tasks[cmd] = prev && prev > 0 ? Math.round(prev * 0.7 + ms * 0.3) : Math.round(ms)
+    const file = appDataFile('task-stats.json')
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, JSON.stringify({ tasks }), 'utf8')
+  } catch {
+    /* 기록을 못 남겼다고 결과를 버릴 이유는 없다. 다음번 진행률이 거칠어질 뿐이다. */
+  }
+}
+
+/**
+ * 진행 표시를 켠 채로 일을 시킨다.
+ *
+ * 기본은 시간 기준(지난번 기록)이고, 일이 도중에 "몇 개 중 몇 개"를 알게 되면
+ * `step()`으로 알려준다 — 그 순간부터 세는 쪽이 이긴다. 셀 수 있는 걸 두고
+ * 시간으로 어림잡을 이유가 없다.
+ *
+ * @param cmd 기록을 쌓을 이름. 화면도 이 이름으로 진행을 받는다.
+ */
+async function withTaskProgress<T>(
+  cmd: string,
+  run: (ctl: {
+    /** 지금 하는 일을 사람 말로. 진행률과 별개로 이게 제일 안심된다 */
+    phase: (label: string) => void
+    /** 셀 수 있게 됐을 때. total이 0이면 무시된다 */
+    step: (done: number, total: number, label?: string) => void
+  }) => Promise<T>,
+  opts: {
+    /**
+     * 단계 길이가 들쭉날쭉한가.
+     *
+     * ★ 실측에서 나온 문제다. 숨은 공간 조사는 다섯 단계인데 두 번째
+     *   (휴지통·업데이트 캐시)가 16초 중 9초를 먹는다. 단계 수로만 세면
+     *   막대가 **20%에서 9초간 멈춰 있는다** — 이 파일이 피하려던 바로 그 그림이다.
+     *
+     *   그래서 이런 작업은 지난번 걸린 시간으로 단계 사이를 메운다. 둘 중
+     *   큰 값을 쓴다: 시간이 앞서면 부드럽게 흐르고, 단계가 앞서면(예상보다
+     *   빨리 끝나면) 단계 쪽이 이긴다. 둘 다 뒤로 가지 않으니 합쳐도 안 간다.
+     */
+    coarseSteps?: boolean
+  } = {}
+): Promise<T> {
+  const started = Date.now()
+  const learned = (await readTaskStats())[cmd]
+  let label = ''
+  let done = 0
+  let total = 0
+
+  const emit = () => {
+    const elapsed = Date.now() - started
+    // 셀 수 있으면 세고, 아니면 지난번 시간으로 잰다.
+    const counted = total > 0 ? stepProgress(done, total, elapsed) : null
+    const timed = timeProgress(elapsed, learned)
+
+    let v = counted ?? timed
+    if (counted && opts.coarseSteps && timed.pct !== null) {
+      /* 단계가 거친 작업 — 시간으로 그 사이를 메운다. 둘 중 앞선 쪽이 이긴다.
+         ★ 남은 시간은 **항상 시간 쪽**을 쓴다. 단계로 낸 남은 시간은 단계마다
+           길이가 달라서 경계를 넘을 때마다 튄다 — 실측에서 8초→11초→14초로
+           늘었다 줄었다 했다. 남은 시간이 늘어나는 화면은 진행률이 뒤로 가는
+           것만큼이나 "고장났다"로 읽힌다(progress.test.ts 머리말). */
+      const pct = Math.max(counted.pct ?? 0, timed.pct)
+      v = { pct, etaSec: timed.etaSec, basis: timed.pct > (counted.pct ?? 0) ? 'learned-time' : 'counted' }
+    }
+    /* coarse를 화면에 그대로 알린다 — 단계 수를 "1 / 5개"로 보여주면 안 되기 때문이다.
+       ★ 실측에서 본 것: 시간과 단계가 번갈아 이기면서 "1 / 5개"가 나타났다
+         사라졌다 했다. 게다가 5개가 **무엇의** 5개인지 사용자는 알 길이 없다
+         (파일도 프로그램도 아니고 우리 내부 단계다). 개수는 셀 수 있는 실물이
+         있을 때만 보여준다. */
+    progress({ t: 'task', cmd, label, ...v, done, total, coarse: !!opts.coarseSteps, elapsedMs: elapsed })
+  }
+
+  emit()
+  /* 700ms — 1초보다 촘촘한 이유는 이 화면들이 스캔보다 짧아서다(수 초~수십 초).
+     1초마다 그리면 10초짜리 일에서 눈금이 열 번밖에 안 움직인다. */
+  const timer = setInterval(emit, 700)
+  try {
+    const r = await run({
+      phase: (l) => { label = l; emit() },
+      step: (d, t, l) => { done = d; total = t; if (l !== undefined) label = l },
+    })
+    await writeTaskStat(cmd, Date.now() - started)
+    return r
+  } finally {
+    clearInterval(timer)
+    // 끝났다고 화면에 알린다 — 이게 없으면 마지막 %에서 멈춘 채로 다음 그림을 기다린다.
+    progress({ t: 'task', cmd, label, pct: 100, etaSec: 0, basis: 'counted', done, total, coarse: !!opts.coarseSteps, elapsedMs: Date.now() - started })
+  }
+}
+
 /* ── 생활 정리 진행 기록 ───────────────────────────────────────
    읽기 실패는 빈 상태로 넘어간다. 기록을 못 읽었다고 앱이 멈추면 안 된다. */
 function tidyFile(): string {
@@ -1695,25 +1819,32 @@ async function main() {
       case 'quar-list': {
         // 드라이브마다 격리함이 따로 있다(원본과 같은 드라이브에 만든다).
         // 전부 모아서 보여주지 않으면 D에서 정리한 파일이 화면에서 사라진 것처럼 보인다.
-        const roots = await listQuarantineRoots()
-        const items = []
-        let totalBytes = 0
-        for (const root of roots) {
-          for (const e of await readManifest(root)) {
-            items.push({
-              id: e.id,
-              root,
-              originalPath: e.originalPath,
-              size: e.size,
-              reason: e.reason,
-              quarantinedAt: e.quarantinedAt,
-              expired: isExpired(e),
-            })
-            totalBytes += e.size
+        out(await withTaskProgress('quar-list', async (ctl) => {
+          ctl.phase('보관함을 찾는 중')
+          const roots = await listQuarantineRoots()
+          const items = []
+          let totalBytes = 0
+          // 격리함이 여러 드라이브에 있으면 그것 자체가 셀 근거다.
+          ctl.step(0, roots.length, '보관된 것을 읽는 중')
+          for (const [i, root] of roots.entries()) {
+            ctl.step(i, roots.length, `${root} 보관함을 읽는 중`)
+            for (const e of await readManifest(root)) {
+              items.push({
+                id: e.id,
+                root,
+                originalPath: e.originalPath,
+                size: e.size,
+                reason: e.reason,
+                quarantinedAt: e.quarantinedAt,
+                expired: isExpired(e),
+              })
+              totalBytes += e.size
+            }
+            ctl.step(i + 1, roots.length)
           }
-        }
-        items.sort((a, b) => a.quarantinedAt - b.quarantinedAt)
-        out({ graceDays: GRACE_DAYS, roots, items, totalBytes })
+          items.sort((a, b) => a.quarantinedAt - b.quarantinedAt)
+          return { graceDays: GRACE_DAYS, roots, items, totalBytes }
+        }))
         break
       }
       case 'restore': {
@@ -1774,48 +1905,66 @@ async function main() {
         break
       }
       case 'probe': {
-        const facts = await gatherFacts()
-        const findings = [probeHiberfil(facts)]
-        // 휴지통·업데이트 캐시는 별도 조회다. 실패해도 hiberfil 결과까지
-        // 통째로 날리지 않는다 — 한쪽이 안 된다고 다른 쪽을 못 보여줄 이유가 없다.
-        try {
-          const rec = await gatherReclaimFacts()
-          findings.push(probeRecycleBin(rec), probeUpdateCache(rec))
-        } catch (err) {
-          process.stderr.write(`회수 프로브 실패: ${(err as Error).message}\n`)
-        }
-        /* 윈도우가 자기 몫으로 잡아둔 공간(가상 메모리·시스템 복원).
-           실측에서 pagefile 65GB, 시스템 복원 최대 155GB가 나왔다 — 파일 정리를
-           다 합친 것보다 크다. 여기 없으면 사용자는 이게 있는 줄도 모른다. */
-        try {
-          const pf = await gatherPageFile()
-          const pfFinding = pf && probePageFile(pf)
-          if (pfFinding) findings.push(pfFinding)
-        } catch (err) {
-          process.stderr.write(`가상 메모리 프로브 실패: ${(err as Error).message}\n`)
-        }
-        try {
-          const rs = probeRestore(await gatherRestore())
-          if (rs) findings.push(rs)
-        } catch (err) {
-          process.stderr.write(`시스템 복원 프로브 실패: ${(err as Error).message}\n`)
-        }
-        // 큰 덩어리(WSL·Docker·Windows.old)도 같은 이유로 따로 감싼다.
-        try {
-          // 스프레드로 넘기지 않는다 — 배열 길이만큼 인자를 만드는 자리를 안 만든다(breakdown.ts 머리말)
-          for (const f of probeBulk(await gatherBulkFacts())) findings.push(f)
-        } catch (err) {
-          process.stderr.write(`큰 덩어리 프로브 실패: ${(err as Error).message}\n`)
-        }
-        out({
-          facts: {
-            ramBytes: facts.ramBytes,
-            isLaptop: facts.isLaptop,
-            laptopSignals: facts.laptopSignals,
-            fastStartupEnabled: facts.fastStartupEnabled,
-          },
-          findings: findings.filter(Boolean).sort((a, b) => b!.bytes - a!.bytes),
-        })
+        /* 조사할 곳이 다섯이고 하나씩 끝난다 — 그러면 셀 수 있다.
+           단계마다 걸리는 시간이 달라서(시스템 복원 조회가 제일 느리다) 눈금이
+           고르지는 않지만, "지금 무엇을 보는 중"을 같이 말하므로 읽을 수 있다. */
+        const STEPS = 5
+        out(await withTaskProgress('probe', async (ctl) => {
+          ctl.step(0, STEPS, '이 PC의 기본 정보를 읽는 중')
+          const facts = await gatherFacts()
+          const findings = [probeHiberfil(facts)]
+
+          // 휴지통·업데이트 캐시는 별도 조회다. 실패해도 hiberfil 결과까지
+          // 통째로 날리지 않는다 — 한쪽이 안 된다고 다른 쪽을 못 보여줄 이유가 없다.
+          ctl.step(1, STEPS, '휴지통과 업데이트 캐시를 확인하는 중')
+          try {
+            const rec = await gatherReclaimFacts()
+            findings.push(probeRecycleBin(rec), probeUpdateCache(rec))
+          } catch (err) {
+            process.stderr.write(`회수 프로브 실패: ${(err as Error).message}\n`)
+          }
+
+          /* 윈도우가 자기 몫으로 잡아둔 공간(가상 메모리·시스템 복원).
+             실측에서 pagefile 65GB, 시스템 복원 최대 155GB가 나왔다 — 파일 정리를
+             다 합친 것보다 크다. 여기 없으면 사용자는 이게 있는 줄도 모른다. */
+          ctl.step(2, STEPS, '가상 메모리를 확인하는 중')
+          try {
+            const pf = await gatherPageFile()
+            const pfFinding = pf && probePageFile(pf)
+            if (pfFinding) findings.push(pfFinding)
+          } catch (err) {
+            process.stderr.write(`가상 메모리 프로브 실패: ${(err as Error).message}\n`)
+          }
+
+          ctl.step(3, STEPS, '시스템 복원 공간을 확인하는 중')
+          try {
+            const rs = probeRestore(await gatherRestore())
+            if (rs) findings.push(rs)
+          } catch (err) {
+            process.stderr.write(`시스템 복원 프로브 실패: ${(err as Error).message}\n`)
+          }
+
+          // 큰 덩어리(WSL·Docker·Windows.old)도 같은 이유로 따로 감싼다.
+          ctl.step(4, STEPS, '큰 덩어리(WSL·Docker·Windows.old)를 찾는 중')
+          try {
+            // 스프레드로 넘기지 않는다 — 배열 길이만큼 인자를 만드는 자리를 안 만든다(breakdown.ts 머리말)
+            for (const f of probeBulk(await gatherBulkFacts())) findings.push(f)
+          } catch (err) {
+            process.stderr.write(`큰 덩어리 프로브 실패: ${(err as Error).message}\n`)
+          }
+          ctl.step(STEPS, STEPS)
+
+          return {
+            facts: {
+              ramBytes: facts.ramBytes,
+              isLaptop: facts.isLaptop,
+              laptopSignals: facts.laptopSignals,
+              fastStartupEnabled: facts.fastStartupEnabled,
+            },
+            findings: findings.filter(Boolean).sort((a, b) => b!.bytes - a!.bytes),
+          }
+        // 실측: 다섯 단계 중 휴지통 조회 하나가 16초 중 9초다 — 시간으로 메운다.
+        }, { coarseSteps: true }))
         break
       }
       /**
@@ -1961,7 +2110,13 @@ async function main() {
         break
       }
       case 'startup': {
-        out(await probeStartup())
+        /* 파워셸이 레지스트리·시작 폴더를 한 번에 훑어 돌려준다 — 안에서 몇
+           개째인지 볼 수가 없다. 그래서 지난번 걸린 시간으로 잰다. 첫 실행에는
+           기록이 없어 %가 안 뜨고, 그때는 화면이 경과 시간만 말한다. */
+        out(await withTaskProgress('startup', async (ctl) => {
+          ctl.phase('시작프로그램 목록을 읽는 중')
+          return probeStartup()
+        }))
         break
       }
       /**
@@ -1988,7 +2143,13 @@ async function main() {
         break
       }
       case 'startup-tasks': {
-        out({ logonTaskCount: await countLogonTasks() })
+        // 세는 데 몇 초~몇 분이 걸린다(probes/startup.ts LOGON_TASKS 머리말).
+        // 각주라서 화면을 막지는 않지만, 진행은 알린다 — 어디에도 안 뜨면
+        // 각주가 영영 안 채워지는 건지 오는 중인지 알 길이 없다.
+        out(await withTaskProgress('startup-tasks', async (ctl) => {
+          ctl.phase('로그온 예약작업을 세는 중')
+          return { logonTaskCount: await countLogonTasks() }
+        }))
         break
       }
       /* ── 생활 정리 ─────────────────────────────────────────────
@@ -2012,7 +2173,15 @@ async function main() {
         if (!folder) fail('정리할 곳은 desktop 또는 downloads 입니다.')
         if (!(await isDir(folder))) fail(`폴더를 찾지 못했어요: ${folder}`)
 
-        const entries = await markBrokenLinks(await readFolderEntries(folder))
+        // 미리보기(plan)만 진행을 알린다. 실행(apply)은 제 화면에서 따로 그린다.
+        const entries = command === 'tidy-folder-plan'
+          ? await withTaskProgress('tidy-folder-plan', async (ctl) => {
+              ctl.phase('폴더 안을 읽는 중')
+              const e = await readFolderEntries(folder)
+              ctl.phase(`${e.length.toLocaleString()}개의 바로가기가 살아 있는지 확인하는 중`)
+              return markBrokenLinks(e)
+            })
+          : await markBrokenLinks(await readFolderEntries(folder))
         const plan = planFolderTidy(entries, { folder, keepDays: args[1] ? +args[1] : undefined })
 
         if (command === 'tidy-folder-plan') {
@@ -2057,19 +2226,25 @@ async function main() {
        * 잘못 고르면 되돌릴 수 없는 종류의 손해다.
        */
       case 'photos-plan': {
-        const { files, dupGroups } = await scanPhotos(photoRoots())
-        const plan = planPhotos(files, dupGroups)
-        out({
-          roots: photoRoots(),
-          scanned: plan.scanned,
-          oldScreenshots: plan.oldScreenshots.slice(0, 100),
-          screenshotCount: plan.oldScreenshots.length,
-          screenshotBytes: plan.screenshotBytes,
-          recentScreenshots: plan.recentScreenshots,
-          dupGroups: plan.dupGroups.slice(0, 50),
-          dupGroupCount: plan.dupGroups.length,
-          dupBytes: plan.dupBytes,
-        })
+        /* 화면이 "수천 장이면 몇 분 걸릴 수 있어요"라고 미리 사과하던 자리다.
+           몇 분을 예고했으면 그동안 무슨 일이 일어나는지도 보여줘야 한다. */
+        out(await withTaskProgress('photos-plan', async (ctl) => {
+          ctl.phase('사진을 훑는 중')
+          const { files, dupGroups } = await scanPhotos(photoRoots())
+          ctl.phase(`사진 ${files.length.toLocaleString()}장에서 정리할 것을 고르는 중`)
+          const plan = planPhotos(files, dupGroups)
+          return {
+            roots: photoRoots(),
+            scanned: plan.scanned,
+            oldScreenshots: plan.oldScreenshots.slice(0, 100),
+            screenshotCount: plan.oldScreenshots.length,
+            screenshotBytes: plan.screenshotBytes,
+            recentScreenshots: plan.recentScreenshots,
+            dupGroups: plan.dupGroups.slice(0, 50),
+            dupGroupCount: plan.dupGroups.length,
+            dupBytes: plan.dupBytes,
+          }
+        }))
         break
       }
       /**
@@ -2346,6 +2521,11 @@ async function main() {
        * 옮겨도 되는 것만 폴더별로 묶어 준다. 대상 드라이브도 함께 나열한다.
        */
       case 'relocate-scan': {
+        /* ★ 여기는 진행을 **이미 쏘고 있었는데 화면이 안 듣고 있었다.**
+           엔진은 폴더마다 rootIndex를 보내는데 화면은 "옮겨도 되는 것을
+           찾는 중…" 한 줄만 띄웠다. 배선이 반쯤 되다 만 자리다.
+           이제 withTaskProgress로 %와 남은 시간까지 함께 보낸다. */
+        out(await withTaskProgress('relocate-scan', async (ctl) => {
         const roots = relocateRoots({ platform: process.platform, home: homedir() })
         const groups: {
           label: string; path: string; count: number; bytes: number
@@ -2357,6 +2537,7 @@ async function main() {
 
         for (const [i, r] of roots.entries()) {
           progress({ t: 'relocate-scan', rootIndex: i, rootCount: roots.length, root: r.path, label: r.label })
+          ctl.step(i, roots.length, `${r.label} 훑는 중 (${roots.length}곳 중 ${i + 1})`)
           let candidates
           try {
             candidates = await relocateCandidates(r.path)
@@ -2381,8 +2562,9 @@ async function main() {
           })
         }
 
+        ctl.step(roots.length, roots.length, '드라이브 목록을 읽는 중')
         groups.sort((a, b) => b.bytes - a.bytes)
-        out({
+        return {
           roots: roots.map((r) => r.label),
           groups,
           totalCount,
@@ -2390,26 +2572,35 @@ async function main() {
           refusedCount,
           minBytes: RELOCATE_MIN_BYTES,
           drives: await listDrives(),
-        })
+        }
+        /* 폴더마다 크기가 100배씩 다르다(progress.ts 머리말의 그 문제 — 다운로드
+           1천개 vs 앱 데이터 13만개). 폴더 개수로만 세면 큰 폴더에서 멈춰 보인다. */
+        }, { coarseSteps: true }))
         break
       }
       case 'relocate-plan': {
         if (!args[0] || !args[1]) fail('경로와 옮길 드라이브가 필요합니다.')
-        const { items, refused } = await relocateCandidates(args[0])
-        const plan = planRelocate(items, args[1])
-        const dest = await checkDestination(args[1], plan.bytes)
-        out({
-          destFolder: plan.destFolder,
-          bytes: plan.bytes,
-          count: plan.items.length,
-          items: plan.items.slice(0, 200).map(({ item, dest: to }) => ({
-            path: item.path, size: item.size, meaning: item.meaning, dest: to,
-          })),
-          skipped: plan.skipped,
-          refused: refused.slice(0, 50),
-          refusedCount: refused.length,
-          destination: dest,
-        })
+        out(await withTaskProgress('relocate-plan', async (ctl) => {
+          // 시간을 잡아먹는 건 폴더를 훑는 첫 단계다. 나머지 둘은 거의 즉시다.
+          ctl.phase('옮길 수 있는 것을 찾는 중')
+          const { items, refused } = await relocateCandidates(args[0])
+          ctl.phase('옮길 계획을 세우는 중')
+          const plan = planRelocate(items, args[1])
+          ctl.phase('보낼 드라이브에 자리가 있는지 확인하는 중')
+          const dest = await checkDestination(args[1], plan.bytes)
+          return {
+            destFolder: plan.destFolder,
+            bytes: plan.bytes,
+            count: plan.items.length,
+            items: plan.items.slice(0, 200).map(({ item, dest: to }) => ({
+              path: item.path, size: item.size, meaning: item.meaning, dest: to,
+            })),
+            skipped: plan.skipped,
+            refused: refused.slice(0, 50),
+            refusedCount: refused.length,
+            destination: dest,
+          }
+        }))
         break
       }
       case 'relocate-apply': {
@@ -2897,34 +3088,49 @@ async function main() {
       }
       case 'programs': {
         // 제안만 한다. 제거는 셸이 정식 언인스톨러를 호출해서 한다.
-        const r = await probePrograms()
-        out({
-          totalScanned: r.totalScanned,
-          suggestibleBytes: r.suggestibleBytes,
-          suggestions: await Promise.all(r.suggestions.map(async (s) => ({
-            key: s.key,
-            keyPath: s.keyPath,
-            name: s.name,
-            publisher: s.publisher,
-            version: s.version,
-            bytes: s.estimatedBytes,
-            unusedDays: s.unusedDays,
-            runCount: s.runCount,
-            reason: s.verdict.reason,
-            uninstallString: uninstallCommandFor(s),
-            // 있으면 앱 안에서 끝난다. 없으면 화면이 "마법사가 열린다"고 말해야 한다.
-            // ★ 레지스트리에 QuietUninstallString이 없어도 포기하지 않는다 —
-            //   언인스톨러 파일을 열어 NSIS인지 확인하고, 맞으면 규격 스위치를 쓴다.
-            //   (detectSilentUninstall 머리말 — 추측이 아니라 확인이다)
-            silentUninstall: await detectSilentUninstall(s),
-            // 컴퓨터 전체에 설치된 것 — 승격해서 실행해야 UAC가 정상적으로 뜬다.
-            needsAdmin: needsElevation(s),
-            installLocation: s.installLocation,
-          }))),
-          // 안 건드린 것도 보여준다 — "무엇을 제외했는지"가 신뢰의 근거다.
-          excluded: r.excluded.slice(0, 60),
-          excludedCount: r.excluded.length,
-        })
+        /* ★ 제거 방법 확인(detectSilentUninstall)까지 진행 표시 **안에** 둔다.
+           전에 폴더 실측만 감쌌더니 막대가 100%에 닿은 뒤에도 화면이 한참
+           더 기다렸다. 진행 표시가 실제 대기보다 먼저 끝나면, 그건 진행
+           표시가 없는 것보다 나쁘다 — 끝난 줄 알고 클릭하기 시작한다. */
+        out(await withTaskProgress('programs', async (ctl) => {
+          const r = await probePrograms(180, Date.now(), ctl)
+
+          let checked = 0
+          ctl.step(0, r.suggestions.length, '제거 방법을 확인하는 중')
+          const suggestions = await Promise.all(r.suggestions.map(async (s) => {
+            const row = {
+              key: s.key,
+              keyPath: s.keyPath,
+              name: s.name,
+              publisher: s.publisher,
+              version: s.version,
+              bytes: s.estimatedBytes,
+              unusedDays: s.unusedDays,
+              runCount: s.runCount,
+              reason: s.verdict.reason,
+              uninstallString: uninstallCommandFor(s),
+              // 있으면 앱 안에서 끝난다. 없으면 화면이 "마법사가 열린다"고 말해야 한다.
+              // ★ 레지스트리에 QuietUninstallString이 없어도 포기하지 않는다 —
+              //   언인스톨러 파일을 열어 NSIS인지 확인하고, 맞으면 규격 스위치를 쓴다.
+              //   (detectSilentUninstall 머리말 — 추측이 아니라 확인이다)
+              silentUninstall: await detectSilentUninstall(s),
+              // 컴퓨터 전체에 설치된 것 — 승격해서 실행해야 UAC가 정상적으로 뜬다.
+              needsAdmin: needsElevation(s),
+              installLocation: s.installLocation,
+            }
+            ctl.step(++checked, r.suggestions.length)
+            return row
+          }))
+
+          return {
+            totalScanned: r.totalScanned,
+            suggestibleBytes: r.suggestibleBytes,
+            suggestions,
+            // 안 건드린 것도 보여준다 — "무엇을 제외했는지"가 신뢰의 근거다.
+            excluded: r.excluded.slice(0, 60),
+            excludedCount: r.excluded.length,
+          }
+        }))
         break
       }
       /**

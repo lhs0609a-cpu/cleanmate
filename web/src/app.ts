@@ -1507,7 +1507,117 @@ if (inTauri) {
     else if (p && p.t === 'proposal' && p.id) cardProgress.set(p.id, p)
     // 같은 파일 찾기 — 훑기(빠름)와 안을 펼쳐 확인(느림)이 따로 온다
     else if (p && (p.t === 'dupes-scan' || p.t === 'dupes-hash')) lastDupes = p as DupProgress
+    // 화면마다 하나씩 도는 조회(안 쓴 프로그램·숨은 공간·시작프로그램…).
+    // 명령 이름으로 담아둔다 — 두 화면을 잇달아 열어도 안 섞인다.
+    else if (p && p.t === 'task' && p.cmd) taskProgress.set(p.cmd, p as TaskProgress)
   })
+}
+
+/**
+ * 화면 하나를 채우는 조회의 진행 상황.
+ *
+ * ★ 왜 생겼나 (실물에서 본 것)
+ *   '안 쓴 프로그램' 화면은 "설치된 프로그램과 실행 기록을 읽는 중…" 한 줄만
+ *   띄운 채 수십 초를 버텼다. 멈춘 건지 도는 건지 알 수 없는 화면이다.
+ *   스캔에는 진행률이 있었는데 나머지 화면에는 없었다 — 근거를 만들기가
+ *   어려웠기 때문이지, 사용자가 덜 궁금해서가 아니다.
+ *
+ *   이제 엔진이 명령마다 진행을 흘린다(engine-cli.ts withTaskProgress).
+ *   근거는 셋 중 하나이고, 무엇으로 셌는지 화면이 그대로 말한다.
+ */
+interface TaskProgress {
+  t: 'task'
+  /** 엔진 명령 이름 — 어느 화면의 진행인지 */
+  cmd: string
+  /** 지금 하는 일 (사람 말) */
+  label?: string
+  /** null이면 정말 모른다 — 무한 막대를 유지하고 경과 시간만 말한다 */
+  pct: number | null
+  etaSec: number | null
+  basis: 'counted' | 'learned-time' | 'steps' | 'unknown'
+  done?: number
+  total?: number
+  /**
+   * done/total이 '우리 내부 단계'라서 사람에게 보여주면 안 되는 경우.
+   * 5개가 무엇의 5개인지 사용자는 알 길이 없다 — %와 지금 하는 일만 말한다.
+   */
+  coarse?: boolean
+}
+const taskProgress = new Map<string, TaskProgress>()
+
+/**
+ * 로딩 자리에 진행 표시를 그린다. 화면마다 따로 짜지 않는다.
+ *
+ * ★ 전에는 자리마다 문자열 한 줄씩 손으로 박혀 있었다("…읽는 중…").
+ *   그래서 한 곳에 진행률을 붙여도 나머지 여섯 곳은 그대로였다.
+ *   여기 하나로 모아두면 다음에 생기는 화면도 자동으로 같은 대우를 받는다.
+ *
+ * @param cmd 엔진 명령 이름. 이 이름으로 오는 진행만 그린다.
+ * @param headline 진행 문구가 아직 없을 때 보여줄 첫 줄
+ * @param compact 카드 안에 끼워 넣는 자리(생활 정리). 카드를 또 그리면 겹쳐 보인다.
+ * @returns 멈추는 함수. 결과를 그리기 **전에** 부른다.
+ */
+function startPanel(host: HTMLElement, cmd: string, headline: string, compact = false): () => void {
+  // 지난번 실행이 남긴 100%를 물려받지 않는다 — 열자마자 다 된 것처럼 보인다.
+  taskProgress.delete(cmd)
+
+  const started = Date.now()
+  let shownPct = 0 // 뒤로 가지 않게 화면에서도 한 번 더 잠근다
+
+  host.innerHTML = compact
+    ? `<div style="margin-top:10px">
+        <div class="prog" data-panel-bar="1" style="margin:0"><div class="prog-bar"><span></span></div></div>
+        <div class="t-small" data-panel-line="1" style="color:var(--muted);margin-top:8px">${esc(headline)}</div>
+      </div>`
+    : `<div class="card">
+        <div class="prog" data-panel-bar="1" style="margin:0"><div class="prog-bar"><span></span></div></div>
+        <div class="empty" data-panel-line="1" style="padding-top:12px">${esc(headline)}</div>
+      </div>`
+  const bar = host.querySelector<HTMLElement>('[data-panel-bar]')
+  const fill = host.querySelector<HTMLElement>('[data-panel-bar] span')
+  const line = host.querySelector<HTMLElement>('[data-panel-line]')
+
+  const paint = () => {
+    if (!line) return
+    const elapsed = fmtDuration((Date.now() - started) / 1000)
+    const p = taskProgress.get(cmd)
+    const head = p?.label || headline
+
+    if (!p || p.pct === null || p.pct === undefined) {
+      /* 진행률을 셀 근거가 없다 — 거의 첫 실행이다. 무한 막대를 두고 아는 것만
+         말한다. 그리고 **왜 없는지**를 말한다: 이유를 모르면 사용자는 앱이
+         고장난 줄 안다. 다음부터는 뜬다는 걸 알면 기다릴 수 있다. */
+      line.textContent = `${head} · 경과 ${elapsed}`
+        + (p ? ' · 이번에 걸린 시간을 재고 있어요 — 다음부터 남은 시간을 알려드릴 수 있어요' : '')
+      return
+    }
+
+    shownPct = Math.max(shownPct, p.pct)
+    bar?.classList.add('prog-known')
+    // 0%에서 막대를 폭 0으로 두면 빈 홈만 보인다 — 시작한 게 안 보이면 안 누른 줄 안다.
+    if (fill) fill.style.width = `${Math.max(2, shownPct)}%`
+
+    const parts = [`${shownPct}%`]
+    /* 셀 수 있는 **실물**이 있을 때만 개수를 보여준다 — 그러면 %만 있는 것보다
+       훨씬 잘 믿긴다. 내부 단계 수(coarse)는 뜻이 안 통하므로 숨긴다. */
+    if (p.basis === 'counted' && p.total && !p.coarse) {
+      parts.push(`${(p.done ?? 0).toLocaleString()} / ${p.total.toLocaleString()}개`)
+    }
+    parts.push(`경과 ${elapsed}`)
+    if (p.etaSec !== null && p.etaSec !== undefined) parts.push(`남은 시간 약 ${fmtDuration(p.etaSec)}`)
+    else if (p.basis === 'learned-time') parts.push('지난번보다 오래 걸리고 있어요 — 조금만 더요')
+    else if (p.basis === 'steps') parts.push('남은 시간은 단계마다 달라서 말씀드리기 어려워요')
+
+    line.textContent = `${head} · ${parts.join(' · ')}`
+  }
+  paint()
+  /* 500ms — 이 화면들은 스캔(수 분)보다 짧다(수 초~수십 초). 1초 눈금이면
+     10초짜리 일에서 열 번밖에 안 움직여서 멈춘 것처럼 보인다. */
+  const timer = setInterval(paint, 500)
+  return () => {
+    clearInterval(timer)
+    taskProgress.delete(cmd)
+  }
 }
 
 /**
@@ -1810,14 +1920,17 @@ function leftoverNote(leftover: number): string {
 /* ── 숨은 공간 (데스크톱: 실측) ─────────────────────────────── */
 async function loadHidden() {
   const card = $('hiber-card')
-  card.innerHTML = `<div class="empty">이 PC를 확인하는 중...</div>`
+  const stop = startPanel(card, 'probe', '이 PC를 확인하는 중')
   try {
     const data = await engine('probe')
+    stop()
     if (!data.findings.length) { card.innerHTML = `<div class="empty"><svg class="ic"><use href="#i-check"/></svg><b>회수할 숨은 공간이 없어요</b><span>최대절전 파일·휴지통·업데이트가 남긴 파일 모두 깔끔합니다.</span></div>`; return }
     card.innerHTML = data.findings.map((f: any, i: number) => explainCard(f, i)).join('')
     wireAssists(card, data.findings)
   } catch (err) {
     card.innerHTML = `<div class="note">숨은 공간을 확인하지 못했어요: ${esc(errText(err))}</div>`
+  } finally {
+    stop()
   }
 }
 
@@ -2038,9 +2151,10 @@ const FOLDER_ACTION: Record<string, string> = {
  * 비슷한 사진 고르기는 하지 않는다. 잘못 고르면 되돌릴 수 없는 손해다.
  */
 async function photosFlow(host: HTMLElement) {
-  host.innerHTML = `<div class="t-small" style="color:var(--muted);margin-top:10px">사진을 확인하는 중… (수천 장이면 몇 분 걸릴 수 있어요)</div>`
+  const stop = startPanel(host, 'photos-plan', '사진을 확인하는 중 (수천 장이면 몇 분 걸릴 수 있어요)', true)
   try {
     const p = await engine('photos-plan')
+    stop()
     if (!p.screenshotCount && !p.dupGroupCount) {
       host.innerHTML = `<div class="t-small" style="color:var(--safe);margin-top:10px">
         사진 ${p.scanned.toLocaleString()}장을 봤는데 정리할 게 없어요. 이미 깔끔합니다.</div>`
@@ -2092,6 +2206,8 @@ async function photosFlow(host: HTMLElement) {
     })
   } catch (err) {
     host.innerHTML = `<div class="note" style="margin-top:10px">확인하지 못했어요: ${esc(errText(err))}</div>`
+  } finally {
+    stop()
   }
 }
 
@@ -2100,9 +2216,10 @@ async function photosFlow(host: HTMLElement) {
  * "정리했습니다"라고 통보하는 도구가 되지 않으려면 이 순서를 지켜야 한다.
  */
 async function tidyFolderFlow(target: string, host: HTMLElement) {
-  host.innerHTML = `<div class="t-small" style="color:var(--muted);margin-top:10px">무엇을 옮길지 확인하는 중…</div>`
+  const stop = startPanel(host, 'tidy-folder-plan', '무엇을 옮길지 확인하는 중', true)
   try {
     const p = await engine('tidy-folder-plan', [target])
+    stop()
     if (!p.moveCount && !p.broken.length) {
       host.innerHTML = `<div class="t-small" style="color:var(--safe);margin-top:10px">
         이미 정리돼 있어요. 옮길 게 없습니다.</div>`
@@ -2152,6 +2269,8 @@ async function tidyFolderFlow(target: string, host: HTMLElement) {
     })
   } catch (err) {
     host.innerHTML = `<div class="note" style="margin-top:10px">확인하지 못했어요: ${esc(errText(err))}</div>`
+  } finally {
+    stop()
   }
 }
 
@@ -2418,9 +2537,11 @@ let logonTaskCount: number | null = null
  */
 async function loadStartup(quiet = false) {
   const host = $('startup-body')
-  if (!quiet) host.innerHTML = `<div class="empty">시작프로그램을 읽는 중…</div>`
+  // quiet일 때는 이전 목록을 그대로 둔다(위 머리말) — 진행 표시도 띄우지 않는다.
+  const stop = quiet ? () => {} : startPanel(host, 'startup', '시작프로그램을 읽는 중')
   try {
     const d = await engine('startup')
+    stop()
     const entries: any[] = d.entries
 
     /**
@@ -2529,6 +2650,8 @@ async function loadStartup(quiet = false) {
     fillLogonTaskNote()
   } catch (err) {
     host.innerHTML = `<div class="note">시작프로그램을 읽지 못했어요: ${esc(errText(err))}</div>`
+  } finally {
+    stop()
   }
 }
 
@@ -2593,9 +2716,10 @@ async function fillLogonTaskNote() {
    항목마다 개별 확인을 받는다. (src/probes/programs.ts 머리말) */
 async function loadPrograms() {
   const host = $('programs-body')
-  host.innerHTML = `<div class="empty">설치된 프로그램과 실행 기록을 읽는 중…</div>`
+  const stop = startPanel(host, 'programs', '설치된 프로그램과 실행 기록을 읽는 중')
   try {
     const d = await engine('programs')
+    stop()
     const head = `<div style="display:flex;align-items:baseline;gap:10px;margin:14px 0 10px">
         <h2 class="t-title" style="font-weight:var(--w-num)">제거 후보 ${d.suggestions.length}개 · ${fmtBytes(d.suggestibleBytes)}</h2>
         <span class="t-small" style="margin-left:auto;color:var(--muted)">설치 항목 ${d.totalScanned}개 중</span>
@@ -2633,6 +2757,8 @@ async function loadPrograms() {
     })
   } catch (err) {
     host.innerHTML = `<div class="note">프로그램 목록을 읽지 못했어요: ${esc(errText(err))}</div>`
+  } finally {
+    stop() // 실패로 빠져나가도 타이머는 반드시 선다
   }
 }
 
@@ -3138,7 +3264,7 @@ let moveDest: string | null = null
  */
 async function loadMove() {
   const host = $('move-body')
-  host.innerHTML = `<div class="card"><div class="empty">옮겨도 되는 것을 찾는 중…</div></div>`
+  const stop = startPanel(host, 'relocate-scan', '옮겨도 되는 것을 찾는 중')
 
   let d: any
   try {
@@ -3146,6 +3272,8 @@ async function loadMove() {
   } catch (err) {
     host.innerHTML = `<div class="card"><div class="note">찾지 못했어요: ${esc(errText(err))}</div></div>`
     return
+  } finally {
+    stop()
   }
 
   if (!d.totalCount) {
@@ -3231,9 +3359,10 @@ async function loadMove() {
  */
 async function planMove(src: string, dest: string) {
   const slot = document.getElementById('mv-plan') ?? $('move-body')
-  slot.innerHTML = `<div class="empty">옮길 수 있는 것을 찾는 중…</div>`
+  const stop = startPanel(slot, 'relocate-plan', '옮길 수 있는 것을 찾는 중')
   try {
     const d = await engine('relocate-plan', [src, dest])
+    stop()
     if (!d.destination.ok) {
       slot.innerHTML = `<div class="note">${esc(d.destination.reason)}</div>`
       return
@@ -3277,6 +3406,8 @@ async function planMove(src: string, dest: string) {
     })
   } catch (err) {
     slot.innerHTML = `<div class="note">계획을 세우지 못했어요: ${esc(errText(err))}</div>`
+  } finally {
+    stop()
   }
 }
 
@@ -3298,9 +3429,10 @@ async function loadQuar() {
   const listId = 'quar-list-live'
   let host = document.getElementById(listId)
   if (!host) { host = document.createElement('div'); host.id = listId; screen.appendChild(host) }
-  host.innerHTML = `<div class="empty">되돌릴 수 있는 것을 읽는 중...</div>`
+  const stop = startPanel(host, 'quar-list', '되돌릴 수 있는 것을 읽는 중')
   try {
     const data = await engine('quar-list')
+    stop()
     // 옛 버전이 보관해둔 것 중 30일이 지난 건 이 화면에 오기 전에 이미 지워졌다
     // (앱 켤 때 purge). 무엇이 사라졌는지 말하지 않으면 파일이 증발한 걸로 느낀다.
     const purgeNote = lastPurge && lastPurge.purgedCount
@@ -3412,6 +3544,8 @@ async function loadQuar() {
     renderMergedUndo(host)
   } catch (err) {
     host.innerHTML = `<div class="card"><div class="note">되돌릴 수 있는 것을 읽지 못했어요: ${esc(errText(err))}</div></div>`
+  } finally {
+    stop()
   }
 }
 

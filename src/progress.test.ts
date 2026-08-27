@@ -8,7 +8,10 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { computeProgress, fmtDuration, type RootWeight } from './progress.ts'
+import {
+  computeProgress, fmtDuration, stepProgress, timeProgress, phaseProgress,
+  type RootWeight,
+} from './progress.ts'
 
 const PATHS = ['C:\\다운로드', 'C:\\바탕화면', 'C:\\AppData']
 const W: RootWeight[] = [
@@ -141,4 +144,122 @@ test('시간은 초까지 보여준다 — "약 2분"으로는 기다릴 계획�
 test('음수·소수를 넣어도 이상한 문자열이 안 나온다', () => {
   assert.equal(fmtDuration(-5), '0초')
   assert.equal(fmtDuration(7.4), '7초')
+})
+
+/* ── 셀 수 있는 일 (stepProgress) ─────────────────────────────
+   폴더 크기 실측처럼 할 일 목록이 먼저 정해지는 작업. */
+
+test('몇 개 중 몇 개를 했는지로 센다', () => {
+  const v = stepProgress(3, 12, 10_000)
+  assert.equal(v.basis, 'counted')
+  assert.equal(v.pct, 25)
+})
+
+test('★ 다 하기 전에는 100%가 안 된다 — 11/12도 99다', () => {
+  assert.equal(stepProgress(11, 12, 10_000).pct, 91)
+  // 끝에 몰려도 99를 안 넘는다
+  assert.equal(stepProgress(999, 1000, 10_000).pct, 99)
+})
+
+test('총량을 모르면 진행률을 지어내지 않는다', () => {
+  const v = stepProgress(5, 0, 10_000)
+  assert.equal(v.pct, null)
+  assert.equal(v.basis, 'unknown')
+})
+
+test('done이 total을 넘어도 막대가 튀어나가지 않는다', () => {
+  assert.ok(stepProgress(50, 12, 10_000).pct! <= 99)
+})
+
+test('남은 시간은 지금 속도로 낸다', () => {
+  // 10개 중 5개를 10초에 했으면 남은 5개도 대략 10초
+  const v = stepProgress(5, 10, 10_000)
+  assert.ok(v.etaSec! > 8 && v.etaSec! < 12, `남은 시간이 이상하다: ${v.etaSec}초`)
+})
+
+test('표본이 없으면 남은 시간을 안 낸다', () => {
+  assert.equal(stepProgress(0, 10, 30_000).etaSec, null, '아무것도 안 했는데 속도를 알 수 없다')
+  assert.equal(stepProgress(1, 10, 500).etaSec, null, '0.5초 표본으로 낸 숫자는 요동친다')
+})
+
+/* ── 셀 수 없는 일 (timeProgress) ─────────────────────────────
+   ★ 이게 이번에 새로 생긴 근거다. 파워셸에 통째로 맡기는 조회는 안에서
+     몇 개째인지 볼 수가 없다. 그래도 **지난번에 몇 초 걸렸는지**는 안다. */
+
+test('★ 기록이 없으면 진행률을 안 낸다 — 첫 실행에는 아는 척하지 않는다', () => {
+  const v = timeProgress(5_000)
+  assert.equal(v.pct, null)
+  assert.equal(v.basis, 'unknown')
+  assert.equal(v.etaSec, null)
+})
+
+test('지난번 기록으로 진행률과 남은 시간을 낸다', () => {
+  const v = timeProgress(5_000, 10_000) // 10초짜리 일의 절반
+  assert.equal(v.basis, 'learned-time')
+  assert.equal(v.pct, 45) // 절반이면 90%의 절반
+  assert.equal(v.etaSec, 5)
+})
+
+test('★ 지난번과 똑같이 걸려도 100%가 아니다 — 90에서 멈춘다', () => {
+  // 여기서 100을 주면, 조금이라도 더 걸리는 순간 "끝났는데 안 끝났다"가 된다.
+  assert.equal(timeProgress(10_000, 10_000).pct, 90)
+})
+
+test('★ 지난번보다 오래 걸려도 멈춰 보이지 않고, 99에 닿지도 않는다', () => {
+  let prev = 90
+  for (const over of [1, 2, 5, 10, 60, 600]) {
+    const v = timeProgress(10_000 + over * 1_000, 10_000)
+    assert.ok(v.pct! >= prev, `${over}초 초과에서 ${v.pct}%가 이전 ${prev}%보다 작다`)
+    assert.ok(v.pct! <= 99, `${over}초 초과에서 ${v.pct}%가 99를 넘었다`)
+    prev = v.pct!
+  }
+  // 아무리 오래 끌어도 99에서 멈춘다 — 끝났다고 말하지 않는다
+  assert.equal(timeProgress(10_000_000, 10_000).pct, 99)
+})
+
+test('★ 기록을 넘긴 뒤에는 남은 시간을 말하지 않는다 — 근거가 빗나갔으면 침묵이 맞다', () => {
+  assert.equal(timeProgress(15_000, 10_000).etaSec, null)
+})
+
+test('★ 진행률은 시간이 흘러도 뒤로 가지 않는다', () => {
+  let prev = -1
+  for (let ms = 0; ms <= 40_000; ms += 250) {
+    const p = timeProgress(ms, 10_000).pct!
+    assert.ok(p >= prev, `${ms}ms에서 ${p}%가 이전 ${prev}%보다 작다`)
+    prev = p
+  }
+})
+
+test('남은 시간도 줄어들기만 한다 — 늘어나면 고장난 걸로 읽힌다', () => {
+  let prev = Infinity
+  for (let ms = 0; ms < 10_000; ms += 250) {
+    const e = timeProgress(ms, 10_000).etaSec!
+    assert.ok(e <= prev, `${ms}ms에서 남은 시간이 ${prev}초→${e}초로 늘었다`)
+    prev = e
+  }
+})
+
+test('기록이 0이거나 음수면 없는 것으로 친다', () => {
+  assert.equal(timeProgress(5_000, 0).pct, null)
+  assert.equal(timeProgress(5_000, -1).pct, null)
+})
+
+/* ── 단계만 아는 일 (phaseProgress) ───────────────────────── */
+
+test('단계 수로 센다', () => {
+  assert.equal(phaseProgress(2, 5).pct, 40)
+  assert.equal(phaseProgress(0, 5).pct, 0)
+})
+
+test('단계가 하나뿐이면 셀 수가 없다 — 0% 아니면 100%다', () => {
+  assert.equal(phaseProgress(0, 1).pct, null)
+  assert.equal(phaseProgress(0, 0).pct, null)
+})
+
+test('단계 기준으로는 남은 시간을 안 낸다 — 단계마다 길이가 100배씩 다르다', () => {
+  assert.equal(phaseProgress(2, 5).etaSec, null)
+})
+
+test('마지막 단계여도 100%가 아니다', () => {
+  assert.equal(phaseProgress(5, 5).pct, 99)
 })

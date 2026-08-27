@@ -497,27 +497,65 @@ export async function measureFolder(dir: string, maxEntries = 20000): Promise<nu
 }
 
 /** 설치 목록을 모아 제거 후보를 고른다. 아무것도 실행하지 않는다. */
-export async function probePrograms(minUnusedDays = 180, now = Date.now()): Promise<ProgramsReport> {
+/**
+ * 진행 상황을 듣는 쪽(엔진 CLI)에 알리는 통로.
+ *
+ * ★ 왜 붙였나: 이 조회는 화면에서 "설치된 프로그램과 실행 기록을 읽는 중…"
+ *   한 줄로 몇십 초를 버티던 자리다. 그런데 시간을 잡아먹는 건 레지스트리가
+ *   아니라 **폴더 크기 실측**이고(measureFolder — 디스크를 실제로 훑는다),
+ *   그건 몇 개 중 몇 개인지 셀 수 있다. 셀 수 있는 걸 두고 침묵할 이유가 없다.
+ */
+export interface ProgramsProgress {
+  /** 지금 하는 일 */
+  phase: (label: string) => void
+  /** 폴더 크기를 재는 중 — 몇 개 중 몇 개 */
+  step: (done: number, total: number, label?: string) => void
+}
+
+export async function probePrograms(
+  minUnusedDays = 180,
+  now = Date.now(),
+  report?: ProgramsProgress
+): Promise<ProgramsReport> {
+  report?.phase('설치 목록과 실행 기록을 읽는 중')
   const [installed, records] = await Promise.all([collectInstalled(), collectRunRecords()])
   const suggestions: ProgramsReport['suggestions'] = []
   const excluded: ProgramsReport['excluded'] = []
   let suggestibleBytes = 0
 
+  /* 판단은 순수 계산이라 순식간이다. 먼저 다 걸러내고, 오래 걸리는 실측
+     대상을 확정한 다음에 세기 시작한다 — 총량을 모르는 채로 세면 진행률이
+     뒤로 간다(작업이 늘어나므로). */
+  const measuring: { usage: ProgramUsage; verdict: ProgramVerdict }[] = []
   for (const p of installed) {
     const usage = estimateUsage(p, records, now)
     const verdict = judgeProgram(usage, minUnusedDays)
-    if (verdict.suggestible) {
-      // 레지스트리 크기가 없으면 실제 폴더를 잰다. "0MB"라고 보여주면
-      // 정리할 가치가 없어 보이는데, 실제로는 수 GB인 경우가 많다.
-      let bytes = usage.estimatedBytes
-      if (bytes === 0 && usage.installLocation) {
-        bytes = await measureFolder(usage.installLocation)
-      }
-      suggestions.push({ ...usage, estimatedBytes: bytes, verdict })
-      suggestibleBytes += bytes
-    } else {
+    if (!verdict.suggestible) {
       excluded.push({ name: p.name, reason: verdict.reason })
+      continue
     }
+    measuring.push({ usage, verdict })
+  }
+
+  // 레지스트리 크기가 없는 것만 실제로 잰다. 나머지는 잴 필요가 없다.
+  const needsMeasure = measuring.filter((m) => m.usage.estimatedBytes === 0 && m.usage.installLocation)
+  let measured = 0
+  report?.step(0, needsMeasure.length, '차지한 용량을 재는 중')
+
+  for (const m of measuring) {
+    // 레지스트리 크기가 없으면 실제 폴더를 잰다. "0MB"라고 보여주면
+    // 정리할 가치가 없어 보이는데, 실제로는 수 GB인 경우가 많다.
+    let bytes = m.usage.estimatedBytes
+    if (bytes === 0 && m.usage.installLocation) {
+      // 어느 프로그램을 재는 중인지 말한다 — 큰 폴더 하나에서 오래 멈춰 있을 때
+      // 숫자만 있으면 멈춘 걸로 읽히고, 이름이 있으면 기다릴 수 있다.
+      report?.step(measured, needsMeasure.length, `${m.usage.name}이(가) 차지한 용량을 재는 중`)
+      bytes = await measureFolder(m.usage.installLocation)
+      measured++
+      report?.step(measured, needsMeasure.length)
+    }
+    suggestions.push({ ...m.usage, estimatedBytes: bytes, verdict: m.verdict })
+    suggestibleBytes += bytes
   }
 
   suggestions.sort((a, b) => b.estimatedBytes - a.estimatedBytes)
