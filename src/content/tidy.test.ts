@@ -47,10 +47,18 @@ test('날짜는 문자열로만 다룬다 — 시간대 때문에 하루가 밀�
   assert.equal(dayNumber('2026-11-02') - dayNumber('2026-11-01'), 1)
 })
 
-test('todayISO는 YYYY-MM-DD 형식이다', () => {
-  assert.match(todayISO(Date.UTC(2026, 7, 3)), /^\d{4}-\d{2}-\d{2}$/)
-  assert.equal(todayISO(Date.UTC(2026, 7, 3)), '2026-08-03')
+test('★ 오늘은 UTC가 아니라 사는 곳의 날짜다', () => {
+  /* 실물에서 잡혔다(2026-08-31 07:54 KST): toISOString()을 쓰면 한국에서
+     자정~오전 9시 사이에 앱이 어제를 산다. 아침에 정리하고 '했어요'를 누르면
+     어제로 기록되고, 목록에서 안 사라지고, 달력 점이 하루 앞에 찍힌다.
+     매일 아침 하는 사람일수록 자주 겪는다 — 이 앱을 제일 잘 쓰는 사람이다. */
+  const at = (h: number, m = 0) => new Date(2026, 7, 3, h, m, 0).getTime()
+  assert.match(todayISO(at(12)), /^\d{4}-\d{2}-\d{2}$/)
+  assert.equal(todayISO(at(12)), '2026-08-03')
+  assert.equal(todayISO(at(0, 30)), '2026-08-03', '자정 직후에 어제 날짜가 나온다')
+  assert.equal(todayISO(at(23, 30)), '2026-08-03', '밤늦게 내일 날짜가 나온다')
 })
+
 
 /* ── 주기 판단 ── */
 
@@ -76,10 +84,14 @@ test('매일 항목은 다음 날 다시 뜬다', () => {
 })
 
 test('★ 한 번도 안 한 항목은 "밀린 것"이 아니다', () => {
-  // 처음 켠 사람에게 15개가 전부 빨갛게 밀려 있으면 앱을 닫는다.
+  // 처음 켠 사람에게 목록이 전부 빨갛게 밀려 있으면 앱을 닫는다.
   const plan = planToday(emptyState(), '2026-08-03')
-  assert.equal(plan.due.length, ROUTINES.length)
+  const defaultOn = ROUTINES.filter((r) => !r.optIn)
+  assert.equal(plan.due.length, defaultOn.length)
+  assert.equal(plan.enabled, defaultOn.length)
   assert.ok(plan.due.every((d) => d.daysLate === null), '늦은 일수가 붙으면 안 된다')
+  // 켜지 않은 항목은 '오늘 할 것'에도 '맡길 것'에도 없다 — 켜기 전엔 없는 항목이다.
+  assert.deepEqual(plan.book, [], '켜지도 않은 항목이 목록에 떴다')
 })
 
 /* ── 연속 기록 ── */
@@ -168,9 +180,9 @@ test('id가 겹치지 않는다 — 겹치면 진행 기록이 섞인다', () =>
   assert.equal(new Set(ids).size, ids.length)
 })
 
-test('세 분류가 모두 있고, 앱이 대신 해줄 수 있는 항목은 화면으로 연결된다', () => {
+test('분류가 모두 있고, 앱이 대신 해줄 수 있는 항목은 화면으로 연결된다', () => {
   const cats = new Set(ROUTINES.map((r) => r.category))
-  assert.deepEqual([...cats].sort(), ['desk', 'digital', 'home'])
+  assert.deepEqual([...cats].sort(), ['desk', 'digital', 'gear', 'home', 'self', 'upkeep'])
   const linked = ROUTINES.filter((r) => r.appTab)
   assert.ok(linked.length >= 3, '글만 주고 끝내지 않는다')
 })

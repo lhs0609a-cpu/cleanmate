@@ -125,9 +125,17 @@ import {
   undoDone,
   planToday,
   habitStats,
+  setRoutineOn,
   todayISO,
   type TidyState,
 } from './content/tidy.ts'
+import { tidyBoard } from './content/room.ts'
+/* 업체 제안의 근거(계속 밀리는 항목)는 **엔진이 낸다.**
+   전에는 화면이 목록을 보고 직접 다시 계산했는데, 규칙이 두 군데 있으면
+   한쪽만 고쳐진다 — 실제로 맡기는 항목의 규칙(1배)을 추가했을 때
+   데스크톱 화면만 그 신호를 통째로 못 보는 상태가 됐다. */
+import { stuckRoutines } from './content/referral.ts'
+import { coachBoard } from './content/coach.ts'
 import {
   probePrograms, detectSilentUninstall, uninstallCommandFor, needsElevation, isStillInstalled,
 } from './probes/programs.ts'
@@ -2158,7 +2166,15 @@ async function main() {
       case 'tidy-list': {
         const state = await readTidy()
         const today = args[0] ?? todayISO()
-        out({ today, ...planToday(state, today), total: ROUTINES.length, habit: habitStats(state, today) })
+        out({
+          today,
+          ...planToday(state, today),
+          catalog: ROUTINES.length,
+          stuck: stuckRoutines(state, today),
+          coach: coachBoard(state, today),
+          habit: habitStats(state, today),
+          ...tidyBoard(state, today),
+        })
         break
       }
       /**
@@ -2308,6 +2324,50 @@ async function main() {
         out({ destFolder: dest, ...(await undoFolderTidy(dest)) })
         break
       }
+      /**
+       * 목록에 넣고 뺀다 — tidy-set <id> <on|off>
+       *
+       * ★ 이게 없으면 '나' 항목(이발·치과 등)은 영원히 안 보인다. 그 항목들은
+       *   기본이 꺼짐이고(tidy.ts의 optIn), 켜는 유일한 통로가 여기다.
+       *   반대로 기본으로 켜진 항목을 끄는 것도 같은 명령이다 — 냉장고가 없는
+       *   집에 냉장고를 계속 띄우면 그 목록은 남의 기준이 된다.
+       *
+       * 기록은 건드리지 않는다. 껐다 켜도 "언제 했더라"가 그대로 남아 있다.
+       */
+      /**
+       * 정리 코치 — tidy-coach [넘긴 항목 id...]
+       *
+       * "정리정돈 시작"을 눌렀을 때 화면이 받는 것: 분석 단계(실제로 센 값),
+       * 오늘 할 한 곳, 이번 달 리포트. 인자는 **오늘은 넘기기로 한 항목들**이다.
+       * 넘긴 건 기록에 안 남긴다 — 넘긴 날을 세면 그게 벌점이 된다.
+       *
+       * ★ 규칙이 화면에 복사되면 안 된다. 브라우저도 같은 coachBoard()를 부른다.
+       */
+      case 'tidy-coach': {
+        const state = await readTidy()
+        const today = todayISO()
+        out({ today, ...coachBoard(state, today, new Set(args)) })
+        break
+      }
+      case 'tidy-set': {
+        if (!args[0]) fail('항목 id가 필요합니다.')
+        if (!ROUTINES.some((r) => r.id === args[0])) fail(`모르는 항목입니다: ${args[0]}`)
+        const flag = (args[1] ?? '').toLowerCase()
+        if (flag !== 'on' && flag !== 'off') fail("켜기는 on, 끄기는 off 입니다.")
+        const today = args[2] ?? todayISO()
+        const next = setRoutineOn(await readTidy(), args[0], flag === 'on')
+        await writeTidy(next)
+        out({
+          today,
+          ...planToday(next, today),
+          catalog: ROUTINES.length,
+          stuck: stuckRoutines(next, today),
+          coach: coachBoard(next, today),
+          habit: habitStats(next, today),
+          ...tidyBoard(next, today),
+        })
+        break
+      }
       case 'tidy-done':
       case 'tidy-undo': {
         if (!args[0]) fail('항목 id가 필요합니다.')
@@ -2318,7 +2378,20 @@ async function main() {
           ? markDone(state, args[0], today)
           : undoDone(state, args[0], today)
         await writeTidy(next)
-        out({ today, ...planToday(next, today), total: ROUTINES.length })
+        /* ★ habit·board를 여기서도 같이 낸다.
+           예전엔 tidy-list만 habit을 냈다. 그래서 데스크톱 앱에서 '했어요'를
+           누르면 화면이 다시 그려지면서 습관 블록이 통째로 사라졌다 —
+           기록을 남기는 바로 그 순간에 기록판이 없어진 셈이다.
+           (브라우저 쪽은 늘 한 함수에서 만들어 이 증상이 없었다.) */
+        out({
+          today,
+          ...planToday(next, today),
+          catalog: ROUTINES.length,
+          stuck: stuckRoutines(next, today),
+          coach: coachBoard(next, today),
+          habit: habitStats(next, today),
+          ...tidyBoard(next, today),
+        })
         break
       }
       /**

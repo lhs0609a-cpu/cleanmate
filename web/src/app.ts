@@ -16,15 +16,29 @@ import { fmtDuration } from '../../src/progress.ts'
 import { compareVersions, verifyIntegrity, normalizeSha256 } from '../../src/updater.ts'
 import {
   ROUTINES,
-  CATEGORY_LABEL,
   emptyState,
   markDone,
   undoDone,
   planToday,
   habitStats,
+  setRoutineOn,
+  isRoutineOn,
+  CATEGORY_LABEL,
   todayISO,
   type TidyState,
+  type TidyRoutine,
 } from '../../src/content/tidy.ts'
+import { ROOM_ZONES, tidyBoard } from '../../src/content/room.ts'
+// 방 지도·달력·이번 달을 그리는 순수 함수들. 순수해서 Node에서 그대로 테스트한다.
+import { roomHtml, calendarHtml, monthHtml } from './tidy-view.ts'
+import { coachBoard } from '../../src/content/coach.ts'
+import {
+  startSession, sessionView, nextStep, backStep, pauseSession, resumeSession,
+  toggleSpot, finishLine, type TidySession,
+} from '../../src/content/session.ts'
+import {
+  startHtml, analyzingHtml, pickHtml, sessionHtml, doneHtml, reportHtml,
+} from './coach-view.ts'
 import {
   stuckRoutines,
   suggestServices,
@@ -284,6 +298,100 @@ document.querySelectorAll<HTMLButtonElement>('.nav button').forEach((b) => b.add
    켜고 '숨은 공간'에 들어가면 "실측은 데스크톱 앱에서 하세요"가 떠 있었다 —
    지금 그 앱 안에서. 켜자마자 전부 숨긴다. */
 document.querySelectorAll<HTMLElement>('.web-only').forEach((el) => { el.hidden = inTauri })
+// 반대쪽도 같은 이유로. 브라우저 데모는 신호를 아예 안 보내니 그 설명도 없어야 한다.
+document.querySelectorAll<HTMLElement>('.desk-only').forEach((el) => { el.hidden = !inTauri })
+
+/* ── 익명 설치 신호 ────────────────────────────────────────────
+   "몇 명이 쓰고 있나"를 세는 유일한 통로. 서버 쪽 계약은 api/ping.js에 있고,
+   여기 주석과 그 파일 주석이 어긋나면 둘 중 하나가 거짓말이다.
+
+   ★ 지키는 것 넷
+     1) **데스크톱에서만** 보낸다. 브라우저 데모는 세지 않는다 — 데모를 눌러본
+        사람을 '사용자'로 세면 그 숫자는 우리 자신을 속이는 숫자가 된다.
+     2) 보내는 건 임의의 UUID·버전·OS **셋뿐**이다. 폴더도 결과도 안 붙는다.
+     3) 하루에 한 번을 넘지 않는다.
+     4) 끌 수 있고, 끄면 그날부터 아무것도 안 나간다. 도움말에 버튼이 있다.
+
+   실패는 조용히 넘긴다. 통계 때문에 사용자 화면에 오류가 뜨는 건 본말전도다. */
+const PING_URL = 'https://cleanmate-henna.vercel.app/api/ping'
+const K_INSTALL = 'teraclean.installId'
+const K_PING_AT = 'teraclean.pingAt'
+const K_STATS_OFF = 'teraclean.statsOff'
+
+const statsEnabled = () => {
+  try { return localStorage.getItem(K_STATS_OFF) !== '1' } catch { return false }
+}
+
+/** 이 설치의 임의 번호. 사람과 연결되는 정보가 한 조각도 안 들어간다. */
+function installId(): string | null {
+  try {
+    let id = localStorage.getItem(K_INSTALL)
+    if (!id) {
+      // randomUUID는 보안 컨텍스트에서만 있다. 없으면 그냥 안 보낸다 — 억지로
+      // Math.random으로 만들면 충돌하는 id가 생기고, 그 순간 숫자가 틀린다.
+      id = crypto.randomUUID?.() ?? ''
+      if (!id) return null
+      localStorage.setItem(K_INSTALL, id)
+    }
+    return id
+  } catch {
+    return null // 사생활 모드 등 — 못 세는 게 맞다
+  }
+}
+
+function osName(): string {
+  const p = (navigator as any).userAgentData?.platform ?? navigator.platform ?? ''
+  if (/win/i.test(p)) return 'windows'
+  if (/mac/i.test(p)) return 'macos'
+  if (/linux/i.test(p)) return 'linux'
+  return 'unknown'
+}
+
+async function sendPing() {
+  if (!inTauri || !statsEnabled()) return
+  const id = installId()
+  if (!id) return
+  try {
+    if (localStorage.getItem(K_PING_AT) === todayISO()) return
+  } catch { return }
+  try {
+    await fetch(PING_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ installId: id, version: APP_VERSION, os: osName() }),
+      // 통계가 앱을 붙잡지 않게. 답이 늦으면 그냥 내일 다시 보낸다.
+      signal: AbortSignal.timeout?.(5000),
+    })
+    // 보낸 날은 성공했을 때만 적는다 — 실패한 날을 '보냈다'로 적으면 그날이 통째로 빈다.
+    localStorage.setItem(K_PING_AT, todayISO())
+  } catch { /* 오프라인·차단·서버 점검 — 다음에 다시 */ }
+}
+
+/** 도움말의 켜기/끄기 버튼 */
+function wireStatsToggle() {
+  const btn = document.getElementById('stats-toggle') as HTMLButtonElement | null
+  const state = document.getElementById('stats-state')
+  if (!btn) return
+  const paint = () => {
+    const on = statsEnabled()
+    btn.textContent = on ? '익명 통계 끄기' : '익명 통계 켜기'
+    if (state) state.textContent = on
+      ? '지금은 하루 한 번 보내고 있어요.'
+      : '지금은 아무것도 보내지 않습니다.'
+  }
+  btn.addEventListener('click', () => {
+    try { localStorage.setItem(K_STATS_OFF, statsEnabled() ? '1' : '0') } catch { /* 저장 못 하면 끈 상태로 남는다 */ }
+    paint()
+    // 켠 직후엔 바로 한 번 보낸다 — 다음 날까지 기다리게 하지 않는다.
+    if (statsEnabled()) { try { localStorage.removeItem(K_PING_AT) } catch { /* noop */ } ; sendPing() }
+  })
+  paint()
+}
+
+if (inTauri) {
+  wireStatsToggle()
+  sendPing()
+}
 
 /* ── 지원 여부 ─────────────────────────────────────────────── */
 if (!inTauri && !isSupported()) {
@@ -2284,62 +2392,294 @@ function readLocalTidy(): TidyState {
   }
 }
 
-async function tidyPlan(mark?: { id: string; done: boolean }) {
+/**
+ * 화면이 한 번에 받아 가는 묶음.
+ *
+ * @param mark  '했어요'/'되돌리기'
+ * @param pick  목록에 넣기/빼기 — 이게 없으면 '나' 항목은 영원히 안 보인다
+ */
+async function tidyPlan(
+  mark?: { id: string; done: boolean },
+  pick?: { id: string; on: boolean }
+) {
   if (inTauri) {
+    if (pick) return engine('tidy-set', [pick.id, pick.on ? 'on' : 'off'])
     if (!mark) return engine('tidy-list')
     return engine(mark.done ? 'tidy-done' : 'tidy-undo', [mark.id])
   }
   const today = todayISO()
   let state = readLocalTidy()
-  if (mark) {
-    state = mark.done ? markDone(state, mark.id, today) : undoDone(state, mark.id, today)
+  if (mark || pick) {
+    if (pick) state = setRoutineOn(state, pick.id, pick.on)
+    if (mark) state = mark.done ? markDone(state, mark.id, today) : undoDone(state, mark.id, today)
     try { localStorage.setItem(TIDY_KEY, JSON.stringify(state)) } catch { /* 사생활 모드 등 — 기록만 안 남는다 */ }
   }
-  return { today, ...planToday(state, today), total: ROUTINES.length, habit: habitStats(state, today) }
+  // 데스크톱은 engine-cli가 같은 묶음을 만든다(engine-cli.ts의 tidy-list).
+  // 형태가 어긋나면 브라우저에선 보이는 방 지도가 앱에선 안 보인다.
+  return {
+    today,
+    ...planToday(state, today),
+    catalog: ROUTINES.length,
+    // 규칙은 한 군데에만 둔다 — 화면이 다시 계산하면 엔진과 어긋난다.
+    stuck: stuckRoutines(state, today),
+    coach: coachBoard(state, today),
+    habit: habitStats(state, today),
+    ...tidyBoard(state, today),
+  }
+}
+
+
+/**
+ * "마지막으로 한 게 언제쯤인가요?"에 답한 것을 기록한다.
+ *
+ * ★ 오늘로만 적으면 안 된다.
+ *   이발을 켠 사람이 5주 전에 잘랐는데 오늘부터 42일을 세면, 첫 알림이 여섯 주
+ *   늦게 온다. 늦은 알림은 없는 알림과 같고, 그러면 이 항목을 켠 이유가 사라진다.
+ *   '한참 됐어요'는 권장 주기만큼 전으로 적어서 지금 바로 때가 되게 한다.
+ */
+async function markTidySince(id: string, daysAgo: number) {
+  const today = todayISO()
+  const date = daysAgo > 0
+    ? new Date(Date.parse(`${today}T00:00:00Z`) - daysAgo * 86_400_000).toISOString().slice(0, 10)
+    : today
+  if (inTauri) {
+    await engine('tidy-done', [id, date])
+  } else {
+    const state = markDone(readLocalTidy(), id, date)
+    try { localStorage.setItem(TIDY_KEY, JSON.stringify(state)) } catch { /* 사생활 모드 */ }
+  }
+  loadTidy()
+}
+
+/* ── 정리 코치 ─────────────────────────────────────────────────
+   "정리정돈 시작"을 누르면 도는 흐름 전부.
+
+     시작 → 분석(실제로 센 값을 한 줄씩) → 오늘 여기 한 곳
+          → 같이 하기(타이머 + 단계) → 끝 · 자동 기록
+
+   ★ 판단은 전부 src/content/coach.ts·session.ts에 있다. 여기는 붙이는 일만 한다.
+     데스크톱은 engine('tidy-coach'), 브라우저는 coachBoard() — **같은 함수**다.
+     규칙을 화면에 한 벌 더 두면 한쪽만 고쳐진다(업체 제안에서 실제로 그랬다). */
+
+type CoachPhase = 'idle' | 'analyzing' | 'pick' | 'session' | 'done'
+
+let coachPhase: CoachPhase = 'idle'
+let coachData: any = null
+/** 분석 화면에서 지금까지 밝힌 줄 수 */
+let coachShown = 0
+/** 오늘은 넘기기로 한 항목. ★ 기록에 안 남긴다 — 넘긴 날을 세면 그게 벌점이다 */
+const coachSkip = new Set<string>()
+let coachSess: TidySession | null = null
+let coachRoutine: TidyRoutine | null = null
+let coachTick: ReturnType<typeof setInterval> | null = null
+let coachDoneLine = ''
+
+/** 움직임을 줄여달라고 한 사람에게는 한 줄씩 밝히지 않고 한 번에 보여준다. */
+const reduceMotion = () =>
+  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+
+function stopCoachTick() {
+  if (coachTick !== null) {
+    clearInterval(coachTick)
+    coachTick = null
+  }
+}
+
+async function fetchCoach(): Promise<any> {
+  if (inTauri) return engine('tidy-coach', [...coachSkip])
+  const today = todayISO()
+  return { today, ...coachBoard(readLocalTidy(), today, coachSkip) }
+}
+
+/** 코치 칸만 다시 그린다 — 1초마다 목록 전체를 다시 그리면 화면이 튄다. */
+function renderCoachPanel() {
+  const host = document.getElementById('coach-body')
+  if (!host) return
+
+  if (coachPhase === 'idle') host.innerHTML = startHtml()
+  else if (coachPhase === 'analyzing') host.innerHTML = analyzingHtml(coachData?.steps ?? [], coachShown)
+  else if (coachPhase === 'pick') host.innerHTML = pickHtml(coachData?.pick ?? null)
+  else if (coachPhase === 'session' && coachSess && coachRoutine) {
+    host.innerHTML = sessionHtml(sessionView(coachSess, coachRoutine), coachRoutine)
+  } else if (coachPhase === 'done' && coachRoutine) {
+    host.innerHTML = doneHtml(coachRoutine, coachDoneLine)
+  }
+
+  const on = (id: string, fn: () => void) =>
+    document.getElementById(id)?.addEventListener('click', fn)
+
+  /* ★ coachStart를 그대로 넘기면 안 된다 — addEventListener가 Event를 넘겨서
+     첫 인자(quick)가 truthy가 되고, 분석이 한 줄씩 밝혀지지 않고 통째로 건너뛴다.
+     타입은 통과하고 화면만 조용히 달라지는 종류의 버그다. */
+  on('coach-go', () => coachStart())
+  on('coach-close', () => {
+    stopCoachTick()
+    coachPhase = 'idle'
+    renderCoachPanel()
+  })
+  on('coach-start', coachBeginSession)
+  on('coach-skip', () => {
+    // 오늘은 넘긴다. 기록에는 아무것도 안 남고, 다음 후보로 넘어간다.
+    if (coachData?.pick) coachSkip.add(coachData.pick.routine.id)
+    coachStart(true)
+  })
+  on('coach-other', () => {
+    if (coachData?.pick) coachSkip.add(coachData.pick.routine.id)
+    coachStart(true)
+  })
+
+  on('ss-next', () => {
+    if (coachSess && coachRoutine) coachSess = nextStep(coachSess, coachRoutine)
+    renderCoachPanel()
+  })
+  on('ss-back', () => {
+    if (coachSess) coachSess = backStep(coachSess)
+    renderCoachPanel()
+  })
+  on('ss-pause', () => {
+    if (!coachSess) return
+    coachSess = coachSess.pausedAt === null ? pauseSession(coachSess) : resumeSession(coachSess)
+    renderCoachPanel()
+  })
+  on('ss-quit', () => {
+    // 그만둬도 기록에 아무것도 안 남는다. 벌점 같은 건 없다.
+    stopCoachTick()
+    coachSess = null
+    coachPhase = 'pick'
+    renderCoachPanel()
+  })
+  on('ss-finish', coachFinish)
+
+  host.querySelectorAll<HTMLButtonElement>('[data-spot]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (coachSess) coachSess = toggleSpot(coachSess, Number(btn.dataset.spot))
+      renderCoachPanel()
+    })
+  })
 }
 
 /**
- * 습관 기록 — "얼마나 잘하고 있나"를 보여주는 자리.
+ * 분석을 돌린다.
  *
- * ★ 이 블록에 없는 것들이 설계다.
- *   빨간색이 없다. "며칠 밀렸어요"가 없다. 연속 기록이 끊길까 봐 겁주는 문구도
- *   없다. 정리는 시험이 아니라 살림이고, 살림은 하루 거르는 날이 있다.
- *
- *   대신 셋을 보여준다 — 지금까지 몇 번 했는지(등급), 최근 이레 중 어느 날
- *   했는지(점 일곱 개), 다음 단계까지 몇 번인지. 셋 다 **셀 수 있는 것**이다.
- *   "연구에 따르면 습관은 21일" 같은 지어낸 수치는 여기에도 안 쓴다.
+ * ★ 가짜 진행률을 쓰지 않는다. 계산은 순간에 끝나므로 막대를 돌리면 그건
+ *   "오래 걸리는 일을 하는 중"이라는 거짓말이다. 대신 **실제로 센 값**을
+ *   한 줄씩 밝힌다. 화면에 뜨는 숫자가 전부 진짜면 나눠 보여주는 건 연출이다.
  */
-function habitHtml(h: any): string {
-  if (!h) return ''
-  if (!h.doneTotal) {
-    return `<div class="hb">
-      <div class="hb-t">아직 기록이 없어요</div>
-      <div class="t-small" style="color:var(--muted)">아래에서 하나만 눌러보세요. 오늘부터 세어드릴게요.</div>
-    </div>`
-  }
-  const dots = h.days7
-    .map((d: any) => `<i class="${d.count ? 'on' : ''}" title="${esc(d.date)}${d.count ? ` · ${d.count}개` : ''}"></i>`)
-    .join('')
-  const runLine = h.currentDays > 0
-    ? `<b>${h.currentDays}일째</b> 이어가는 중` +
-      (h.bestDays > h.currentDays ? ` · 가장 길었던 건 ${h.bestDays}일` : '')
-    // ★ 쉬었다고 나무라지 않는다. 그냥 기록을 말하고 다시 시작할 수 있다고 한다.
-    : `가장 길었던 건 <b>${h.bestDays}일</b> · 오늘 하나 하면 다시 시작돼요`
+async function coachStart(quick = false) {
+  stopCoachTick()
+  coachPhase = 'analyzing'
+  coachShown = 0
+  renderCoachPanel()
 
-  return `<div class="hb">
-    <div class="hb-h">
-      <span class="hb-t">${esc(h.rank.name)}</span>
-      <span class="t-small" style="color:var(--muted);margin-left:auto">지금까지 ${h.doneTotal.toLocaleString()}번</span>
-    </div>
-    <div class="hb-week"><span class="hb-dots">${dots}</span><span class="t-micro" style="color:var(--faint)">최근 7일</span></div>
-    <div class="t-small" style="color:var(--ink-2)">${runLine}</div>
-    ${h.next ? `<div class="t-small" style="color:var(--muted)">${h.next.remain}번 더 하면 '${esc(h.next.name)}'</div>` : ''}
-  </div>`
+  coachData = await fetchCoach()
+  const total = coachData?.steps?.length ?? 0
+
+  if (quick || reduceMotion()) {
+    coachShown = total
+    coachPhase = 'pick'
+    renderCoachPanel()
+    return
+  }
+
+  const step = () => {
+    if (coachPhase !== 'analyzing') return // 그 사이에 닫았다
+    coachShown++
+    renderCoachPanel()
+    if (coachShown < total) setTimeout(step, 260)
+    else setTimeout(() => {
+      if (coachPhase !== 'analyzing') return
+      coachPhase = 'pick'
+      renderCoachPanel()
+    }, 400)
+  }
+  setTimeout(step, 120)
 }
 
-async function loadTidy(mark?: { id: string; done: boolean }) {
+function coachBeginSession() {
+  coachRoutine = coachData?.pick?.routine ?? null
+  if (!coachRoutine) return
+  coachSess = startSession(coachRoutine.id)
+  coachPhase = 'session'
+  renderCoachPanel()
+  stopCoachTick()
+  // 1초마다 코치 칸만 다시 그린다. 목록·지도는 건드리지 않는다.
+  coachTick = setInterval(() => {
+    if (coachPhase === 'session') renderCoachPanel()
+    else stopCoachTick()
+  }, 1000)
+}
+
+async function coachFinish() {
+  if (!coachSess || !coachRoutine) return
+  stopCoachTick()
+  coachDoneLine = finishLine(coachSess)
+  const id = coachRoutine.id
+  coachSess = null
+  coachSkip.delete(id)
+  coachPhase = 'done'
+  /* 기록하고 화면 전체를 다시 그린다 — 방 지도의 그 칸에 바로 불이 들어와야
+     "끝냈다"가 눈에 보인다. loadTidy가 끝에서 renderCoachPanel을 다시 부른다. */
+  await loadTidy({ id, done: true })
+}
+
+/** 항목 id → 그 항목이 속한 공간. 카드에 '어디 것인지' 꼬리표를 붙인다. */
+const ZONE_OF = new Map<string, { id: string; name: string }>(
+  ROOM_ZONES.flatMap((z) => z.routineIds.map((id) => [id, { id: z.id, name: z.name }] as const))
+)
+
+/** 지도에서 공간을 누르면 그 공간 것만 남는다. null이면 전체. */
+let tidyZoneFilter: string | null = null
+
+/**
+ * 생활 정리 화면을 그린다.
+ *
+ * ★ 실물에서 잡힌 사고 (2026-08-31): **탭이 통째로 비어 있었다.**
+ *   화면에는 "'생활 정리' 탭을 열면 오늘 할 것을 보여드립니다"라는 안내만
+ *   남아 있었다 — 탭을 이미 열었는데도. 즉 그 문장이 그 순간 거짓말이 된다.
+ *
+ *   원인은 여기 오류 처리가 **한 줄도 없었다**는 것이다. 다른 탭 로더(숨은
+ *   공간·프로그램·옮기기·같은 파일)는 전부 catch로 "왜 안 됐는지"를 쓰는데
+ *   이 함수만 없었다. 엔진 호출이 실패하면 예외가 go() 밖으로 그냥 날아가고,
+ *   화면은 손도 안 댄 채로 남는다. 사용자에게는 **아무 일도 안 일어난 것**으로
+ *   보이고, 우리에게는 아무 흔적도 안 남는다.
+ *
+ *   그래서 셋을 지킨다: ① 누르는 즉시 읽는 중이라고 말한다(안내문을 치운다)
+ *   ② 실패하면 실제 이유를 그대로 쓴다 ③ 다시 눌러볼 버튼을 남긴다.
+ */
+async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: string; on: boolean }) {
   const host = $('tidy-body')
-  const d = await tidyPlan(mark)
+
+  /* 안내문("탭을 열면 …")을 먼저 치운다. 열었는데도 그대로 남아 있으면
+     그 문장 자체가 그 순간 거짓이 된다.
+
+     ★ startPanel을 안 쓴다. 저건 엔진이 진행률을 보내는 긴 명령용이고,
+       이건 기록 파일 하나를 읽는 일이라 **잴 진행률이 자체가 없다.**
+       없는 %를 지어내지 않는 건 이 저장소의 다른 규칙이다(코치의 '분석 중'과 같다).
+       대신 진행률 없는 무한 막대를 둔다 — 기다리는 사람에게 아무것도 안
+       보여주지 않는다는 규칙(loading-progress.test.ts)은 그대로 지킨다. */
+  if (!host.dataset.ready) {
+    host.innerHTML = `<div class="card">
+      <div class="prog" style="margin:0"><div class="prog-bar"><span></span></div></div>
+      <div class="empty" style="padding-top:12px">기록을 읽는 중…</div>
+    </div>`
+  }
+
+  let d: any
+  try {
+    d = await tidyPlan(mark, pick)
+  } catch (err) {
+    /* 조용히 죽지 않는다. 무엇이 안 됐는지, 다시 해볼 수 있는지를 화면에 쓴다. */
+    host.innerHTML = `<div class="card">
+      <h2 class="t-title" style="font-weight:var(--w-num)">생활 정리를 불러오지 못했어요</h2>
+      <p class="t-small" style="color:var(--ink-2);margin-top:8px;max-width:var(--measure)">
+        ${esc(String((err as Error)?.message ?? err) || '알 수 없는 오류')}</p>
+      <p class="note" style="margin-top:10px">기록은 이 컴퓨터에만 있고, 이 오류로 지워지지 않습니다.</p>
+      <button class="btn" id="tidy-retry" style="margin-top:14px">다시 시도</button>
+    </div>`
+    document.getElementById('tidy-retry')?.addEventListener('click', () => loadTidy())
+    return
+  }
+  host.dataset.ready = '1'
 
   const card = (r: any, state: 'due' | 'later' | 'done') => {
     const meta = state === 'later'
@@ -2347,24 +2687,23 @@ async function loadTidy(mark?: { id: string; done: boolean }) {
       : state === 'done'
         ? '오늘 완료'
         : r.daysLate === null ? '아직 안 해봄' : r.daysLate > 0 ? `${r.daysLate}일 지남` : '오늘'
-    const border = state === 'done' ? 'var(--safe)' : state === 'due' ? 'var(--accent)' : 'var(--line-2)'
-    return `<div style="border:1px solid var(--line);border-left:3px solid ${border};border-radius:10px;
-                        background:var(--surface);padding:14px;margin-top:10px">
-      <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
-        <b class="t-lead">${esc(r.title)}</b>
-        <span class="t-micro" style="color:var(--accent);font-weight:var(--w-head)">${esc(CATEGORY_LABEL[r.category as keyof typeof CATEGORY_LABEL])}</span>
-        <span class="t-small" style="color:var(--muted)">${r.minutes}분 · ${meta}</span>
-        ${r.streak > 1 ? `<span class="t-small" style="color:var(--safe);font-weight:var(--w-head)">${r.streak}회 연속</span>` : ''}
+    const zone = ZONE_OF.get(r.id)
+    return `<div class="tk ${state}">
+      <div class="tk-h">
+        <b class="ti">${esc(r.title)}</b>
+        ${zone ? `<span class="zn">${esc(zone.name)}</span>` : ''}
+        <span class="meta">${r.minutes}분 · ${meta}</span>
+        ${r.streak > 1 ? `<span class="st">${r.streak}회 연속</span>` : ''}
         <button class="opt" data-tidy="${esc(r.id)}" data-done="${state === 'done' ? '0' : '1'}"
-                style="margin-left:auto">${state === 'done' ? '되돌리기' : '했어요'}</button>
+                >${state === 'done' ? '되돌리기' : '했어요'}</button>
       </div>
-      <div class="t-small" style="color:var(--ink-2);margin-top:8px;line-height:1.6">${esc(r.why)}</div>
+      <div class="tk-why">${esc(r.why)}</div>
       <details style="margin-top:8px">
         <summary class="t-small" style="cursor:pointer;color:var(--muted)">이렇게 하면 됩니다</summary>
-        <ol class="t-small" style="margin:8px 0 0;padding-left:20px;color:var(--ink-2);line-height:1.7">
+        <ol class="tk-steps">
           ${r.steps.map((s: string) => `<li>${esc(s)}</li>`).join('')}
         </ol>
-        ${r.tip ? `<div class="t-small" style="color:var(--muted);margin-top:8px">막히는 지점: ${esc(r.tip)}</div>` : ''}
+        ${r.tip ? `<div class="tk-tip">막히는 지점: ${esc(r.tip)}</div>` : ''}
         ${FOLDER_ACTION[r.id] && inTauri
           ? `<button class="opt" data-tidyfolder="${FOLDER_ACTION[r.id]}" style="margin-top:10px">이건 앱이 대신 해드릴게요 — 먼저 보여드릴게요</button>
              <div data-plan="${FOLDER_ACTION[r.id]}"></div>`
@@ -2373,30 +2712,151 @@ async function loadTidy(mark?: { id: string; done: boolean }) {
     </div>`
   }
 
+  /* ── 맡길 때가 된 것 ─────────────────────────────────────────
+     ★ '오늘 할 것'과 카드를 나눈 이유는 누를 수 있는 버튼이 다르기 때문이다.
+       이발·치과·세탁은 이 자리에서 '했어요'를 누를 수가 없다. 같은 목록에
+       섞어두면 못 누르는 카드가 껴서 목록 전체가 못 미더워진다.
+
+     ★ 처음 켠 항목에는 '했어요'를 묻지 않고 **언제였는지**를 묻는다.
+       안 물어보면 오늘부터 주기를 세는데, 실제로 5주 전에 잘랐다면 첫 알림이
+       6주 늦는다. 늦은 알림은 없는 알림과 같다. */
+  const bookCard = (r: any) => {
+    const first = r.daysLate === null
+    const late = first ? '' : r.daysLate > 0 ? `${r.daysLate}일 지남` : '오늘부터'
+    return `<div class="tk book">
+      <div class="tk-h">
+        <b class="ti">${esc(r.title)}</b>
+        <span class="zn">${esc(CATEGORY_LABEL[r.category as keyof typeof CATEGORY_LABEL] ?? '')}</span>
+        <span class="meta">${r.everyDays}일마다${late ? ` · ${late}` : ''}</span>
+        ${first ? '' : `<button class="opt" data-tidy="${esc(r.id)}" data-done="1">다녀왔어요</button>`}
+      </div>
+      <div class="tk-why">${esc(r.why)}</div>
+      ${first
+        ? `<div class="ask">
+             <span>마지막으로 한 게 언제쯤인가요?</span>
+             <button class="opt" data-since="${esc(r.id)}" data-days="0">최근에 했어요</button>
+             <button class="opt" data-since="${esc(r.id)}" data-days="${r.everyDays}">한참 됐어요</button>
+           </div>
+           <p class="note">답을 안 하셔도 됩니다. 다음에 이 카드에서 물어볼게요.</p>`
+        : `<details style="margin-top:8px">
+             <summary class="t-small" style="cursor:pointer;color:var(--muted)">예약 전에 정할 것</summary>
+             <ol class="tk-steps">${r.steps.map((x: string) => `<li>${esc(x)}</li>`).join('')}</ol>
+             ${r.tip ? `<div class="tk-tip">막히는 지점: ${esc(r.tip)}</div>` : ''}
+           </details>`}
+    </div>`
+  }
+
+  const book = (d.book ?? []).filter((r: any) => !tidyZoneFilter)
+  const bookHtml = book.length
+    ? `<section class="card">
+        <div class="sechead"><h2>맡길 때가 된 것 ${book.length}개</h2></div>
+        <p class="note" style="margin-bottom:12px">여기 있는 건 지금 이 자리에서 못 끝냅니다.
+          이 앱이 하는 일은 <b>날짜를 대신 세는 것</b>뿐이에요.</p>
+        ${book.map(bookCard).join('')}
+       </section>`
+    : ''
+
+  /* ── 내 목록 고르기 ─────────────────────────────────────────
+     ★ 우리가 정한 항목이 곧 그 사람의 할 일이 되면, 그건 남의 기준이다.
+       냉장고가 없는 집도 있고 식탁에서 일하는 사람도 있다. 그리고 몸에 대한
+       항목은 기본이 꺼짐이라 **여기가 유일한 통로**다 — 묻지도 않고 머리
+       이야기를 꺼내지 않으려고 그렇게 뒀다. */
+  const onIds = new Set<string>([
+    ...d.due.map((r: any) => r.id),
+    ...(d.book ?? []).map((r: any) => r.id),
+    ...d.later.map((r: any) => r.id),
+    ...d.doneToday,
+  ])
+  const catOrder = ['home', 'desk', 'digital', 'self', 'upkeep'] as const
+  const pickerHtml = `<section class="card">
+    <details>
+      <summary class="sechead" style="cursor:pointer;margin:0">
+        <h2 style="display:inline">내 목록 고르기 — ${onIds.size}/${d.catalog ?? ROUTINES.length}개 켜짐</h2>
+      </summary>
+      <p class="note" style="margin:12px 0">켠 것만 화면에 나옵니다.
+        끄면 <b>기록은 그대로 남고</b> 목록에서만 빠져요 — 다시 켜면 이어집니다.</p>
+      ${catOrder.map((cat) => {
+        const items = ROUTINES.filter((r) => r.category === cat)
+        if (!items.length) return ''
+        const proNote = items.every((r) => r.doer === 'pro')
+          ? `<p class="note" style="margin:0 0 8px">여기는 기본이 꺼짐입니다. 묻지도 않고 꺼낼 이야기가 아니라서요.</p>`
+          : ''
+        return `<div class="pickg">
+          <h3 class="t-small" style="color:var(--muted);margin:14px 0 6px">${esc(CATEGORY_LABEL[cat])}</h3>
+          ${proNote}
+          ${items.map((r) => {
+            const on = onIds.has(r.id)
+            return `<div class="pick ${on ? 'on' : ''}">
+              <b>${esc(r.title)}</b>
+              <span class="meta">${r.everyDays}일마다 · ${r.minutes}분${r.doer === 'pro' ? ' · 맡기는 것' : ''}</span>
+              <button class="opt" data-pick="${esc(r.id)}" data-on="${on ? '0' : '1'}"
+                >${on ? '목록에서 빼기' : '목록에 넣기'}</button>
+            </div>`
+          }).join('')}
+        </div>`
+      }).join('')}
+    </details>
+  </section>`
+
   const byId = new Map(ROUTINES.map((r) => [r.id, r]))
-  const doneCards = d.doneToday.map((id: string) => card({ ...byId.get(id), streak: 0 }, 'done')).join('')
+  const zoneName = tidyZoneFilter ? ROOM_ZONES.find((z) => z.id === tidyZoneFilter)?.name ?? null : null
+  const inZone = (id: string) => !tidyZoneFilter || ZONE_OF.get(id)?.id === tidyZoneFilter
+
+  const due = d.due.filter((r: any) => inZone(r.id))
+  const later = d.later.filter((r: any) => inZone(r.id))
+  const doneToday = d.doneToday.filter((id: string) => inZone(id))
+  const doneCards = doneToday.map((id: string) => card({ ...byId.get(id), streak: 0 }, 'done')).join('')
+
+  /* 걸러진 상태에서 "오늘 할 건 다 하셨어요"라고 쓰면 거짓말이 된다 —
+     다른 공간엔 남아 있을 수 있다. 그래서 빈 문장을 두 갈래로 나눈다. */
+  const emptyLine = tidyZoneFilter
+    ? `${esc(zoneName ?? '')}은 지금 할 게 없어요.`
+    : '오늘 할 건 다 하셨어요. 더 안 하셔도 됩니다.'
 
   host.innerHTML = `
-    ${habitHtml(d.habit)}
-    <div style="display:flex;align-items:baseline;gap:10px;margin:16px 0 4px;flex-wrap:wrap">
-      <h2 class="t-title" style="font-weight:var(--w-num)">오늘 할 것 ${d.due.length}개</h2>
-      <span class="t-small" style="margin-left:auto;color:var(--muted)">
-        오늘 완료 ${d.doneToday.length}개 · 전체 ${d.total}개</span>
-    </div>
-    ${d.due.length
-      ? d.due.map((r: any) => card(r, 'due')).join('')
-      : '<div class="empty">오늘 할 건 다 하셨어요. 더 안 하셔도 됩니다.</div>'}
-    ${d.doneToday.length ? `<details open style="margin-top:16px">
-      <summary class="t-small" style="cursor:pointer;color:var(--safe);font-weight:var(--w-ui)">오늘 끝낸 ${d.doneToday.length}개</summary>
-      ${doneCards}</details>` : ''}
-    ${d.later.length ? `<details style="margin-top:12px">
-      <summary class="t-small" style="cursor:pointer;color:var(--muted)">아직 때가 아닌 ${d.later.length}개</summary>
-      ${d.later.map((r: any) => card(r, 'later')).join('')}</details>` : ''}
-    <p class="note" style="margin-top:14px">기록은 이 컴퓨터에만 있습니다.
-      <b>못 한 날을 세지 않습니다</b> — 며칠 걸러도 연속 기록은 이어집니다.</p>
-    <div id="referral"></div>`
+    <div id="coach-body"></div>
+    ${roomHtml(d.room)}
+    ${calendarHtml(d.calendar, d.habit)}
+    ${monthHtml(d.month)}
+    <section class="card">
+      <div class="sechead">
+        <h2>${tidyZoneFilter ? `${esc(zoneName ?? '')}에서 할 것 ${due.length}개` : `오늘 할 것 ${due.length}개`}</h2>
+        ${tidyZoneFilter ? `<button class="opt" id="tidy-all">전체 보기</button>` : ''}
+        <span class="t-small" style="margin-left:auto;color:var(--muted)">
+          오늘 완료 ${doneToday.length}개 · 목록 ${d.enabled}개</span>
+      </div>
+      ${due.length ? due.map((r: any) => card(r, 'due')).join('') : `<div class="empty">${emptyLine}</div>`}
+      ${doneToday.length ? `<details open style="margin-top:16px">
+        <summary class="t-small" style="cursor:pointer;color:var(--safe);font-weight:var(--w-ui)">오늘 끝낸 ${doneToday.length}개</summary>
+        ${doneCards}</details>` : ''}
+      ${later.length ? `<details style="margin-top:12px">
+        <summary class="t-small" style="cursor:pointer;color:var(--muted)">아직 때가 아닌 ${later.length}개</summary>
+        ${later.map((r: any) => card(r, 'later')).join('')}</details>` : ''}
+      <p class="note" style="margin-top:14px">기록은 이 컴퓨터에만 있습니다.
+        <b>못 한 날을 세지 않습니다</b> — 며칠 걸러도 연속 기록은 이어집니다.</p>
+      <div id="referral"></div>
+    </section>
+    ${bookHtml}
+    ${reportHtml(d.coach?.report)}
+    ${pickerHtml}`
 
   renderReferral(d)
+  // 목록을 다시 그려도 코치 칸은 하던 자리에서 이어진다(세션 중이면 세션 그대로).
+  renderCoachPanel()
+
+  /* 지도의 칸과 제안 줄이 같은 data-zone을 쓴다 — 둘 다 '그 공간만 보기'다.
+     이미 그 공간을 보고 있으면 다시 눌러 전체로 돌아온다(토글). */
+  host.querySelectorAll<HTMLElement>('[data-zone]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.zone!
+      tidyZoneFilter = tidyZoneFilter === id ? null : id
+      loadTidy()
+    })
+  })
+  document.getElementById('tidy-all')?.addEventListener('click', () => {
+    tidyZoneFilter = null
+    loadTidy()
+  })
 
   host.querySelectorAll<HTMLButtonElement>('[data-tidy]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -2406,6 +2866,24 @@ async function loadTidy(mark?: { id: string; done: boolean }) {
   })
   host.querySelectorAll<HTMLButtonElement>('[data-goto]').forEach((btn) => {
     btn.addEventListener('click', () => go(btn.dataset.goto!))
+  })
+
+  /* 목록에 넣고 빼기. 되돌릴 수 있는 일이라 확인창을 세우지 않는다 —
+     한 번 더 누르면 그대로 돌아온다. */
+  host.querySelectorAll<HTMLButtonElement>('[data-pick]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      btn.disabled = true
+      loadTidy(undefined, { id: btn.dataset.pick!, on: btn.dataset.on === '1' })
+    })
+  })
+
+  /* "마지막으로 한 게 언제쯤인가요?" — 지난 날짜로 기록을 남긴다.
+     오늘로만 적으면 5주 전에 자른 사람의 첫 알림이 6주 늦는다. */
+  host.querySelectorAll<HTMLButtonElement>('[data-since]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      btn.disabled = true
+      markTidySince(btn.dataset.since!, Number(btn.dataset.days) || 0)
+    })
   })
   host.querySelectorAll<HTMLButtonElement>('[data-tidyfolder]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -2429,13 +2907,12 @@ function renderReferral(plan: any, askedByUser = false) {
   const host = document.getElementById('referral')
   if (!host) return
 
-  const state = inTauri ? null : readLocalTidy()
-  // 데스크톱은 엔진이 준 목록에서, 브라우저는 로컬 기록에서 신호를 만든다
-  const stuck = state
-    ? stuckRoutines(state, plan.today)
-    : (plan.due ?? [])
-        .filter((r: any) => r.daysLate !== null && r.daysLate >= r.everyDays * 2)
-        .map((r: any) => ({ id: r.id, title: r.title, category: r.category, timesOverdue: 3 }))
+  /* ★ 신호는 만들지 않고 받아 쓴다.
+     전에는 데스크톱에서만 화면이 목록을 보고 '밀린 것'을 다시 계산했다.
+     규칙이 두 군데 있으면 한쪽만 고쳐진다 — 맡기는 항목의 규칙(주기 1배)을
+     넣었을 때 실제로 데스크톱만 그 신호를 통째로 못 보는 상태가 됐다.
+     이제 양쪽 다 stuckRoutines() 하나에서 나온 것을 그대로 쓴다. */
+  const stuck = plan.stuck ?? []
 
   const suggestions = suggestServices({ stuck, askedByUser })
 
