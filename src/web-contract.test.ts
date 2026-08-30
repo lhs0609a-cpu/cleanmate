@@ -172,6 +172,34 @@ test('★ 생활 정리 화면이 목록만 있던 시절로 돌아가지 않았
   assert.match(app, /\$\{monthHtml\(/, '이번 달 요약을 안 그린다')
 })
 
+test('★ 생활 정리가 파일 탭과 다른 옷을 입는다', () => {
+  /* 실물 지적(2026-08-31): "너무 다른 거랑 똑같아." 맞는 말이었다.
+     숨은 공간·시작프로그램·같은 파일과 정확히 같은 구조였다 — 흰 카드,
+     목록, 오른쪽 큰 실행 버튼. 그런데 파일 탭은 '일하는 화면'(훑고 판단하고
+     실행)이고 생활 정리는 '사는 화면'(하나 하고 닫는다)이다. 같은 옷을 입히면
+     "오늘 할 것 14개"가 스캔 결과처럼 읽힌다 — 열 때마다 빚 독촉장이 된다. */
+  const app = read('web/src/app.ts')
+
+  // 이 화면 전체가 제 스코프 안에 있어야 파일 탭 스타일이 안 새어 들어온다.
+  assert.match(app, /host\.innerHTML = `<div class="life">/, '생활 정리가 제 옷을 안 입었다')
+  assert.match(app, /segHtml\(tidySeg\)/, '오늘/내 방/기록으로 안 나눴다 — 한 화면에 여덟 블록이다')
+  assert.match(app, /rowHtml\(r, \{ state/, '항목이 아직 카드다')
+
+  // 시각 — 다른 탭에는 없는 축이다. 이게 빠지면 그냥 목록으로 돌아간다.
+  assert.match(app, /dayPart\(\)/, '몇 시인지 안 본다')
+  assert.match(app, /sortByTime\(due, part\)/, '지금 시각에 맞는 것을 앞에 안 올린다')
+  assert.match(app, /greetHtml\(g, doneToday\.length\)/, '인사가 없다')
+
+  const css = read('web/app.html')
+  assert.match(css, /\.life\{max-width:var\(--measure-wide\)/, '읽는 폭을 안 좁혔다')
+  assert.match(css, /\.lrow \.ck\{/, "'했어요'가 아직 실행 버튼이다")
+  // 이 옷에도 빨강은 없다.
+  const start = css.indexOf('  .life{')
+  const end = css.indexOf('  .life .card,')
+  assert.ok(start > 0 && end > start, '생활 정리 CSS 블록을 못 찾았다')
+  assert.doesNotMatch(css.slice(start, end), /var\(--lock\)/, '생활 정리가 경고색을 쓴다')
+})
+
 test('★ 생활 정리 탭이 조용히 죽지 않는다 — 실물에서 빈 화면으로 잡혔다', () => {
   /* 2026-08-31 실물: 생활 정리 탭에 "'생활 정리' 탭을 열면 …"라는 안내문만
      남아 있었다. 탭을 이미 열었는데도. 원인은 loadTidy에 오류 처리가 한 줄도

@@ -120,6 +120,9 @@
        카드 폭을 좁히는 게 아니라 **글이 흐르는 폭만** 좁힌다 —
        목록·표는 넓은 카드를 그대로 써야 하기 때문이다. */
     --measure:38em;
+    /* 줄 목록처럼 항목이 짧게 여러 개 오는 화면의 폭. 본문(38em)보다 넓고
+       훑는 표(전체 폭)보다 좁다 — 읽는 화면과 훑는 화면의 중간이다. */
+    --measure-wide:46em;
 
     /* ── 색: 중립 ──────────────────────────────────────────────
        순백·순회색을 쓰지 않는다. 청록을 아주 조금 섞어야 브랜드와 붙는다. */
@@ -696,6 +699,117 @@
             line-height:1.75;color:var(--ink-2);max-width:var(--measure)}
   .tk-tip{font-size:var(--t-caption);color:var(--muted);margin-top:var(--s-2);max-width:var(--measure)}
 
+
+
+  /* ══ 생활 정리만의 옷 ═══════════════════════════════════════
+     ★ 왜 여기만 다른가
+       다른 탭은 **일하는 화면**이다 — 훑은 결과를 늘어놓고, 무엇을 지울지
+       판단하고, 실행한다. 흰 카드에 테두리를 두르고 항목마다 설명을 붙이고
+       실행 버튼을 크게 두는 게 맞다. "뭘 지우는지 알고 지웁니다"가 약속이니까.
+
+       생활 정리는 **사는 화면**이다. 이불을 갤지 말지 판단하는 사람은 없다.
+       하나 하고 닫는다. 그리고 매일 연다(다른 탭은 몇 달에 한 번).
+       그런데 같은 옷을 입고 있어서 "오늘 할 것 14개"가 스캔 결과처럼 읽혔다.
+
+     ★ 그래서 이 안에서는
+       · 카드를 안 쓴다. 테두리 대신 **여백**으로 나눈다
+       · 읽는 폭을 좁힌다 — 훑는 화면이 아니라 읽는 화면이다
+       · 항목은 줄이다. 설명은 누른 사람에게만
+       · '했어요'가 pill이 아니라 **체크 원**이다. 실행이 아니라 표시다
+       · 여기에도 --lock(빨강)은 한 번도 안 나온다 */
+  .life{max-width:var(--measure-wide);min-width:0}
+
+  /* 하위 탭 — 목적이 셋이면 화면도 셋 */
+  .lseg{display:flex;gap:2px;background:var(--surface-2);border-radius:var(--r-full);
+        padding:3px;margin-bottom:var(--s-5);width:fit-content;max-width:100%;
+        overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .lseg button{flex:none;border:0;background:none;cursor:pointer;font:inherit;
+               font-size:var(--t-small);font-weight:var(--w-ui);color:var(--muted);
+               padding:7px 18px;border-radius:var(--r-full);white-space:nowrap}
+  .lseg button:hover{color:var(--ink-2)}
+  .lseg button.on{background:var(--surface);color:var(--ink);
+                  box-shadow:0 1px 3px rgba(0,0,0,.06)}
+
+  /* 인사 — 지금 몇 시인지에 따라 달라지는 유일한 화면 */
+  .lhi{margin-bottom:var(--s-5)}
+  .lhi h2{font-size:var(--t-h1);line-height:var(--lh-h1);letter-spacing:var(--tr-h1);
+          font-weight:var(--w-num)}
+  .lhi p{font-size:var(--t-lead);line-height:var(--lh-lead);letter-spacing:var(--tr-lead);
+         color:var(--ink-2);margin-top:var(--s-2);max-width:var(--measure)}
+  /* 밤에는 조용히. 큰 글씨로 재촉하지 않는다. */
+  .lhi.quiet h2{font-size:var(--t-title);line-height:var(--lh-title);
+                letter-spacing:var(--tr-title);color:var(--ink-2)}
+  .lhi.quiet p{font-size:var(--t-small);line-height:var(--lh-small);color:var(--muted)}
+  .lhi-done{display:inline-block;margin-top:var(--s-3);font-size:var(--t-caption);
+            font-weight:var(--w-ui);color:var(--safe)}
+
+  .lfilter{display:flex;gap:var(--s-3);align-items:center;flex-wrap:wrap;
+           margin-bottom:var(--s-3);font-size:var(--t-caption);color:var(--muted)}
+  .lfilter > *{min-width:0}
+
+  /* 묶음 — 카드가 아니라 제목 + 줄들 */
+  .lgroup{margin-top:var(--s-5);min-width:0}
+  .lgroup > summary{list-style:none;cursor:pointer}
+  .lgroup > summary::-webkit-details-marker{display:none}
+  .lgroup h3{display:flex;gap:var(--s-2);align-items:baseline;
+             font-size:var(--t-caption);font-weight:var(--w-head);color:var(--muted);
+             letter-spacing:var(--tr-caption)}
+  .lgroup h3 span{font-variant-numeric:tabular-nums;color:var(--faint)}
+  .lempty{font-size:var(--t-small);color:var(--muted);margin-top:var(--s-3);
+          max-width:var(--measure)}
+
+  /* 줄 — 카드 하나가 150px이었고 열넷이면 2,000px이 넘었다. 줄은 52px이다. */
+  .lrow{display:flex;gap:var(--s-3);align-items:flex-start;min-width:0;
+        padding:var(--s-3) 0;border-bottom:1px solid var(--line)}
+  .lrow:last-child{border-bottom:0}
+  .lrow > *{min-width:0}
+
+  /* '했어요'는 실행이 아니라 표시다. 그래서 pill이 아니라 체크 원이다. */
+  .lrow .ck{flex:none;width:24px;height:24px;margin-top:2px;border-radius:50%;
+            border:1.5px solid var(--line-2);background:none;cursor:pointer;padding:0;
+            position:relative;transition:border-color var(--fast) var(--ease)}
+  .lrow .ck:hover{border-color:var(--accent)}
+  .lrow .ck::after{content:'';position:absolute;left:7px;top:3px;width:5px;height:10px;
+                   border:solid transparent;border-width:0 2px 2px 0;transform:rotate(45deg)}
+  .lrow .ck:hover::after{border-color:var(--line-2)}
+  .lrow.done .ck{background:var(--safe);border-color:var(--safe)}
+  .lrow.done .ck::after{border-color:#fff}
+  .lrow .ck:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .lrow .lx{flex:1 1 auto;min-width:0}
+  .lrow summary{list-style:none;cursor:pointer;display:flex;gap:var(--s-2);
+                align-items:baseline;flex-wrap:wrap;padding:1px 0}
+  .lrow summary::-webkit-details-marker{display:none}
+  .lrow summary > *{min-width:0}
+  .lrow .tt{font-size:var(--t-body);line-height:var(--lh-body);letter-spacing:var(--tr-body);
+            font-weight:var(--w-em);color:var(--ink)}
+  .lrow .mt{font-size:var(--t-caption);color:var(--muted);font-variant-numeric:tabular-nums}
+  /* 지금 시각에 맞는 것 — 경고가 아니라 힌트다. 그래서 강조가 아주 옅다. */
+  .lrow .now{font-size:var(--t-micro);font-weight:var(--w-ui);color:var(--accent);
+             background:var(--surface-2);border-radius:var(--r-full);padding:1px 8px;flex:none}
+  .lrow .st{font-size:var(--t-micro);color:var(--safe);font-weight:var(--w-ui);flex:none}
+  .lrow.done .tt{color:var(--muted);text-decoration:line-through;text-decoration-thickness:1px}
+  .lrow.later .tt{color:var(--ink-2);font-weight:var(--w-ui)}
+
+  /* 펼친 안쪽 — 여기가 원래 카드에 늘 펼쳐져 있던 것들이다 */
+  .lrow .lb{padding:var(--s-3) 0 var(--s-2)}
+  .lrow .lb p{font-size:var(--t-small);line-height:var(--lh-small);color:var(--ink-2);
+              max-width:var(--measure)}
+  .lrow .lb ol{margin:var(--s-3) 0 0;padding-left:20px;font-size:var(--t-small);
+               line-height:1.8;color:var(--ink-2);max-width:var(--measure)}
+  .lrow .lb .sp{margin-top:var(--s-3);padding:var(--s-3) var(--s-4);background:var(--surface-2);
+                border-radius:var(--r-md);min-width:0}
+  .lrow .lb .sp b{display:block;font-size:var(--t-micro);font-weight:var(--w-ui);color:var(--muted)}
+  .lrow .lb .sp ul{margin:var(--s-2) 0 0;padding-left:18px;font-size:var(--t-small);
+                   line-height:1.75;color:var(--ink-2);max-width:var(--measure)}
+
+  .lnote{font-size:var(--t-caption);color:var(--muted);margin-top:var(--s-5);
+         max-width:var(--measure)}
+  .lnote b{color:var(--ink-2);font-weight:var(--w-em)}
+
+  /* 이 안에서는 카드가 배경과 거의 붙는다 — 테두리 상자를 쌓지 않는다.
+     방 지도·달력·리포트는 그대로 두되 테두리만 옅게 눕힌다. */
+  .life .card,.life .room,.life .coach{border-color:var(--line);box-shadow:none}
 
   /* ── 정리 코치 ────────────────────────────────────────────────
      시작 · 분석 · 오늘 여기 · 같이 하기 · 이번 달 리포트.

@@ -68,6 +68,15 @@ export interface TidyRoutine {
    */
   spots?: string[]
   appTab?: AppTab
+  /**
+   * 하루 중 언제 하는 게 맞나. 없으면 아무 때나.
+   *
+   * ★ 이 필드가 생활 정리를 다른 탭과 가른다. 파일 탭들은 몇 시에 열든 같은
+   *   화면인데, 이불은 아침에 개고 책상은 일을 끝낼 때 비운다. 콘텐츠의
+   *   steps가 이미 그렇게 쓰여 있는 것들만 붙인다 — 없는 시간대를 지어내
+   *   붙이면 목록 순서가 무작위로 보인다.
+   */
+  bestTime?: 'morning' | 'evening'
   /** 없으면 'me' — 지금까지의 항목은 전부 내가 하는 것이었다 */
   doer?: TidyDoer
   /** doer가 'pro'일 때 어떤 업종으로 이어지나 (referral.ts의 SERVICES.id) */
@@ -103,6 +112,7 @@ export const ROUTINES: TidyRoutine[] = [
     id: 'bed',
     title: '이불 정리',
     category: 'home',
+    bestTime: 'morning',
     everyDays: 1,
     minutes: 1,
     why:
@@ -124,6 +134,7 @@ export const ROUTINES: TidyRoutine[] = [
     id: 'desk-surface',
     title: '책상 위 비우기',
     category: 'desk',
+    bestTime: 'evening',
     everyDays: 1,
     minutes: 3,
     why:
@@ -400,6 +411,7 @@ export const ROUTINES: TidyRoutine[] = [
     id: 'towels',
     title: '수건 갈기',
     category: 'gear',
+    bestTime: 'morning',
     everyDays: 3,
     minutes: 2,
     why:
@@ -421,6 +433,7 @@ export const ROUTINES: TidyRoutine[] = [
     id: 'sink-strainer',
     title: '싱크대 배수망 비우기',
     category: 'gear',
+    bestTime: 'evening',
     everyDays: 3,
     minutes: 3,
     why:

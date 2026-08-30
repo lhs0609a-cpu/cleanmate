@@ -30,7 +30,11 @@ import {
 } from '../../src/content/tidy.ts'
 import { ROOM_ZONES, tidyBoard } from '../../src/content/room.ts'
 // 방 지도·달력·이번 달을 그리는 순수 함수들. 순수해서 Node에서 그대로 테스트한다.
-import { roomHtml, calendarHtml, monthHtml } from './tidy-view.ts'
+import {
+  roomHtml, calendarHtml, monthHtml,
+  segHtml, greetHtml, rowHtml, rowsHtml, type TidySeg,
+} from './tidy-view.ts'
+import { dayPart, greeting, sortByTime } from '../../src/content/daypart.ts'
 import { coachBoard } from '../../src/content/coach.ts'
 import {
   startSession, sessionView, nextStep, backStep, pauseSession, resumeSession,
@@ -2631,6 +2635,12 @@ const ZONE_OF = new Map<string, { id: string; name: string }>(
 let tidyZoneFilter: string | null = null
 
 /**
+ * 생활 정리 안의 화면. 이 탭 하나에 블록이 여덟 개였다 — 목적이 셋이면
+ * 화면도 셋이어야 한다. 다른 탭에는 없는 구조다(거긴 목록 하나가 전부다).
+ */
+let tidySeg: TidySeg = 'today'
+
+/**
  * 생활 정리 화면을 그린다.
  *
  * ★ 실물에서 잡힌 사고 (2026-08-31): **탭이 통째로 비어 있었다.**
@@ -2681,36 +2691,6 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
   }
   host.dataset.ready = '1'
 
-  const card = (r: any, state: 'due' | 'later' | 'done') => {
-    const meta = state === 'later'
-      ? `${r.daysUntil}일 뒤`
-      : state === 'done'
-        ? '오늘 완료'
-        : r.daysLate === null ? '아직 안 해봄' : r.daysLate > 0 ? `${r.daysLate}일 지남` : '오늘'
-    const zone = ZONE_OF.get(r.id)
-    return `<div class="tk ${state}">
-      <div class="tk-h">
-        <b class="ti">${esc(r.title)}</b>
-        ${zone ? `<span class="zn">${esc(zone.name)}</span>` : ''}
-        <span class="meta">${r.minutes}분 · ${meta}</span>
-        ${r.streak > 1 ? `<span class="st">${r.streak}회 연속</span>` : ''}
-        <button class="opt" data-tidy="${esc(r.id)}" data-done="${state === 'done' ? '0' : '1'}"
-                >${state === 'done' ? '되돌리기' : '했어요'}</button>
-      </div>
-      <div class="tk-why">${esc(r.why)}</div>
-      <details style="margin-top:8px">
-        <summary class="t-small" style="cursor:pointer;color:var(--muted)">이렇게 하면 됩니다</summary>
-        <ol class="tk-steps">
-          ${r.steps.map((s: string) => `<li>${esc(s)}</li>`).join('')}
-        </ol>
-        ${r.tip ? `<div class="tk-tip">막히는 지점: ${esc(r.tip)}</div>` : ''}
-        ${FOLDER_ACTION[r.id] && inTauri
-          ? `<button class="opt" data-tidyfolder="${FOLDER_ACTION[r.id]}" style="margin-top:10px">이건 앱이 대신 해드릴게요 — 먼저 보여드릴게요</button>
-             <div data-plan="${FOLDER_ACTION[r.id]}"></div>`
-          : r.appTab ? `<button class="opt" data-goto="${esc(r.appTab)}" style="margin-top:10px">이건 앱이 대신 해드릴게요 →</button>` : ''}
-      </details>
-    </div>`
-  }
 
   /* ── 맡길 때가 된 것 ─────────────────────────────────────────
      ★ '오늘 할 것'과 카드를 나눈 이유는 누를 수 있는 버튼이 다르기 때문이다.
@@ -2805,51 +2785,88 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
   const due = d.due.filter((r: any) => inZone(r.id))
   const later = d.later.filter((r: any) => inZone(r.id))
   const doneToday = d.doneToday.filter((id: string) => inZone(id))
-  const doneCards = doneToday.map((id: string) => card({ ...byId.get(id), streak: 0 }, 'done')).join('')
 
-  /* 걸러진 상태에서 "오늘 할 건 다 하셨어요"라고 쓰면 거짓말이 된다 —
-     다른 공간엔 남아 있을 수 있다. 그래서 빈 문장을 두 갈래로 나눈다. */
+  /* ★ 지금 몇 시인지에 맞춰 줄 순서를 바꾼다.
+     다른 탭은 몇 시에 열든 같은 화면이다 — 디스크에 있는 걸 훑는 일이라
+     시각이 낄 자리가 없다. 생활 정리만 다르다: 이불은 아침에 개고 책상은
+     일을 끝낼 때 비운다. 아침 여덟 시와 밤 열한 시에 같은 걸 맨 위에 올리면
+     그건 틀린 화면이다. */
+  const part = dayPart()
+  const g = greeting(part)
+  const ordered = sortByTime(due, part)
+  const fitsNow = (r: any) => r.bestTime === part
+
+  const row = (r: any, state: 'due' | 'later' | 'done') =>
+    rowHtml(r, { state, zoneName: ZONE_OF.get(r.id)?.name, fits: state === 'due' && fitsNow(r) })
+
   const emptyLine = tidyZoneFilter
-    ? `${esc(zoneName ?? '')}은 지금 할 게 없어요.`
+    ? `${zoneName ?? ''}은 지금 할 게 없어요.`
     : '오늘 할 건 다 하셨어요. 더 안 하셔도 됩니다.'
 
-  host.innerHTML = `
+  /* ── 오늘 ─────────────────────────────────────────────────
+     ★ 밤에는 목록을 접어둔다(g.quiet). 밤 열한 시에 열었더니 "12개 밀렸어요"가
+       뜨는 것이 할 일 앱이 사람을 지치게 하는 바로 그 지점이다. 볼 사람은
+       펼쳐 보면 되고, 그건 그 사람이 정한 것이다. */
+  const todayHtml = `
+    ${greetHtml(g, doneToday.length)}
     <div id="coach-body"></div>
-    ${roomHtml(d.room)}
-    ${calendarHtml(d.calendar, d.habit)}
-    ${monthHtml(d.month)}
-    <section class="card">
-      <div class="sechead">
-        <h2>${tidyZoneFilter ? `${esc(zoneName ?? '')}에서 할 것 ${due.length}개` : `오늘 할 것 ${due.length}개`}</h2>
-        ${tidyZoneFilter ? `<button class="opt" id="tidy-all">전체 보기</button>` : ''}
-        <span class="t-small" style="margin-left:auto;color:var(--muted)">
-          오늘 완료 ${doneToday.length}개 · 목록 ${d.enabled}개</span>
-      </div>
-      ${due.length ? due.map((r: any) => card(r, 'due')).join('') : `<div class="empty">${emptyLine}</div>`}
-      ${doneToday.length ? `<details open style="margin-top:16px">
-        <summary class="t-small" style="cursor:pointer;color:var(--safe);font-weight:var(--w-ui)">오늘 끝낸 ${doneToday.length}개</summary>
-        ${doneCards}</details>` : ''}
-      ${later.length ? `<details style="margin-top:12px">
-        <summary class="t-small" style="cursor:pointer;color:var(--muted)">아직 때가 아닌 ${later.length}개</summary>
-        ${later.map((r: any) => card(r, 'later')).join('')}</details>` : ''}
-      <p class="note" style="margin-top:14px">기록은 이 컴퓨터에만 있습니다.
-        <b>못 한 날을 세지 않습니다</b> — 며칠 걸러도 연속 기록은 이어집니다.</p>
-      <div id="referral"></div>
-    </section>
+    ${tidyZoneFilter
+      ? `<div class="lfilter"><span>${esc(zoneName ?? '')}만 보고 있어요</span>
+           <button class="opt" id="tidy-all">전체 보기</button></div>`
+      : ''}
+    ${rowsHtml(
+      tidyZoneFilter ? `${zoneName ?? ''}에서 할 것` : '오늘 할 것',
+      ordered.map((r: any) => row(r, 'due')),
+      emptyLine,
+      !g.quiet
+    )}
+    ${doneToday.length
+      ? rowsHtml('오늘 끝낸 것',
+          doneToday.map((id: string) => row({ ...byId.get(id), streak: 0 }, 'done')), '', false)
+      : ''}
+    ${later.length
+      ? rowsHtml('아직 때가 아닌 것', later.map((r: any) => row(r, 'later')), '', false)
+      : ''}
     ${bookHtml}
-    ${reportHtml(d.coach?.report)}
+    <div id="referral"></div>
+    <p class="lnote">기록은 이 컴퓨터에만 있습니다.
+      <b>못 한 날을 세지 않습니다</b> — 며칠 걸러도 연속 기록은 이어집니다.</p>`
+
+  /* ── 내 방 ── */
+  const roomTab = `
+    ${roomHtml(d.room)}
     ${pickerHtml}`
 
-  renderReferral(d)
+  /* ── 기록 ── */
+  const logTab = `
+    ${calendarHtml(d.calendar, d.habit)}
+    ${monthHtml(d.month)}
+    ${reportHtml(d.coach?.report)}`
+
+  host.innerHTML = `<div class="life">
+    ${segHtml(tidySeg)}
+    ${tidySeg === 'today' ? todayHtml : tidySeg === 'room' ? roomTab : logTab}
+  </div>`
+
+  if (tidySeg === 'today') renderReferral(d)
   // 목록을 다시 그려도 코치 칸은 하던 자리에서 이어진다(세션 중이면 세션 그대로).
   renderCoachPanel()
 
+  host.querySelectorAll<HTMLButtonElement>('[data-seg]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      tidySeg = btn.dataset.seg as TidySeg
+      loadTidy()
+    })
+  })
+
   /* 지도의 칸과 제안 줄이 같은 data-zone을 쓴다 — 둘 다 '그 공간만 보기'다.
-     이미 그 공간을 보고 있으면 다시 눌러 전체로 돌아온다(토글). */
+     ★ 누르면 '오늘'로 넘어간다. '내 방'에 남아 있으면 걸러놓고 결과를 안
+       보여주는 셈이라, 눌러도 아무 일 안 일어난 것처럼 보인다. */
   host.querySelectorAll<HTMLElement>('[data-zone]').forEach((el) => {
     el.addEventListener('click', () => {
       const id = el.dataset.zone!
       tidyZoneFilter = tidyZoneFilter === id ? null : id
+      tidySeg = 'today'
       loadTidy()
     })
   })

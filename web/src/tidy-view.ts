@@ -200,3 +200,131 @@ export function monthHtml(m: MonthSummary | null | undefined): string {
     </div>
   </section>`
 }
+
+/* ════════════════════════════════════════════════════════════
+   생활 정리만의 옷
+
+   ★ 왜 여기만 다르게 입히나
+     다른 탭(숨은 공간·시작프로그램·같은 파일·옮기기)은 전부 **일하는 화면**이다.
+     훑은 결과를 목록으로 놓고, 무엇을 지울지 판단하고, 실행한다. 그래서
+     정보 밀도가 높아야 하고, 항목마다 설명이 붙어야 하고("뭘 지우는지 알고
+     지웁니다"가 이 제품의 약속이다), 실행 버튼이 커야 한다.
+
+     생활 정리는 **사는 화면**이다. 판단할 게 없다 — 이불을 갤지 말지 고민하는
+     사람은 없다. 하나 하고 닫는다. 그리고 매일 연다(다른 탭은 몇 달에 한 번).
+
+     그런데 지금까지 같은 옷을 입고 있었고, 그래서 이렇게 읽혔다:
+
+       · "오늘 할 것 14개"가 **스캔 결과**처럼 보인다 — "정리할 게 14개 발견됨"
+       · 카드마다 설명 세 줄이 붙어 화면이 끝없이 길다. 파일은 설명이 필요하지만
+         '이불 정리'에 세 줄은 읽을 게 늘어난 것일 뿐이다
+       · 큰 '했어요' 버튼 열네 개 = 실행 버튼 열네 개로 보인다
+
+   ★ 그래서 넷을 바꾼다
+     ① 목적별로 나눈다 — 오늘 / 내 방 / 기록. 한 화면에 여덟 블록을 쌓지 않는다
+     ② 카드를 줄로 — 설명은 눌렀을 때만. 화면 길이가 1/3로 준다
+     ③ 시각을 넣는다 — 다른 탭에는 없는 것이다(daypart.ts)
+     ④ '했어요'를 체크로 — 실행이 아니라 표시다
+   ════════════════════════════════════════════════════════════ */
+
+import type { Greeting } from '../../src/content/daypart.ts'
+import type { TidyRoutine } from '../../src/content/tidy.ts'
+
+export type TidySeg = 'today' | 'room' | 'log'
+
+const SEG_LABEL: Record<TidySeg, string> = { today: '오늘', room: '내 방', log: '기록' }
+
+/**
+ * 하위 탭.
+ *
+ * ★ 이 탭 하나에 블록이 여덟 개였다(지도·달력·이번 달·오늘 할 것·맡길 것·
+ *   리포트·목록 고르기·코치). 다 펼쳐놓는 건 "다른 탭과 똑같이 늘어놓기"의
+ *   증상이다. 목적이 셋이면 화면도 셋이어야 한다.
+ */
+export function segHtml(active: TidySeg): string {
+  return `<nav class="lseg" role="tablist" aria-label="생활 정리 화면">
+    ${(['today', 'room', 'log'] as TidySeg[]).map((s) =>
+      `<button type="button" role="tab" data-seg="${s}" class="${s === active ? 'on' : ''}"
+        aria-selected="${s === active}">${SEG_LABEL[s]}</button>`).join('')}
+  </nav>`
+}
+
+/**
+ * 인사 — 지금 몇 시인지에 따라 달라진다.
+ *
+ * ★ 밤에는 목록을 앞세우지 않는다(quiet). 밤 열한 시에 열었더니 "12개 밀렸어요"가
+ *   뜨는 것이 할 일 앱이 사람을 지치게 하는 바로 그 지점이다.
+ */
+export function greetHtml(g: Greeting, doneToday: number): string {
+  const done = doneToday > 0
+    ? `<span class="lhi-done">오늘 ${doneToday}개 끝냈어요</span>`
+    : ''
+  return `<div class="lhi ${g.quiet ? 'quiet' : ''}">
+    <h2>${esc(g.hi)}</h2>
+    <p>${esc(g.sub)}</p>
+    ${done}
+  </div>`
+}
+
+/** 마지막으로 한 때를 짧게 — 줄 안에 들어가야 하므로 agoWord보다 더 짧다 */
+function agoTag(daysLate: number | null, daysUntil?: number): string {
+  if (daysUntil !== undefined) return `${daysUntil}일 뒤`
+  if (daysLate === null) return '아직'
+  if (daysLate <= 0) return '오늘'
+  return `${daysLate}일 지남`
+}
+
+export interface RowRoutine extends TidyRoutine {
+  daysLate?: number | null
+  daysUntil?: number
+  streak?: number
+}
+
+/**
+ * 한 줄.
+ *
+ * 카드 하나가 150px쯤이었고 열네 개면 2,000px이 넘었다. 줄은 52px이다.
+ * 설명·단계·꼼꼼히 볼 곳은 그대로 있지만 **누른 사람에게만** 보인다.
+ * 이불을 개는 데 왜 그래야 하는지 매번 읽을 이유가 없다.
+ */
+export function rowHtml(
+  r: RowRoutine,
+  opts: { state: 'due' | 'later' | 'done'; zoneName?: string; fits?: boolean } = { state: 'due' }
+): string {
+  const { state, zoneName, fits } = opts
+  const meta = [
+    `${r.minutes}분`,
+    zoneName || '',
+    state === 'done' ? '오늘 완료' : agoTag(r.daysLate ?? null, r.daysUntil),
+  ].filter(Boolean)
+
+  return `<div class="lrow ${state}${fits ? ' fits' : ''}">
+    <button type="button" class="ck" data-tidy="${esc(r.id)}" data-done="${state === 'done' ? '0' : '1'}"
+      aria-label="${esc(r.title)} ${state === 'done' ? '되돌리기' : '했어요'}"></button>
+    <details class="lx">
+      <summary>
+        <b class="tt">${esc(r.title)}</b>
+        <span class="mt">${meta.map(esc).join(' · ')}</span>
+        ${fits ? `<span class="now">지금</span>` : ''}
+        ${(r.streak ?? 0) > 1 ? `<span class="st">${r.streak}회째</span>` : ''}
+      </summary>
+      <div class="lb">
+        <p>${esc(r.why)}</p>
+        <ol>${r.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>
+        ${r.spots?.length
+          ? `<div class="sp"><b>빠지기 쉬운 곳</b>
+               <ul>${r.spots.map((s) => `<li>${esc(s)}</li>`).join('')}</ul></div>`
+          : ''}
+      </div>
+    </details>
+  </div>`
+}
+
+/** 줄 묶음 하나. 비면 이유를 쓴다 — 빈 자리를 그냥 두지 않는다. */
+export function rowsHtml(title: string, rows: string[], empty: string, open = true): string {
+  if (!rows.length) return `<div class="lgroup"><h3>${esc(title)}</h3><p class="lempty">${esc(empty)}</p></div>`
+  return `<details class="lgroup" ${open ? 'open' : ''}>
+    <summary><h3>${esc(title)} <span>${rows.length}</span></h3></summary>
+    ${rows.join('')}
+  </details>`
+}
