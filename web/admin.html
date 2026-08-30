@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>테라클린 관리자</title>
+<!-- 검색엔진에 올라갈 이유가 없는 화면이다. 로그인으로 막혀 있어도 색인은 따로 막는다. -->
+<meta name="robots" content="noindex, nofollow" />
+<link rel="preload" href="/fonts/PretendardVariable.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+<meta name="theme-color" content="#05080B" />
+<style>
+  /* ══════════════════════════════════════════════════════════════
+     관리자 화면
+
+     ★ 이 화면이 지키는 것 — 랜딩·앱과 같은 원칙이다
+       1) **모르는 건 모른다고 쓴다.** 퍼널의 어떤 칸은 우리가 못 잰다
+          (내려받고 설치 안 한 사람). 그 칸을 추정치로 채우면 대시보드 전체가
+          추측이 되고, 추측을 보고 내린 결정은 되돌리기 어렵다.
+       2) **숫자마다 출처를 적는다.** 어디서 온 수인지 모르면 나중에 자기가
+          만든 숫자에 자기가 속는다.
+       3) 색은 의미다. 초록은 실측, 회색은 못 잼, 청록은 누를 수 있는 것.
+     ══════════════════════════════════════════════════════════════ */
+  @font-face{
+    font-family:"Pretendard Variable";
+    src:url("/fonts/PretendardVariable.woff2") format("woff2");
+    font-weight:45 920;font-style:normal;font-display:swap;
+  }
+  :root{
+    --font-sans:"Pretendard Variable","Pretendard","Apple SD Gothic Neo",
+                "Segoe UI Variable Text","Segoe UI","Malgun Gothic",system-ui,sans-serif;
+    --font-mono:ui-monospace,"Cascadia Code","Consolas","SF Mono",monospace;
+
+    --t-2xs:12px; --t-xs:13px; --t-sm:15px; --t-md:16px; --t-lg:19px;
+    --t-xl:23px; --t-2xl:29px; --t-3xl:38px;
+
+    --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:24px; --s-6:32px; --s-7:48px;
+
+    --bg:#05080B; --bg-2:#080D12; --surface:#0D151C; --surface-2:#121C25; --surface-3:#182531;
+    --line:#18242D; --line-2:#26353F; --line-3:#33454F;
+    --ink:#F4F8FA; --ink-2:#C6D2D9; --ink-3:#9AABB4; --muted:#7E919C; --faint:#5A6C77;
+    --accent:#37D6CB; --accent-2:#4FBBF2; --accent-ink:#02222A;
+    --safe:#4FD98B; --amb:#F0B44C; --lock:#FF7C74;
+    --r-sm:8px; --r-md:12px; --r-lg:18px; --r-full:999px;
+    --sh-2:0 2px 6px rgba(0,0,0,.4),0 18px 44px -22px rgba(0,0,0,.75);
+    --ease:cubic-bezier(.2,.7,.2,1); --fast:.14s;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-sans);
+       font-size:var(--t-md);line-height:1.65;letter-spacing:-.008em;
+       word-break:keep-all;overflow-wrap:anywhere;
+       -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+  h1,h2,h3{margin:0;font-weight:800;letter-spacing:-.03em;line-height:1.25}
+  p{margin:0}
+  button{font:inherit;letter-spacing:inherit}
+  a{color:var(--accent);text-underline-offset:2px}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm)}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 var(--s-5)}
+  .tnum{font-variant-numeric:tabular-nums}
+  .mono{font-family:var(--font-mono)}
+  [hidden]{display:none!important}
+
+  /* ── 상단 바 ─────────────────────────────────────────────────── */
+  .top{position:sticky;top:0;z-index:20;background:rgba(5,8,11,.86);
+       backdrop-filter:blur(16px) saturate(160%);border-bottom:1px solid var(--line)}
+  .top .wrap{display:flex;align-items:center;gap:var(--s-4);height:64px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:850;font-size:var(--t-lg);
+         letter-spacing:-.035em;flex:none}
+  .brand .mk{width:26px;height:26px;border-radius:8px;flex:none;
+             background:linear-gradient(145deg,var(--accent),var(--accent-2));
+             display:grid;place-items:center;color:var(--accent-ink)}
+  .brand .mkv{width:17px;height:17px}
+  .brand .tag{font-size:var(--t-2xs);font-weight:700;color:var(--muted);
+              border:1px solid var(--line-2);border-radius:var(--r-full);padding:2px 9px;
+              letter-spacing:0}
+  .tabs{display:flex;gap:2px;padding:3px;border-radius:var(--r-full);background:var(--surface-2)}
+  .tabs button{background:none;border:0;color:var(--muted);font-size:var(--t-sm);font-weight:650;
+               padding:7px 15px;border-radius:var(--r-full);cursor:pointer;white-space:nowrap;
+               transition:color var(--fast),background var(--fast)}
+  .tabs button:hover{color:var(--ink-2)}
+  .tabs button.on{background:var(--surface);color:var(--accent)}
+  .top .sp{margin-left:auto}
+
+  /* ── 버튼 ─────────────────────────────────────────────────────── */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;
+       border-radius:var(--r-md);border:1px solid transparent;font-weight:700;
+       padding:10px 18px;font-size:var(--t-sm);white-space:nowrap;
+       transition:transform var(--fast) var(--ease),border-color var(--fast),
+                  color var(--fast),background var(--fast)}
+  .btn-pri{background:linear-gradient(104deg,var(--accent),var(--accent-2));color:var(--accent-ink)}
+  .btn-pri:hover{transform:translateY(-1px)}
+  .btn-ghost{background:rgba(255,255,255,.03);color:var(--ink-2);border-color:var(--line-2)}
+  .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+  .btn-sm{padding:6px 13px;font-size:var(--t-xs);border-radius:var(--r-sm)}
+  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+
+  /* ── 로그인 ───────────────────────────────────────────────────── */
+  .gate{min-height:100dvh;display:grid;place-items:center;padding:var(--s-5)}
+  .gate .box{width:100%;max-width:400px;background:linear-gradient(180deg,var(--surface),var(--bg-2));
+             border:1px solid var(--line-2);border-radius:var(--r-lg);padding:var(--s-6);
+             box-shadow:var(--sh-2)}
+  .gate h1{font-size:var(--t-xl)}
+  .gate .sub{margin-top:var(--s-2);font-size:var(--t-sm);color:var(--muted);line-height:1.6}
+  .gate input{width:100%;margin-top:var(--s-5);font:inherit;font-size:var(--t-md);color:var(--ink);
+              background:rgba(255,255,255,.03);border:1px solid var(--line-2);
+              border-radius:var(--r-md);padding:12px 14px}
+  .gate input:focus{outline:none;border-color:var(--accent);background:rgba(55,214,203,.05)}
+  .gate .btn{width:100%;margin-top:var(--s-3);padding:13px}
+  .gate .err{margin-top:var(--s-3);font-size:var(--t-sm);color:var(--lock);line-height:1.6;min-height:1.2em}
+
+  main{padding:var(--s-6) 0 var(--s-7);min-height:60vh}
+  .screen{display:none;flex-direction:column;gap:var(--s-5)}
+  .screen.on{display:flex}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+        padding:var(--s-5);min-width:0}
+  .sechead{display:flex;align-items:baseline;gap:var(--s-3);flex-wrap:wrap;margin-bottom:var(--s-4)}
+  .sechead h2{font-size:var(--t-xl)}
+  .sechead .why{font-size:var(--t-xs);color:var(--faint);line-height:1.55;flex:1 1 14rem;min-width:0}
+
+  /* ── KPI 카드 ─────────────────────────────────────────────────── */
+  .kpis{display:grid;gap:var(--s-3);grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+  .kpi{background:linear-gradient(180deg,var(--surface),var(--bg-2));border:1px solid var(--line);
+       border-radius:var(--r-lg);padding:var(--s-5);min-width:0;position:relative;overflow:hidden}
+  .kpi::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:var(--k,var(--line-2))}
+  .kpi .n{font-size:var(--t-3xl);font-weight:850;letter-spacing:-.045em;line-height:1.05;
+          font-variant-numeric:tabular-nums;color:var(--k,var(--ink))}
+  .kpi .n.unknown{color:var(--faint);font-size:var(--t-xl);letter-spacing:-.02em}
+  .kpi .l{font-size:var(--t-sm);color:var(--ink-2);margin-top:var(--s-2);font-weight:650}
+  /* 출처를 숫자마다 적는다. 이게 없으면 몇 주 뒤에 자기 숫자에 자기가 속는다. */
+  .kpi .src{font-size:var(--t-2xs);color:var(--faint);margin-top:var(--s-1);line-height:1.5}
+  .k-dl{--k:var(--accent-2)} .k-inst{--k:var(--accent)} .k-act{--k:var(--safe)}
+  .k-inq{--k:var(--amb)} .k-none{--k:var(--line-2)}
+
+  /* ── 막대 차트 (인라인 SVG를 안 쓰고 div로 그린다) ───────────────
+     막대 30개에 라이브러리를 넣을 이유가 없다. div 30개면 끝이고,
+     그러면 번들이 0바이트 늘어난다. */
+  .chart{display:flex;align-items:flex-end;gap:2px;height:130px;margin-top:var(--s-4);
+         padding:0 1px;overflow:hidden}
+  .chart .b{flex:1 1 0;min-width:0;border-radius:3px 3px 0 0;position:relative;
+            background:var(--surface-3);transition:background var(--fast)}
+  .chart .b > i{display:block;width:100%;border-radius:3px 3px 0 0;
+                background:linear-gradient(180deg,var(--accent),var(--accent-2));
+                height:var(--h);min-height:2px}
+  .chart .b.zero > i{background:var(--surface-3);min-height:2px}
+  .chart .b:hover{background:var(--line-2)}
+  .chart-x{display:flex;justify-content:space-between;margin-top:var(--s-2);
+           font-size:var(--t-2xs);color:var(--faint)}
+  .chart-empty{padding:var(--s-6) 0;text-align:center;color:var(--faint);font-size:var(--t-sm)}
+
+  /* ── 분포 목록 ────────────────────────────────────────────────── */
+  .split{display:grid;gap:var(--s-5);grid-template-columns:1fr}
+  @media(min-width:860px){.split{grid-template-columns:1fr 1fr}}
+  .dist{display:flex;flex-direction:column;gap:var(--s-3);margin-top:var(--s-2)}
+  .drow{display:grid;grid-template-columns:minmax(6rem,auto) 1fr auto;gap:var(--s-3);
+        align-items:center;font-size:var(--t-sm);min-width:0}
+  .drow > *{min-width:0}
+  .drow .nm{font-weight:650;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .drow .tr{height:8px;border-radius:var(--r-full);background:var(--surface-3);overflow:hidden}
+  .drow .tr > i{display:block;height:100%;width:var(--w);border-radius:var(--r-full);
+                background:linear-gradient(90deg,var(--accent),var(--accent-2))}
+  .drow .v{font-variant-numeric:tabular-nums;color:var(--ink-3);white-space:nowrap}
+
+  /* ── 퍼널 주석 ────────────────────────────────────────────────── */
+  .note{margin-top:var(--s-4);border:1px solid var(--line);border-left:3px solid var(--muted);
+        border-radius:var(--r-md);background:var(--surface-2);padding:var(--s-4);
+        font-size:var(--t-sm);color:var(--ink-2);line-height:1.7}
+  .note b{color:var(--ink)}
+  .note.warn{border-left-color:var(--amb)}
+
+  /* ── 문의 목록 ────────────────────────────────────────────────── */
+  .filters{display:flex;gap:var(--s-2);flex-wrap:wrap;align-items:center}
+  .filters button{background:rgba(255,255,255,.03);border:1px solid var(--line-2);color:var(--ink-3);
+                  border-radius:var(--r-full);padding:7px 15px;font-size:var(--t-xs);font-weight:650;
+                  cursor:pointer;transition:all var(--fast)}
+  .filters button:hover{border-color:var(--line-3);color:var(--ink-2)}
+  .filters button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+  .filters .sp{margin-left:auto;font-size:var(--t-xs);color:var(--faint)}
+
+  .inq{border:1px solid var(--line);border-left:3px solid var(--st,var(--line-2));
+       border-radius:var(--r-md);background:var(--surface);padding:var(--s-4);min-width:0}
+  .inq + .inq{margin-top:var(--s-3)}
+  .inq.new{--st:var(--amb)} .inq.doing{--st:var(--accent)} .inq.done{--st:var(--safe);opacity:.72}
+  .inq-h{display:flex;gap:var(--s-2);align-items:baseline;flex-wrap:wrap}
+  .inq-h > *{min-width:0}
+  .inq-h .who{font-size:var(--t-lg);font-weight:750;letter-spacing:-.02em}
+  .inq-h .co{font-size:var(--t-sm);color:var(--ink-3)}
+  .inq-h .kind{font-size:var(--t-2xs);font-weight:700;padding:3px 10px;border-radius:var(--r-full);
+               background:var(--surface-3);color:var(--ink-3);flex:none}
+  .inq-h .kind.partner{background:rgba(55,214,203,.14);color:var(--accent)}
+  .inq-h .kind.bug{background:rgba(255,124,116,.13);color:var(--lock)}
+  .inq-h .at{margin-left:auto;font-size:var(--t-xs);color:var(--faint);
+             font-variant-numeric:tabular-nums;flex:none}
+  /* 연락처는 눌러서 바로 메일/전화가 열려야 한다 — 복사해 붙이는 단계가 하나 줄면
+     "나중에 답해야지"가 "지금 답한다"가 된다. */
+  .inq .contact{margin-top:var(--s-2);font-size:var(--t-sm);font-weight:650}
+  .inq .contact a{color:var(--accent)}
+  .inq .body{margin-top:var(--s-3);font-size:var(--t-sm);color:var(--ink-2);line-height:1.75;
+             white-space:pre-wrap;background:var(--surface-2);border-radius:var(--r-sm);
+             padding:var(--s-3) var(--s-4);max-width:44em}
+  .inq .from{margin-top:var(--s-2);font-size:var(--t-2xs);color:var(--faint)}
+  .inq-foot{display:flex;gap:var(--s-2);align-items:center;flex-wrap:wrap;margin-top:var(--s-3)}
+  .inq-foot .memo{flex:1 1 16rem;min-width:0;font:inherit;font-size:var(--t-xs);color:var(--ink-2);
+                  background:rgba(255,255,255,.03);border:1px solid var(--line-2);
+                  border-radius:var(--r-sm);padding:8px 11px}
+  .inq-foot .memo:focus{outline:none;border-color:var(--accent)}
+  .inq-foot .saved{font-size:var(--t-2xs);color:var(--safe)}
+
+  .empty{padding:var(--s-7) var(--s-4);text-align:center;color:var(--faint);
+         font-size:var(--t-sm);line-height:1.7}
+  .err-box{border:1px solid rgba(255,124,116,.3);background:rgba(255,124,116,.07);
+           border-radius:var(--r-md);padding:var(--s-4);color:var(--lock);font-size:var(--t-sm);
+           line-height:1.7}
+  .err-box b{color:var(--ink)}
+  .err-box code{font-family:var(--font-mono);font-size:.92em;background:rgba(0,0,0,.3);
+                padding:1px 6px;border-radius:4px;color:var(--ink-2)}
+
+  .skel{color:var(--faint);font-size:var(--t-sm);padding:var(--s-5) 0;text-align:center}
+</style>
+</head>
+<body>
+
+<!-- ── 로그인 ─────────────────────────────────────────────────── -->
+<div class="gate" id="gate">
+  <form class="box" id="login-form">
+    <h1>테라클린 관리자</h1>
+    <p class="sub">들어온 문의와 설치·사용 통계를 봅니다.</p>
+    <input id="pw" type="password" autocomplete="current-password" placeholder="비밀번호" aria-label="비밀번호" />
+    <button class="btn btn-pri" type="submit" id="login-btn">들어가기</button>
+    <p class="err" id="login-err" role="status" aria-live="polite"></p>
+  </form>
+</div>
+
+<!-- ── 본화면 ─────────────────────────────────────────────────── -->
+<div id="app" hidden>
+  <div class="top">
+    <div class="wrap">
+      <span class="brand"><span class="mk"><svg class="mkv" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22.72 12.16L12.8 12.16M12.8 12.16L12.8 51.84M12.8 51.84L22.72 51.84M41.28 12.16L51.2 12.16M51.2 12.16L51.2 51.84M51.2 51.84L41.28 51.84" stroke-width="6.4"/><path d="M25.28 24.32L38.72 24.32M32 24.32L32 41.28" stroke-width="7.68"/></svg></span>테라클린<span class="tag">관리자</span></span>
+      <div class="tabs" role="tablist">
+        <button data-go="dash" class="on" role="tab">대시보드</button>
+        <button data-go="inq" role="tab">문의 <span id="inq-badge"></span></button>
+      </div>
+      <div class="sp"></div>
+      <button class="btn btn-ghost btn-sm" id="refresh">새로고침</button>
+      <button class="btn btn-ghost btn-sm" id="logout">나가기</button>
+    </div>
+  </div>
+
+  <main class="wrap">
+    <!-- 대시보드 -->
+    <section class="screen on" id="s-dash">
+      <div id="dash-body"><div class="skel">불러오는 중…</div></div>
+    </section>
+
+    <!-- 문의 -->
+    <section class="screen" id="s-inq">
+      <div class="card">
+        <div class="sechead">
+          <h2>들어온 문의</h2>
+          <p class="why">지우기 버튼은 없습니다. 끝난 건 '완료'로 접힙니다 —
+            한 번 누르면 안 돌아오는 버튼을 매일 보는 화면에 둘 이유가 없어요.</p>
+        </div>
+        <div class="filters" id="inq-filters">
+          <button data-status="" class="on">전체</button>
+          <button data-status="new">새 문의</button>
+          <button data-status="doing">처리 중</button>
+          <button data-status="done">완료</button>
+          <span class="sp" id="inq-count"></span>
+        </div>
+      </div>
+      <div id="inq-body"><div class="skel">불러오는 중…</div></div>
+    </section>
+  </main>
+</div>
+
+<script type="module" src="/src/admin.ts"></script>
+</body>
+</html>

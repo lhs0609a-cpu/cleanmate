@@ -22,75 +22,108 @@
 <meta name="twitter:description" content="정작 자리를 차지하는 건 탐색기에 안 보입니다. 테라클린은 그걸 찾아내고, 지워도 되는 것만 이유와 함께 보여줍니다. 무료." />
 <meta name="twitter:image" content="https://cleanmate-henna.vercel.app/og.png" />
 
+<link rel="preload" href="/fonts/PretendardVariable.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="/favicon-180.png" />
-<meta name="theme-color" content="#07090D" />
+<meta name="theme-color" content="#05080B" />
 <style>
   /* ══════════════════════════════════════════════════════════════
      테라클린 랜딩 — 앱과 같은 디자인 시스템의 '어두운 판'
-     ──────────────────────────────────────────────────────────────
+
      톤앤매너는 앱과 하나여야 한다("조용한 전문가"). 랜딩만 화려하면
      설치한 순간 다른 제품을 만난 기분이 든다 — 그게 신뢰를 깎는다.
      그래서 토큰 이름·스케일·모션을 앱(web/app.html)과 똑같이 쓰고,
      색만 어두운 판으로 바꾼다.
 
      규칙 넷은 앱과 동일:
-       1) 색은 의미다  2) 위계는 대비로  3) 여백은 8의 배수
-       4) 웹폰트를 받지 않는다(CSP가 외부 요청을 막는다 — 원칙이자 제약)
+       1) 색은 의미다  2) 위계는 크기 격차로  3) 여백은 8의 배수
+       4) 웹폰트를 네트워크로 받지 않는다 — 글꼴 파일을 함께 배포한다
+          (앱과 같은 약속이다. CDN을 부르면 그 약속이 깨진다)
+
+     ★ 2026-08-28 전면 재설계에서 바뀐 것 — 왜 바꿨는지 남겨둔다
+       · **읽는 폭을 좁혔다.** 본문이 1080px을 가로지르고 있었다. 한 줄에
+         한글 60자가 넘으면 눈이 다음 줄 첫 글자를 못 찾는다. 앱이 이미
+         --measure로 해결한 문제인데 랜딩만 안 하고 있었다.
+       · **카드 여섯 개가 같은 크기로 늘어서 있던 자리를 벤토로 바꿨다.**
+         전부 같은 무게로 놓으면 위계가 없고, 위계가 없으면 시선이 첫 카드에서
+         멈춘다. 중요한 것을 크게 놓는 게 위계다.
+       · **테두리를 그라디언트로 바꿨다(.edge).** 1px 선 하나로 카드가
+         '떠 보이는' 느낌이 생긴다 — 그림자를 더 얹는 것보다 가볍다.
+       · **상담 폼을 넣었다.** 예전엔 제휴 문의가 GitHub 이슈로 나갔다.
+         청소 업체 사장님에게 GitHub 계정을 만들라고 하는 화면이었다.
      ══════════════════════════════════════════════════════════════ */
+
+  /* 글꼴은 앱과 같은 파일을 쓴다 — 이 페이지도 네트워크로 안 받는다. */
+  @font-face{
+    font-family:"Pretendard Variable";
+    src:url("/fonts/PretendardVariable.woff2") format("woff2");
+    font-weight:45 920;font-style:normal;font-display:swap;
+  }
+
   :root{
     --font-sans:"Pretendard Variable","Pretendard","Apple SD Gothic Neo",
                 "Segoe UI Variable Text","Segoe UI","Malgun Gothic","맑은 고딕",
                 "Noto Sans KR",system-ui,-apple-system,sans-serif;
-    --font-display:"Pretendard Variable","Pretendard","Segoe UI Variable Display",
-                   "Segoe UI","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+    --font-display:var(--font-sans);
     --font-mono:ui-monospace,"Cascadia Code","Consolas","SF Mono",monospace;
 
-    /* 타입 스케일 — 앱과 동일. 랜딩은 여기에 '히어로 전용' 두 단계만 더 얹는다. */
-    --t-2xs:11px; --t-xs:12px; --t-sm:13px; --t-md:14px;
-    --t-base:16px; --t-lg:18px; --t-xl:21px; --t-2xl:26px;
-    --t-3xl:34px; --t-4xl:46px; --t-5xl:64px;
+    /* 타입 스케일 — 단을 성큼 벌린다. 한 칸 차이가 1~2px이면 위계가 아니라 오차다. */
+    --t-2xs:12px; --t-xs:13px; --t-sm:15px; --t-md:16px;
+    --t-base:17px; --t-lg:19px; --t-xl:23px; --t-2xl:29px;
+    --t-3xl:38px; --t-4xl:52px; --t-5xl:72px;
 
     --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:24px;
-    --s-6:32px; --s-7:48px; --s-8:72px; --s-9:104px;
+    --s-6:32px; --s-7:48px; --s-8:72px; --s-9:112px; --s-10:160px;
+
+    /* 읽는 줄의 최대 길이 — 앱의 --measure와 같은 뜻. 카드 폭이 아니라 글줄 폭만 좁힌다. */
+    --measure:40em;
 
     /* 어두운 판 — 순검정을 쓰지 않는다. 청록을 아주 조금 섞는다. */
-    --bg:#070B0E; --bg-2:#0B1116; --surface:#101922; --surface-2:#16212B;
-    --line:#1B2831; --line-2:#293945;
-    --ink:#F2F7F9; --ink-2:#C2CFD6; --muted:#8598A2; --faint:#5F717B;
+    --bg:#05080B; --bg-2:#080D12; --surface:#0D151C; --surface-2:#121C25; --surface-3:#182531;
+    --line:#18242D; --line-2:#26353F; --line-3:#33454F;
+    --ink:#F4F8FA; --ink-2:#C6D2D9; --ink-3:#9AABB4; --muted:#7E919C; --faint:#5A6C77;
 
-    --accent:#37D6CB; --accent-2:#48B8F0; --accent-3:#6E9BF5; --accent-ink:#03252A;
-    --glow:rgba(55,214,203,.22);
+    --accent:#37D6CB; --accent-2:#4FBBF2; --accent-3:#7C9CF7; --accent-ink:#02222A;
+    --glow:rgba(55,214,203,.24);
 
     --safe:#4FD98B; --amb:#F0B44C; --lock:#FF7C74;
 
-    --r-sm:10px; --r-md:14px; --r-lg:18px; --r-xl:26px; --r-full:999px;
-    --sh-2:0 2px 6px rgba(0,0,0,.4),0 16px 40px -20px rgba(0,0,0,.7);
-    --sh-3:0 32px 80px -32px rgba(0,0,0,.85);
-    --ease:cubic-bezier(.2,.7,.2,1); --fast:.16s; --base:.24s;
+    --r-sm:10px; --r-md:14px; --r-lg:20px; --r-xl:28px; --r-2xl:36px; --r-full:999px;
+    --sh-2:0 2px 6px rgba(0,0,0,.4),0 18px 44px -22px rgba(0,0,0,.75);
+    --ease:cubic-bezier(.2,.7,.2,1); --fast:.16s; --base:.26s;
   }
   *{box-sizing:border-box}
-  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;scroll-padding-top:88px}
   /* word-break:keep-all — 없으면 한글이 아무 글자에서나 끊긴다.
      overflow-wrap과 짝으로 써야 긴 경로도 안 넘친다. */
   body{
     margin:0;background:var(--bg);color:var(--ink);
-    font-family:var(--font-sans);font-size:var(--t-base);line-height:1.7;
-    letter-spacing:-.006em;font-variant-numeric:tabular-nums;
+    font-family:var(--font-sans);font-size:var(--t-base);line-height:1.68;
+    letter-spacing:-.008em;
     word-break:keep-all;overflow-wrap:anywhere;overflow-x:hidden;
     -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
     text-rendering:optimizeLegibility;
   }
+  /* 배경에 아주 옅은 결을 깐다. 순색 판은 화면이 클수록 '빈 종이'로 보인다.
+     SVG 노이즈 하나를 data:로 깔아 두면 요청이 0인 채로 질감이 생긴다. */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.035;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  body>*{position:relative;z-index:1}
+
   h1,h2,h3{margin:0;font-family:var(--font-display);font-weight:800;
-           line-height:1.22;letter-spacing:-.03em;text-wrap:balance}
+           line-height:1.2;letter-spacing:-.032em;text-wrap:balance}
   p{margin:0;text-wrap:pretty}
   a{color:inherit;text-decoration:none}
-  .wrap{max-width:1080px;margin:0 auto;padding:0 var(--s-5)}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 var(--s-5)}
   .center{text-align:center}
+  .measure{max-width:var(--measure);margin-inline:auto}
   .grad{background:linear-gradient(104deg,var(--accent),var(--accent-2) 55%,var(--accent-3));
         -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-  .reveal{opacity:0;transform:translateY(18px);
-          transition:opacity .6s var(--ease),transform .6s var(--ease)}
+  .tnum{font-variant-numeric:tabular-nums}
+  .reveal{opacity:0;transform:translateY(20px);
+          transition:opacity .7s var(--ease),transform .7s var(--ease)}
   .reveal.in{opacity:1;transform:none}
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
            clip:rect(0 0 0 0);white-space:nowrap;border:0}
@@ -104,164 +137,235 @@
     .reveal{opacity:1;transform:none}
   }
 
+  /* ── 읽은 만큼 차는 막대 ─────────────────────────────────────
+     긴 페이지에서 "얼마나 남았나"를 모르면 사람이 중간에 나간다.
+     4px짜리 선 하나면 되는 정보다 — 스크롤바를 대신 그리지 않는다. */
+  #progress{position:fixed;top:0;left:0;height:2px;width:0;z-index:60;
+            background:linear-gradient(90deg,var(--accent),var(--accent-2),var(--accent-3));
+            transition:width .1s linear}
+
+  /* ── 그라디언트 테두리 ───────────────────────────────────────
+     1px 선을 그라디언트로 그린다. border-image는 border-radius를 못 따라가서,
+     padding-box/border-box 마스크를 겹쳐 잘라낸다(다 지원되는 기법이다). */
+  .edge{position:relative;isolation:isolate}
+  .edge::before{
+    content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;
+    background:linear-gradient(160deg,var(--line-3),transparent 40%,transparent 60%,rgba(55,214,203,.35));
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+            mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;
+    opacity:.85;transition:opacity var(--base)}
+  .edge:hover::before{opacity:1}
+
   /* ── 버튼 ───────────────────────────────────────────────────── */
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
        font-family:var(--font-display);font-weight:700;letter-spacing:-.02em;
        border-radius:var(--r-md);cursor:pointer;border:1px solid transparent;
-       white-space:nowrap;transition:transform var(--fast) var(--ease),box-shadow var(--base),border-color var(--fast),color var(--fast)}
+       white-space:nowrap;
+       transition:transform var(--fast) var(--ease),box-shadow var(--base),
+                  border-color var(--fast),color var(--fast),background var(--fast)}
   .btn-pri{background:linear-gradient(104deg,var(--accent),var(--accent-2));
-           color:var(--accent-ink);padding:12px 20px;font-size:var(--t-md);
-           box-shadow:0 10px 26px -14px var(--glow)}
-  .btn-pri:hover{transform:translateY(-2px);box-shadow:0 18px 36px -14px var(--glow)}
-  .btn-ghost{background:rgba(255,255,255,.03);color:var(--ink);
-             border-color:var(--line-2);padding:11px 18px;font-size:var(--t-md)}
-  .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
-  .btn-lg{padding:16px 28px;font-size:var(--t-lg);border-radius:var(--r-md)}
+           color:var(--accent-ink);padding:13px 22px;font-size:var(--t-md);
+           box-shadow:0 12px 30px -16px var(--glow),inset 0 1px 0 rgba(255,255,255,.22)}
+  .btn-pri:hover{transform:translateY(-2px);box-shadow:0 22px 44px -16px var(--glow),inset 0 1px 0 rgba(255,255,255,.22)}
+  .btn-pri:active{transform:translateY(0)}
+  .btn-ghost{background:rgba(255,255,255,.035);color:var(--ink);
+             border-color:var(--line-2);padding:12px 20px;font-size:var(--t-md)}
+  .btn-ghost:hover{border-color:var(--accent);color:var(--accent);background:rgba(55,214,203,.06)}
+  .btn-lg{padding:17px 30px;font-size:var(--t-lg)}
+  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
 
   /* ── 헤더 ───────────────────────────────────────────────────── */
-  header{position:sticky;top:0;z-index:50;background:rgba(7,11,14,.72);
-         backdrop-filter:blur(16px) saturate(160%);
-         border-bottom:1px solid transparent;transition:border-color var(--base)}
-  header.scrolled{border-bottom-color:var(--line)}
-  .bar{display:flex;align-items:center;height:64px;gap:var(--s-2)}
+  header{position:sticky;top:0;z-index:50;background:rgba(5,8,11,.7);
+         backdrop-filter:blur(18px) saturate(170%);
+         border-bottom:1px solid transparent;transition:border-color var(--base),background var(--base)}
+  header.scrolled{border-bottom-color:var(--line);background:rgba(5,8,11,.86)}
+  .bar{display:flex;align-items:center;height:68px;gap:var(--s-2)}
   .logo{display:flex;align-items:center;gap:10px;font-family:var(--font-display);
         font-weight:850;font-size:var(--t-lg);letter-spacing:-.035em;flex:none}
   /* ★ 브래킷 T — 도형은 scripts/lib/brand-mark.mjs에서 뽑아 붙인다(손으로 그리지 않는다).
-       ✓ 글자를 쓰던 자리다. 글자는 브랜드가 아니고, 앱 아이콘·파비콘과도 따로 놀았다. */
-  .logo .mk{width:26px;height:26px;border-radius:8px;
+       앱 아이콘·파비콘과 같은 정의다. */
+  .logo .mk{width:28px;height:28px;border-radius:9px;
             background:linear-gradient(145deg,var(--accent),var(--accent-2));
-            display:grid;place-items:center;color:var(--accent-ink);flex:none}
-  .logo .mkv{width:17px;height:17px}
-  .bar nav{display:none;gap:var(--s-5);margin-left:var(--s-6);
-           font-size:var(--t-md);color:var(--muted);font-weight:600}
-  .bar nav a{transition:color var(--fast)}
-  .bar nav a:hover{color:var(--ink)}
+            display:grid;place-items:center;color:var(--accent-ink);flex:none;
+            box-shadow:0 4px 12px -4px var(--glow)}
+  .logo .mkv{width:18px;height:18px}
+  .bar nav{display:none;gap:var(--s-1);margin-left:var(--s-6);font-size:var(--t-sm);font-weight:650}
+  .bar nav a{color:var(--muted);padding:8px 12px;border-radius:var(--r-sm);
+             transition:color var(--fast),background var(--fast)}
+  .bar nav a:hover{color:var(--ink);background:rgba(255,255,255,.04)}
+  /* 지금 보고 있는 섹션 — 긴 페이지에서 '내가 어디쯤인가'를 알려준다 */
+  .bar nav a.here{color:var(--accent);background:rgba(55,214,203,.08)}
   .bar .sp{margin-left:auto}
-  @media(min-width:900px){.bar nav{display:flex}}
+  .bar .demo{display:none}
+  @media(min-width:940px){.bar nav{display:flex}.bar .demo{display:inline-flex}}
+
+  /* ── 좁은 화면용 메뉴 ────────────────────────────────────────
+     예전엔 좁은 화면에서 메뉴를 통째로 숨겼다. 링크가 일곱 개인 페이지에서
+     그건 "스크롤로 찾으세요"라는 뜻이고, 방문자의 절반 이상이 휴대폰이다.
+     햄버거 대신 목록을 그대로 펼친다 — 일곱 줄이면 접을 이유가 없다. */
+  .menu-btn{display:inline-grid;place-items:center;width:42px;height:42px;flex:none;
+            background:rgba(255,255,255,.035);border:1px solid var(--line-2);
+            border-radius:var(--r-md);color:var(--ink-2);cursor:pointer;
+            transition:border-color var(--fast),color var(--fast)}
+  .menu-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .menu-btn svg{width:19px;height:19px}
+  @media(min-width:940px){.menu-btn{display:none}}
+  #sheet{display:none;border-top:1px solid var(--line);background:rgba(5,8,11,.96);
+         backdrop-filter:blur(18px)}
+  #sheet.on{display:block}
+  #sheet .wrap{display:flex;flex-direction:column;gap:2px;padding-block:var(--s-3) var(--s-4)}
+  #sheet a{padding:12px 14px;border-radius:var(--r-md);font-size:var(--t-md);
+           font-weight:650;color:var(--ink-2)}
+  #sheet a:hover{background:rgba(255,255,255,.05);color:var(--ink)}
+  #sheet .go{margin-top:var(--s-2)}
 
   /* ── 히어로 ─────────────────────────────────────────────────── */
-  .hero{position:relative;padding:var(--s-9) 0 var(--s-6);text-align:center;isolation:isolate}
-  .hero .aurora{position:absolute;inset:-20% -10% auto -10%;height:560px;z-index:-1;
-    background:radial-gradient(46% 42% at 32% 18%,rgba(55,214,203,.16),transparent 70%),
-               radial-gradient(42% 38% at 70% 30%,rgba(72,184,240,.14),transparent 70%);
-    filter:blur(14px)}
+  .hero{position:relative;padding:var(--s-9) 0 var(--s-7);text-align:center;isolation:isolate}
+  .hero .aurora{position:absolute;inset:-24% -10% auto -10%;height:620px;z-index:-1;
+    background:radial-gradient(44% 40% at 30% 16%,rgba(55,214,203,.18),transparent 70%),
+               radial-gradient(40% 36% at 68% 28%,rgba(79,187,242,.15),transparent 70%),
+               radial-gradient(36% 32% at 50% 46%,rgba(124,156,247,.10),transparent 72%);
+    filter:blur(16px)}
   .grid-bg{position:absolute;inset:0;z-index:-2;
     background-image:linear-gradient(var(--line) 1px,transparent 1px),
                      linear-gradient(90deg,var(--line) 1px,transparent 1px);
-    background-size:64px 64px;opacity:.22;
-    -webkit-mask-image:radial-gradient(ellipse 70% 46% at 50% 0,#000 38%,transparent 74%);
-            mask-image:radial-gradient(ellipse 70% 46% at 50% 0,#000 38%,transparent 74%)}
-  .pill{display:inline-flex;align-items:center;gap:8px;font-size:var(--t-sm);font-weight:600;
-        color:var(--ink-2);background:rgba(255,255,255,.04);border:1px solid var(--line-2);
-        padding:7px 15px;border-radius:var(--r-full)}
+    background-size:72px 72px;opacity:.26;
+    -webkit-mask-image:radial-gradient(ellipse 72% 48% at 50% 0,#000 36%,transparent 76%);
+            mask-image:radial-gradient(ellipse 72% 48% at 50% 0,#000 36%,transparent 76%)}
+  .pill{display:inline-flex;align-items:center;gap:9px;font-size:var(--t-sm);font-weight:650;
+        color:var(--ink-2);background:rgba(255,255,255,.045);border:1px solid var(--line-2);
+        padding:8px 17px;border-radius:var(--r-full)}
   .pill .d{width:6px;height:6px;border-radius:50%;background:var(--accent);
            box-shadow:0 0 0 4px var(--glow);flex:none}
-  h1{font-size:clamp(38px,6.2vw,72px);font-weight:850;margin-top:var(--s-5);
-     letter-spacing:-.04em;line-height:1.14}
-  .hero .lede{margin:var(--s-5) auto 0;max-width:40ch;font-size:clamp(16px,1.7vw,19px);
-              color:var(--ink-2);line-height:1.75}
+  h1{font-size:clamp(40px,6.6vw,var(--t-5xl));font-weight:850;margin-top:var(--s-5);
+     letter-spacing:-.042em;line-height:1.1}
+  .hero .lede{margin:var(--s-5) auto 0;max-width:38ch;font-size:clamp(17px,1.8vw,20px);
+              color:var(--ink-2);line-height:1.72}
   .hero .lede b{color:var(--ink);font-weight:700}
   .cta{display:flex;flex-wrap:wrap;gap:var(--s-3);justify-content:center;margin-top:var(--s-6)}
-  .trust{margin-top:var(--s-4);font-size:var(--t-sm);color:var(--ink-2);font-weight:600}
+  .trust{margin-top:var(--s-4);font-size:var(--t-sm);color:var(--ink-3);font-weight:600}
   .dlmeta{margin-top:6px;font-size:var(--t-xs);color:var(--muted)}
-  .osnote{display:none;margin:var(--s-3) auto 0;max-width:52ch;font-size:var(--t-md);
+  .osnote{display:none;margin:var(--s-3) auto 0;max-width:52ch;font-size:var(--t-sm);
           color:var(--amb);line-height:1.7;background:rgba(240,180,76,.07);
-          border:1px solid rgba(240,180,76,.2);border-radius:var(--r-md);padding:12px 18px}
+          border:1px solid rgba(240,180,76,.2);border-radius:var(--r-md);padding:13px 18px}
   .osnote.on{display:block}
 
   /* ── 섹션 공통 ──────────────────────────────────────────────── */
   section{padding:var(--s-9) 0}
-  .kick{display:inline-block;font-size:var(--t-sm);color:var(--accent);font-weight:750}
-  .kick .en{font-family:var(--font-mono);letter-spacing:.12em;text-transform:uppercase;font-size:.9em}
-  .stitle{font-size:clamp(27px,3.6vw,var(--t-4xl));font-weight:850;margin-top:var(--s-3);
-          letter-spacing:-.032em;line-height:1.26}
-  .ssub{margin:var(--s-4) auto 0;max-width:44ch;color:var(--ink-2);
-        font-size:var(--t-lg);line-height:1.75}
+  @media(max-width:720px){section{padding:var(--s-8) 0}}
+  .kick{display:inline-flex;align-items:center;gap:8px;font-size:var(--t-xs);
+        color:var(--accent);font-weight:750}
+  .kick::before{content:"";width:22px;height:1px;background:currentColor;opacity:.5}
+  .kick .en{font-family:var(--font-mono);letter-spacing:.14em;text-transform:uppercase;font-size:.92em}
+  .stitle{font-size:clamp(28px,3.8vw,var(--t-4xl));font-weight:850;margin-top:var(--s-3);
+          letter-spacing:-.036em;line-height:1.22}
+  .ssub{margin:var(--s-4) auto 0;max-width:42ch;color:var(--ink-2);
+        font-size:var(--t-lg);line-height:1.72}
   .ssub b{color:var(--ink);font-weight:700}
 
-  /* ── 카드 계열 (통증·존·기능·단계) ──────────────────────────── */
-  .pains,.zones,.feat,.steps{display:grid;gap:var(--s-4);grid-template-columns:1fr;margin-top:var(--s-7)}
-  @media(min-width:820px){
-    .pains,.zones,.steps{grid-template-columns:repeat(3,1fr)}
-    .feat{grid-template-columns:repeat(2,1fr)}
-  }
+  /* ── 카드 계열 ──────────────────────────────────────────────── */
+  .pains,.zones,.steps{display:grid;gap:var(--s-4);grid-template-columns:1fr;margin-top:var(--s-7)}
+  @media(min-width:860px){.pains,.zones,.steps{grid-template-columns:repeat(3,1fr)}}
   .pain,.zone,.card,.step{background:linear-gradient(180deg,var(--surface),var(--bg-2));
-    border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s-5);text-align:left;
-    transition:border-color var(--fast),transform var(--fast) var(--ease)}
-  .pain:hover,.zone:hover,.card:hover,.step:hover{border-color:var(--line-2);transform:translateY(-2px)}
-  .pain .pn{font-family:var(--font-display);font-size:clamp(32px,4.4vw,var(--t-4xl));
-            font-weight:850;letter-spacing:-.045em;line-height:1}
-  .pain .pn .u{font-size:.42em;font-weight:750;letter-spacing:-.01em}
+    border-radius:var(--r-lg);padding:var(--s-5);text-align:left;
+    transition:transform var(--fast) var(--ease),box-shadow var(--base)}
+  .pain:hover,.card:hover,.step:hover{transform:translateY(-3px);box-shadow:var(--sh-2)}
+  .pain .pn{font-family:var(--font-display);font-size:clamp(34px,4.6vw,var(--t-4xl));
+            font-weight:850;letter-spacing:-.05em;line-height:1;font-variant-numeric:tabular-nums}
+  .pain .pn .u{font-size:.4em;font-weight:750;letter-spacing:-.01em}
   .pain h3{font-size:var(--t-xl);margin:var(--s-3) 0 var(--s-2)}
-  .pain p,.zone p,.card p,.step p{font-size:var(--t-md);color:var(--ink-2);line-height:1.7}
+  .pain p,.zone p,.card p,.step p{font-size:var(--t-md);color:var(--ink-2);line-height:1.7;max-width:var(--measure)}
   .pain p b,.card p b{color:var(--ink);font-weight:650}
   .measured{margin:var(--s-5) auto 0;max-width:56ch;font-size:var(--t-sm);
             color:var(--faint);line-height:1.7}
 
-  .zone{position:relative;overflow:hidden}
-  .zone::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--z)}
+  .zone{position:relative;overflow:hidden;border:1px solid var(--line)}
+  .zone::after{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--z)}
   .zone:hover{border-color:var(--z)}
-  .zone .zt{display:block;font-size:var(--t-xs);color:var(--z);font-weight:800}
+  .zone .zt{display:block;font-size:var(--t-2xs);color:var(--z);font-weight:800}
   .zone .zt .en{font-family:var(--font-mono);letter-spacing:.1em}
   .zone h3{margin:var(--s-3) 0 var(--s-2);font-size:var(--t-xl)}
   .zA2{--z:var(--safe)} .zB2{--z:var(--amb)} .zC2{--z:var(--lock)}
 
-  .card .ic{width:42px;height:42px;border-radius:var(--r-sm);background:rgba(55,214,203,.09);
-            border:1px solid rgba(55,214,203,.18);display:grid;place-items:center;
+  /* ── 벤토 — 기능 넷을 같은 무게로 늘어놓지 않는다 ─────────────
+     예전엔 2×2 균등 격자였다. 넷이 똑같이 크면 어느 것부터 볼지 화면이
+     말해주지 않는다. 이 제품에서 가장 중요한 건 '지우기 전에 보여준다'다 —
+     그걸 두 칸으로 키우고 나머지를 한 칸씩 둔다. */
+  .bento{display:grid;gap:var(--s-4);grid-template-columns:1fr;margin-top:var(--s-7)}
+  @media(min-width:900px){
+    .bento{grid-template-columns:repeat(6,1fr)}
+    .bento .card{grid-column:span 3}
+    .bento .card.wide{grid-column:span 6}
+  }
+  .card{border:1px solid var(--line);min-width:0}
+  .card .ic{width:44px;height:44px;border-radius:var(--r-sm);background:rgba(55,214,203,.09);
+            border:1px solid rgba(55,214,203,.2);display:grid;place-items:center;
             color:var(--accent);margin-bottom:var(--s-4)}
-  .card .ic svg{width:20px;height:20px}
-  .card h3{font-size:var(--t-lg);margin-bottom:var(--s-2)}
+  .card .ic svg{width:21px;height:21px}
+  .card h3{font-size:var(--t-xl);margin-bottom:var(--s-2)}
+  .card.wide .inner{display:grid;gap:var(--s-5);align-items:center}
+  @media(min-width:900px){.card.wide .inner{grid-template-columns:minmax(0,20rem) minmax(0,1fr)}}
 
   /* ── 스탯 밴드 ──────────────────────────────────────────────── */
-  .band{border-block:1px solid var(--line);margin-top:var(--s-8);
-        background:linear-gradient(180deg,transparent,rgba(255,255,255,.012))}
-  .stats{display:grid;grid-template-columns:repeat(2,1fr)}
-  @media(min-width:820px){.stats{grid-template-columns:repeat(4,1fr)}}
-  .stat{padding:var(--s-6) var(--s-4);text-align:center;position:relative}
+  .band{border-block:1px solid var(--line);
+        background:linear-gradient(180deg,rgba(255,255,255,.018),transparent)}
+  /* auto-fit — 칸 수가 넷일 때도 다섯일 때도 줄이 안 깨진다.
+     (다운로드 수 칸은 서버가 실측을 못 읽으면 통째로 사라진다.
+      repeat(4,1fr)로 고정해두면 다섯 번째가 혼자 다음 줄로 떨어진다.) */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+  .stat{padding:var(--s-7) var(--s-4);text-align:center;position:relative;min-width:0}
   .stat:not(:last-child)::after{content:"";position:absolute;right:0;top:24%;height:52%;
                                 width:1px;background:var(--line);display:none}
-  @media(min-width:820px){.stat:not(:last-child)::after{display:block}}
-  .stat .n{font-family:var(--font-display);font-size:clamp(26px,3.4vw,var(--t-3xl));
-           font-weight:850;letter-spacing:-.04em;line-height:1.1}
-  .stat .n .u{font-size:.5em;font-weight:750}
+  @media(min-width:860px){.stat:not(:last-child)::after{display:block}}
+  .stat .n{font-family:var(--font-display);font-size:clamp(28px,3.6vw,var(--t-3xl));
+           font-weight:850;letter-spacing:-.042em;line-height:1.1;font-variant-numeric:tabular-nums}
+  .stat .n .u{font-size:.48em;font-weight:750}
   .stat .l{font-size:var(--t-sm);color:var(--muted);margin-top:var(--s-2);line-height:1.55}
+  /* 실측이 아직 안 들어온 칸은 통째로 숨긴다 — 0이나 '—'를 보여주지 않는다.
+     0은 "아무도 안 받았다"는 뜻이고 그건 사실이 아니다. */
+  .stat[hidden]{display:none}
 
   /* ── 차별점 블록 ────────────────────────────────────────────── */
-  .del-hero{margin-top:var(--s-7);border:1px solid var(--line-2);border-radius:var(--r-xl);
-    padding:clamp(28px,5vw,56px);text-align:center;
-    background:radial-gradient(120% 140% at 50% 0,rgba(55,214,203,.07),transparent 58%),
+  .del-hero{margin-top:var(--s-7);border-radius:var(--r-2xl);
+    padding:clamp(28px,5vw,60px);text-align:center;
+    background:radial-gradient(120% 140% at 50% 0,rgba(55,214,203,.08),transparent 58%),
                linear-gradient(180deg,var(--surface),var(--bg-2));box-shadow:var(--sh-2)}
-  .del-hero .big{font-family:var(--font-display);font-size:clamp(46px,9vw,88px);
+  .del-hero .big{font-family:var(--font-display);font-size:clamp(50px,9.5vw,92px);
                  font-weight:850;letter-spacing:-.055em;line-height:1;
+                 font-variant-numeric:tabular-nums;
                  background:linear-gradient(104deg,var(--accent),var(--accent-2) 60%,var(--accent-3));
                  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-  .del-hero .cap{margin-top:var(--s-3);color:var(--ink-2);font-size:var(--t-md);line-height:1.7}
-  .rowlist{margin:var(--s-5) auto 0;max-width:640px;display:flex;flex-direction:column;
+  .del-hero .cap{margin:var(--s-3) auto 0;max-width:44ch;color:var(--ink-2);font-size:var(--t-md);line-height:1.7}
+  .rowlist{margin:var(--s-5) auto 0;max-width:660px;display:flex;flex-direction:column;
            gap:var(--s-2);text-align:left}
   .krow{display:flex;gap:var(--s-3);align-items:center;flex-wrap:wrap;
-        background:rgba(255,255,255,.02);border:1px solid var(--line);
-        border-radius:var(--r-md);padding:14px 16px;font-size:var(--t-md);
-        font-weight:600;line-height:1.55}
+        background:rgba(255,255,255,.024);border:1px solid var(--line);
+        border-radius:var(--r-md);padding:15px 17px;font-size:var(--t-md);
+        font-weight:600;line-height:1.55;min-width:0;
+        transition:border-color var(--fast),background var(--fast)}
+  .krow:hover{border-color:var(--line-2);background:rgba(255,255,255,.04)}
+  .krow > *{min-width:0}
   .krow .mk{font-weight:900;flex:none}
-  .krow .nm{flex:1 1 14rem;min-width:0}
+  .krow .nm{flex:1 1 14rem}
   .krow .why{display:block;color:var(--muted);font-size:var(--t-xs);
-             font-weight:450;margin-top:2px;line-height:1.5}
-  .krow .v{margin-left:auto;font-weight:800;white-space:nowrap;flex:none}
+             font-weight:450;margin-top:3px;line-height:1.5}
+  .krow .v{margin-left:auto;font-weight:800;white-space:nowrap;flex:none;font-variant-numeric:tabular-nums}
   .krow.del .mk,.krow.del .v{color:var(--accent)}
   .krow.lock .mk{color:var(--lock)}
   .krow.lock .v{color:var(--muted);font-size:var(--t-sm);font-weight:700}
   .lockwrap{margin-top:var(--s-6);padding-top:var(--s-5);border-top:1px solid var(--line)}
-  .lockwrap .lt{font-size:var(--t-md);color:var(--ink-2);line-height:1.7}
+  .lockwrap .lt{font-size:var(--t-md);color:var(--ink-2);line-height:1.7;max-width:var(--measure);margin-inline:auto}
   .lockwrap .lt b{color:var(--lock);font-weight:800}
-  .lockwrap .krow{padding:12px 16px;background:transparent}
+  .lockwrap .krow{padding:13px 17px;background:transparent}
 
   /* ── 비교표 ─────────────────────────────────────────────────── */
   .cmp{margin-top:var(--s-6);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
   .cmp .scroll{overflow-x:auto}
-  table{width:100%;border-collapse:collapse;font-size:var(--t-md);min-width:600px}
-  th,td{padding:16px 18px;text-align:left;border-bottom:1px solid var(--line);line-height:1.6}
+  table{width:100%;border-collapse:collapse;font-size:var(--t-md);min-width:620px}
+  th,td{padding:17px 19px;text-align:left;border-bottom:1px solid var(--line);line-height:1.6}
   tbody tr:last-child td,tbody tr:last-child th{border-bottom:0}
-  thead th{font-weight:750;font-size:var(--t-sm);color:var(--muted);background:rgba(255,255,255,.02)}
+  thead th{font-weight:750;font-size:var(--t-sm);color:var(--muted);background:rgba(255,255,255,.024)}
   tbody th{font-weight:600;color:var(--ink-2)}
   .no{color:var(--muted)}
   .colus{background:rgba(55,214,203,.05)}
@@ -269,48 +373,104 @@
   td.colus{color:var(--accent);font-weight:700}
 
   /* ── 로드맵 ─────────────────────────────────────────────────── */
-  .step{display:flex;flex-direction:column;gap:var(--s-2)}
+  .step{display:flex;flex-direction:column;gap:var(--s-2);border:1px solid var(--line)}
   .step.now{border-color:rgba(55,214,203,.4);box-shadow:0 0 0 1px rgba(55,214,203,.08)}
-  .step .sn{font-family:var(--font-mono);font-size:var(--t-xs);letter-spacing:.12em;
+  .step .sn{font-family:var(--font-mono);font-size:var(--t-2xs);letter-spacing:.14em;
             color:var(--muted);font-weight:700}
   .step.now .sn{color:var(--accent)}
   .step h3{font-size:var(--t-lg)}
-  .badge{align-self:flex-start;font-size:var(--t-xs);font-weight:750;padding:4px 11px;
+  .badge{align-self:flex-start;font-size:var(--t-2xs);font-weight:750;padding:4px 12px;
          border-radius:var(--r-full)}
   .badge.on{background:rgba(55,214,203,.13);color:var(--accent);border:1px solid rgba(55,214,203,.28)}
   .badge.soon{background:rgba(255,255,255,.04);color:var(--muted);border:1px solid var(--line-2)}
-  .why-free{margin:var(--s-6) auto 0;max-width:58ch;padding:var(--s-5);
+  .why-free{margin:var(--s-6) auto 0;max-width:var(--measure);padding:var(--s-5);
             border:1px dashed var(--line-2);border-radius:var(--r-lg);
             font-size:var(--t-md);color:var(--ink-2);line-height:1.8;text-align:left;
-            background:rgba(255,255,255,.012)}
+            background:rgba(255,255,255,.014)}
   .why-free b{color:var(--ink);font-weight:750}
-  .partner{margin-top:var(--s-5);padding:clamp(24px,4vw,40px);border-radius:var(--r-lg);
-           text-align:left;background:linear-gradient(120deg,rgba(55,214,203,.07),rgba(110,155,245,.06));
-           border:1px solid var(--line-2);display:flex;gap:var(--s-5);align-items:center;flex-wrap:wrap}
-  .partner .pt{flex:1 1 22rem;min-width:0}
-  .partner h3{font-size:var(--t-xl);margin-bottom:6px}
-  .partner p{font-size:var(--t-md);color:var(--ink-2);line-height:1.7}
+
+  /* ── 상담·제휴 문의 ──────────────────────────────────────────
+     ★ 왜 폼을 직접 만들었나
+       예전엔 '제휴 문의하기'가 GitHub 이슈 새 창으로 갔다. 우리가 찾는 사람은
+       청소·정리 업체 사장님인데, 그 화면은 GitHub 계정을 만들라고 요구한다.
+       문의가 안 들어온 게 아니라 **문의할 수 없는 화면**이었던 것이다.
+
+     ★ 캡차를 안 쓴다. 봇은 허니팟과 제출 속도로 거른다(api/inquiry.js).
+       캡차는 봇보다 사람을 더 많이 막는다 — 특히 이 폼을 쓸 사람들을. */
+  .contact{border-radius:var(--r-2xl);padding:clamp(28px,5vw,56px);
+    background:radial-gradient(120% 120% at 12% 0,rgba(55,214,203,.09),transparent 55%),
+               linear-gradient(180deg,var(--surface),var(--bg-2));box-shadow:var(--sh-2)}
+  .contact-grid{display:grid;gap:var(--s-7);align-items:start}
+  @media(min-width:920px){.contact-grid{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr)}}
+  .contact h2{font-size:clamp(26px,3.2vw,var(--t-3xl));letter-spacing:-.034em}
+  .contact .cl{margin-top:var(--s-4);color:var(--ink-2);font-size:var(--t-md);line-height:1.75;max-width:36ch}
+  .contact .cl b{color:var(--ink);font-weight:700}
+  .cpoints{margin:var(--s-5) 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:var(--s-3)}
+  .cpoints li{display:flex;gap:10px;font-size:var(--t-sm);color:var(--ink-3);line-height:1.6}
+  .cpoints li::before{content:"";flex:none;width:6px;height:6px;margin-top:.55em;border-radius:50%;
+                      background:var(--accent);box-shadow:0 0 0 3px rgba(55,214,203,.16)}
+
+  .field{display:flex;flex-direction:column;gap:7px;margin-top:var(--s-4);min-width:0}
+  .field > label{font-size:var(--t-sm);font-weight:650;color:var(--ink-2)}
+  .field .hint{font-size:var(--t-xs);color:var(--faint);line-height:1.5}
+  .field input,.field textarea{
+    font:inherit;font-size:var(--t-md);color:var(--ink);background:rgba(255,255,255,.03);
+    border:1px solid var(--line-2);border-radius:var(--r-md);padding:13px 15px;width:100%;
+    transition:border-color var(--fast),background var(--fast),box-shadow var(--fast)}
+  .field textarea{min-height:8.5em;resize:vertical;line-height:1.65}
+  .field input::placeholder,.field textarea::placeholder{color:var(--faint)}
+  .field input:focus,.field textarea:focus{outline:none;border-color:var(--accent);
+    background:rgba(55,214,203,.05);box-shadow:0 0 0 3px rgba(55,214,203,.12)}
+  .field.two{display:grid;grid-template-columns:1fr;gap:var(--s-3)}
+  @media(min-width:560px){.field.two{grid-template-columns:1fr 1fr}}
+
+  /* 종류 고르기 — select가 아니라 칩. 선택지가 넷뿐이면 접어둘 이유가 없다. */
+  .kinds{display:flex;flex-wrap:wrap;gap:var(--s-2)}
+  .kinds label{position:relative;cursor:pointer}
+  .kinds input{position:absolute;opacity:0;width:0;height:0}
+  .kinds span{display:inline-block;font-size:var(--t-sm);font-weight:650;color:var(--ink-3);
+              background:rgba(255,255,255,.03);border:1px solid var(--line-2);
+              border-radius:var(--r-full);padding:9px 17px;
+              transition:all var(--fast) var(--ease)}
+  .kinds label:hover span{border-color:var(--line-3);color:var(--ink-2)}
+  .kinds input:checked + span{background:var(--accent);border-color:var(--accent);
+                              color:var(--accent-ink);font-weight:750}
+  .kinds input:focus-visible + span{outline:2px solid var(--accent);outline-offset:3px}
+
+  /* 허니팟 — 사람 눈에 안 보이지만 읽어주는 기계에도 안 걸려야 한다.
+     display:none은 일부 봇이 눈치챈다. 화면 밖으로 밀고 tabindex/aria로 뺀다. */
+  .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+
+  .form-foot{display:flex;align-items:center;gap:var(--s-4);flex-wrap:wrap;margin-top:var(--s-5)}
+  .form-note{font-size:var(--t-xs);color:var(--faint);line-height:1.6;flex:1 1 16rem;min-width:0}
+  #inq-msg{margin-top:var(--s-4);font-size:var(--t-sm);line-height:1.65;border-radius:var(--r-md);
+           padding:14px 16px;display:none}
+  #inq-msg.on{display:block}
+  #inq-msg.ok{background:rgba(79,217,139,.09);border:1px solid rgba(79,217,139,.3);color:var(--safe)}
+  #inq-msg.bad{background:rgba(255,124,116,.08);border:1px solid rgba(255,124,116,.3);color:var(--lock)}
 
   /* ── 최종 CTA ───────────────────────────────────────────────── */
-  .final{position:relative;border-radius:var(--r-xl);padding:clamp(40px,6vw,72px);
+  .final{position:relative;border-radius:var(--r-2xl);padding:clamp(40px,6vw,80px);
     text-align:center;overflow:hidden;border:1px solid var(--line-2);
-    background:linear-gradient(135deg,rgba(55,214,203,.1),rgba(72,184,240,.07) 55%,rgba(110,155,245,.09))}
-  .final h2{font-size:clamp(27px,4.2vw,var(--t-4xl));font-weight:850;letter-spacing:-.032em}
-  .final p{margin:var(--s-4) auto 0;max-width:40ch;color:var(--ink-2);
-           font-size:var(--t-lg);line-height:1.75}
+    background:radial-gradient(90% 120% at 50% 0,rgba(55,214,203,.14),transparent 60%),
+               linear-gradient(135deg,rgba(55,214,203,.08),rgba(79,187,242,.05) 55%,rgba(124,156,247,.08))}
+  .final h2{font-size:clamp(28px,4.4vw,var(--t-4xl));font-weight:850;letter-spacing:-.036em}
+  .final p{margin:var(--s-4) auto 0;max-width:38ch;color:var(--ink-2);
+           font-size:var(--t-lg);line-height:1.72}
   .final .btn-lg{margin-top:var(--s-5)}
   .final .meta{margin-top:var(--s-3);font-size:var(--t-sm);color:var(--muted)}
 
-  footer{border-top:1px solid var(--line);padding:var(--s-7) 0 var(--s-8);margin-top:var(--s-6)}
+  footer{border-top:1px solid var(--line);padding:var(--s-7) 0 var(--s-8);margin-top:var(--s-7)}
   .foot{display:flex;flex-wrap:wrap;gap:var(--s-4);align-items:center;
         font-size:var(--t-md);color:var(--muted)}
   .foot .sp{margin-left:auto}
+  .foot a{transition:color var(--fast)}
   .foot a:hover{color:var(--accent)}
   /* 설치 직전 경고 예고 — 놀라게 두지 않는다 */
-  .warn-ahead{max-width:560px;margin:28px auto 0;text-align:left;
+  .warn-ahead{max-width:580px;margin:var(--s-6) auto 0;text-align:left;
               background:var(--surface);border:1px solid var(--line-2);
-              border-radius:var(--r-md);padding:20px 22px}
-  .warn-ahead h3{font-size:var(--t-md);margin:0 0 8px}
+              border-radius:var(--r-lg);padding:22px 24px}
+  .warn-ahead h3{font-size:var(--t-md);margin:0 0 9px}
   .warn-ahead p{font-size:var(--t-sm);line-height:1.7;color:var(--ink-2);margin:0 0 8px}
   .warn-ahead p:last-child{margin-bottom:0}
   .warn-ahead .how{color:var(--ink)}
@@ -325,13 +485,13 @@
 
      치수는 전부 em이다. .shot의 font-size 하나만 바꾸면 창 전체가
      비율 그대로 축소된다(카드 안에 넣는 .sm 변형이 이걸 쓴다). */
-  .shotwrap{position:relative;margin:56px auto 0;max-width:940px}
-  .shotwrap::after{content:"";position:absolute;inset:auto 8% -30px 8%;height:80px;
-    background:radial-gradient(50% 100% at 50% 0,rgba(47,228,210,.26),transparent 70%);filter:blur(20px);z-index:-1}
-  .shotwrap.narrow{max-width:760px}
-  .shotcap{margin-top:14px;text-align:center;font-size:12.5px;color:var(--faint);line-height:1.6}
-  .duo{display:grid;gap:24px;grid-template-columns:1fr;margin-top:44px}
-  @media(min-width:900px){.duo{grid-template-columns:1fr 1fr;align-items:start}}
+  .shotwrap{position:relative;margin:var(--s-8) auto 0;max-width:960px}
+  .shotwrap::after{content:"";position:absolute;inset:auto 8% -34px 8%;height:90px;
+    background:radial-gradient(50% 100% at 50% 0,rgba(47,228,210,.28),transparent 70%);filter:blur(22px);z-index:-1}
+  .shotwrap.narrow{max-width:780px}
+  .shotcap{margin-top:15px;text-align:center;font-size:var(--t-xs);color:var(--faint);line-height:1.65}
+  .duo{display:grid;gap:var(--s-5);grid-template-columns:1fr;margin-top:var(--s-7)}
+  @media(min-width:940px){.duo{grid-template-columns:1fr 1fr;align-items:start}}
 
   .shot{
     --s-bg:#F7F9FA; --s-surface:#FFFFFF; --s-surface-2:#F1F4F6;
@@ -343,10 +503,10 @@
     position:relative;overflow:hidden;
     font-size:clamp(10.5px,1.42vw,14px);line-height:1.7;text-align:left;
     background:var(--s-bg);color:var(--s-ink);
-    border:1px solid var(--line-2);border-radius:14px;
-    box-shadow:0 40px 110px -40px rgba(0,0,0,.85),0 2px 0 rgba(255,255,255,.05) inset;
+    border:1px solid var(--line-2);border-radius:16px;
+    box-shadow:0 44px 120px -44px rgba(0,0,0,.9),0 2px 0 rgba(255,255,255,.05) inset;
   }
-  .shot.sm{font-size:clamp(9.5px,1.05vw,11px);border-radius:11px;box-shadow:0 20px 50px -26px rgba(0,0,0,.8)}
+  .shot.sm{font-size:clamp(9.5px,1.05vw,11px);border-radius:12px;box-shadow:0 22px 54px -28px rgba(0,0,0,.85)}
   /* 랜딩 본문 규칙(.card p·.final p 등)이 목업 안까지 들어오지 못하게 막는 경계선.
      이게 없으면 기능 카드에 넣은 축소본의 글자 크기·색이 앱과 달라진다. */
   .shot p,.shot ul,.shot li,.shot h4{font-size:inherit;color:inherit;line-height:inherit;margin:0;max-width:none;text-align:inherit;font-weight:inherit;letter-spacing:inherit}
@@ -381,7 +541,7 @@
 
   /* 홈 히어로 */
   .s-hero{text-align:center;padding:.5em 0 .2em}
-  .s-big{font-family:var(--mono);font-size:3.5em;font-weight:800;letter-spacing:-.045em;line-height:1;
+  .s-big{font-family:var(--font-display);font-size:3.5em;font-weight:800;letter-spacing:-.045em;line-height:1;
     color:var(--s-acc);font-variant-numeric:tabular-nums}
   .shot .s-hcap{font-size:.92em;color:var(--s-muted);margin-top:.6em}
   .s-hcap b{color:var(--s-ink)}
@@ -408,7 +568,7 @@
   /* 3분할 통계 */
   .s-3{display:grid;gap:.7em;grid-template-columns:repeat(3,1fr);margin-top:.9em}
   .s-stat{border:1px solid var(--s-line);border-radius:.7em;padding:.95em}
-  .s-stat .n{font-family:var(--mono);font-size:1.5em;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .s-stat .n{font-family:var(--font-display);font-size:1.5em;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
   .s-stat .n.g{color:var(--s-safe)} .s-stat .n.a{color:var(--s-acc)} .s-stat .n.m{color:var(--s-muted)}
   .shot .s-stat .l{font-size:.78em;color:var(--s-muted);margin-top:.35em;line-height:1.45}
   @media(max-width:620px){.s-3{grid-template-columns:1fr}.s-zrow{grid-template-columns:4.8em 1fr 6.8em}}
@@ -418,7 +578,7 @@
   .s-btn{display:inline-block;font-size:.92em;font-weight:650;padding:.72em 1.15em;border-radius:.6em;background:var(--s-acc);color:#fff}
   .s-btn.ghost{background:var(--s-surface-2);color:var(--s-ink-2);border:1px solid var(--s-line-2)}
   .s-btn.off{opacity:.5}
-  .s-pill{display:inline-flex;align-items:center;font-family:var(--mono);font-size:.72em;font-weight:700;padding:.35em .75em;border-radius:2em}
+  .s-pill{display:inline-flex;align-items:center;font-family:var(--font-display);font-size:.72em;font-weight:700;padding:.35em .75em;border-radius:2em}
   .s-pill.desk{background:var(--s-amb-soft);color:var(--s-amb)}
   .s-pill.live{background:var(--s-safe-soft);color:var(--s-safe);margin-left:auto}
   .shot .s-note{border:1px solid var(--s-line);border-left:.22em solid var(--s-muted);border-radius:.6em;
@@ -441,14 +601,14 @@
   /* 지켜드린 것 */
   .s-kept{border:1px solid var(--s-line);border-left:.22em solid var(--s-safe);border-radius:.6em;background:var(--s-surface);padding:1em}
   .s-kept .h{font-size:.8em;font-weight:700;color:var(--s-safe)}
-  .s-kept .n{font-family:var(--mono);font-size:1.45em;font-weight:800;color:var(--s-safe);font-variant-numeric:tabular-nums}
+  .s-kept .n{font-family:var(--font-display);font-size:1.45em;font-weight:800;color:var(--s-safe);font-variant-numeric:tabular-nums}
   .shot .s-kept ul{margin-top:.5em;padding-left:1.2em;font-size:.85em;color:var(--s-ink-2);line-height:1.75}
   .s-kept .f{font-size:.78em;color:var(--s-muted);margin-top:.6em}
 
   /* 설명 블록 (숨은 공간) */
   .s-fhead{display:flex;align-items:baseline;gap:.7em;flex-wrap:wrap}
   .s-fhead h4{font-size:1.1em}
-  .s-fhead .b{margin-left:auto;font-family:var(--mono);font-size:1.3em;font-weight:800;color:var(--s-safe);font-variant-numeric:tabular-nums}
+  .s-fhead .b{margin-left:auto;font-family:var(--font-display);font-size:1.3em;font-weight:800;color:var(--s-safe);font-variant-numeric:tabular-nums}
   .s-expl{display:flex;flex-direction:column;gap:.9em;margin-top:.95em}
   .s-blk .h{font-size:.8em;font-weight:700;color:var(--s-acc);margin-bottom:.1em}
   .s-blk.warn .h{color:var(--s-amb)}
@@ -471,7 +631,7 @@
   .s-mod{position:absolute;inset:0;background:rgba(6,12,16,.42);display:grid;place-items:center;padding:1.2em}
   .s-mod .box{background:var(--s-surface);border:1px solid var(--s-line);border-radius:.9em;padding:1.3em;
     max-width:24em;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4)}
-  .s-mod .k{font-family:var(--mono);font-size:.78em;font-weight:700;color:var(--s-acc)}
+  .s-mod .k{font-family:var(--font-display);font-size:.78em;font-weight:700;color:var(--s-acc)}
   .s-mod h4{font-size:1.15em;margin:.35em 0 .3em}
   .shot .s-mod p{font-size:.88em;color:var(--s-ink-2);line-height:1.6}
   .s-mod .btns{display:flex;gap:.5em;justify-content:flex-end;margin-top:1.1em}
@@ -479,25 +639,44 @@
 
   /* 기능 카드 안에 들어가는 축소본 */
   .card .shot{margin-top:20px}
+  .card.wide .shot{margin-top:0}
 </style>
 </head>
 <body>
 
 <a class="skip" href="#main">본문으로 건너뛰기</a>
+<div id="progress" aria-hidden="true"></div>
 
 <header id="hdr">
   <div class="wrap bar">
     <a class="logo" href="/"><span class="mk"><svg class="mkv" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22.72 12.16L12.8 12.16M12.8 12.16L12.8 51.84M12.8 51.84L22.72 51.84M41.28 12.16L51.2 12.16M51.2 12.16L51.2 51.84M51.2 51.84L41.28 51.84" stroke-width="6.4"/><path d="M25.28 24.32L38.72 24.32M32 24.32L32 41.28" stroke-width="7.68"/></svg></span>테라클린</a>
-    <nav aria-label="주요 메뉴">
+    <nav aria-label="주요 메뉴" id="mainnav">
+      <a href="#pain">문제</a>
       <a href="#why">왜 다른가</a>
       <a href="#how">작동 방식</a>
       <a href="#screens">화면</a>
       <a href="#compare">비교</a>
       <a href="#roadmap">로드맵</a>
-      <a href="/app.html">체험</a>
+      <a href="#contact">문의</a>
     </nav>
     <div class="sp"></div>
-    <a class="btn btn-pri" id="nav-dl" href="#get">무료 다운로드</a>
+    <a class="btn btn-ghost demo" href="/app.html" style="padding:9px 16px;font-size:var(--t-sm)">브라우저 체험</a>
+    <a class="btn btn-pri" id="nav-dl" href="#get" style="padding:10px 18px;font-size:var(--t-sm)">무료 다운로드</a>
+    <button class="menu-btn" id="menu-btn" aria-expanded="false" aria-controls="sheet" aria-label="메뉴 열기">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+  </div>
+  <div id="sheet">
+    <nav class="wrap" aria-label="주요 메뉴 (좁은 화면)">
+      <a href="#pain">문제 — 왜 계속 부족한가</a>
+      <a href="#why">왜 다른가</a>
+      <a href="#how">작동 방식</a>
+      <a href="#screens">화면 더 보기</a>
+      <a href="#compare">비교</a>
+      <a href="#roadmap">로드맵</a>
+      <a href="#contact">상담·제휴 문의</a>
+      <a class="go" href="/app.html">브라우저에서 체험 →</a>
+    </nav>
   </div>
 </header>
 
@@ -522,7 +701,7 @@
 
     <!-- 앱 화면 — /app.html(데스크톱 앱 프론트엔드)의 '홈' 탭 재현 -->
     <div class="shotwrap reveal">
-      <div class="shot" role="img" aria-label="테라클린 앱 홈 화면: 이 폴더에서 정리 가능 14.6GB(지금 즉시 2.1GB, 물어보면 12.5GB). 확신도 3-존 막대 — 존 A 안전 34.9GB, 존 B 애매 12.5GB, 존 C 잠금 41.8GB.">
+      <div class="shot" role="img" aria-label="테라클린 앱 홈 화면: 이 폴더에서 정리 가능 14.6GB(지금 즉시 2.1GB, 물어보면 12.5GB). 확신도 3-존 막대 — 존 A 안전 2.1GB, 존 B 애매 12.5GB, 존 C 잠금 41.8GB.">
         <div class="s-chrome" aria-hidden="true">
           <span class="ic"><svg class="mkv" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22.72 12.16L12.8 12.16M12.8 12.16L12.8 51.84M12.8 51.84L22.72 51.84M41.28 12.16L51.2 12.16M51.2 12.16L51.2 51.84M51.2 51.84L41.28 51.84" stroke-width="6.4"/><path d="M25.28 24.32L38.72 24.32M32 24.32L32 41.28" stroke-width="7.68"/></svg></span><span class="nm">테라클린</span>
           <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
@@ -546,43 +725,37 @@
 
             <div class="s-card">
               <div class="s-sechead"><span class="k">분류</span><h4>확신도 3-존</h4></div>
-              <p class="s-desc">모든 파일을 “알아서 처리 / 물어봐야 / 아예 잠금” 셋 중 하나로 나눕니다.</p>
               <div class="s-zbars">
-                <div>
-                  <div class="s-zrow sfe"><span class="s-zlab">존 A 안전</span>
-                    <span class="s-ztrack"><span class="s-zfill" style="--w:3.7%"></span></span>
-                    <span class="s-zval">2.1GB · 12,480개</span></div>
-                  <div class="s-zdesc">캐시·로그처럼 다시 생기는 것. 규칙이 확증한 것만 자동 정리해요.</div>
-                </div>
-                <div>
-                  <div class="s-zrow sam"><span class="s-zlab">존 B 애매</span>
-                    <span class="s-ztrack"><span class="s-zfill" style="--w:22.2%"></span></span>
-                    <span class="s-zval">12.5GB · 1,240개</span></div>
-                  <div class="s-zdesc">사용자만 아는 것. 무인 삭제 안 하고 물어봅니다.</div>
-                </div>
-                <div>
-                  <div class="s-zrow slk"><span class="s-zlab">존 C 잠금</span>
-                    <span class="s-ztrack"><span class="s-zfill" style="--w:74.1%"></span></span>
-                    <span class="s-zval">41.8GB · 101,445개</span></div>
-                  <div class="s-zdesc">시스템·설정·클라우드. 지우면 뭔가 깨져서 아예 안 건드려요.</div>
-                </div>
+                <div class="s-zrow sfe"><span class="s-zlab">존 A · 안전</span>
+                  <span class="s-ztrack"><span class="s-zfill" style="--w:3.7%"></span></span>
+                  <span class="s-zval">2.1GB · 12,480개</span></div>
+                <div class="s-zrow sam"><span class="s-zlab">존 B · 애매</span>
+                  <span class="s-ztrack"><span class="s-zfill" style="--w:22.2%"></span></span>
+                  <span class="s-zval">12.5GB · 1,240개</span></div>
+                <div class="s-zrow slk"><span class="s-zlab">존 C · 잠금</span>
+                  <span class="s-ztrack"><span class="s-zfill" style="--w:74.1%"></span></span>
+                  <span class="s-zval">41.8GB · 101,445개</span></div>
               </div>
+              <p class="s-zdesc">존 C는 건드리면 뭔가 깨지는 것들이에요 — 목록에서 아예 뺐습니다.</p>
             </div>
           </div>
         </div>
       </div>
-      <p class="shotcap">실제 앱 화면 그대로입니다 — 숫자는 개발용 PC 한 대를 실측한 값으로 구성했습니다.</p>
+      <p class="shotcap">실제 앱 화면입니다. 브라우저에서 그대로 눌러볼 수 있어요.</p>
     </div>
   </div>
 </section>
 
-<!-- 스탯 밴드 -->
+<!-- 스탯 밴드 — 전부 실측값. 못 읽은 칸은 아예 안 그린다. -->
 <div class="band">
   <div class="wrap stats">
     <div class="stat reveal"><div class="n grad">14.6<span class="u">GB</span></div><div class="l">지워도 되는 것으로<br>확인된 용량</div></div>
     <div class="stat reveal"><div class="n grad">3~4<span class="u">개</span></div><div class="l">정리 전<br>묻는 질문 수</div></div>
     <div class="stat reveal"><div class="n grad">41.8<span class="u">GB</span></div><div class="l">건드리면 안 돼서<br>잠근 용량</div></div>
-    <div class="stat reveal"><div class="n grad">0<span class="u">원</span></div><div class="l">프로그램<br>이용료</div></div>
+    <!-- 다운로드 수는 서버(/api/public-stats)가 GitHub 릴리스에서 실측해 준다.
+         못 읽으면 이 칸은 통째로 사라지고 '0'을 보여주지 않는다. -->
+    <div class="stat reveal" id="stat-dl" hidden><div class="n grad"><span id="dl-count">0</span><span class="u">회</span></div><div class="l">지금까지<br>내려받은 횟수</div></div>
+    <div class="stat reveal" id="stat-free"><div class="n grad">0<span class="u">원</span></div><div class="l">프로그램<br>이용료</div></div>
   </div>
 </div>
 
@@ -594,17 +767,17 @@
     <p class="ssub reveal">지울 게 없는 게 아니라, <b>찾을 수 없는 곳에 쌓입니다.</b>
       그래서 아무리 정리해도 며칠이면 원위치입니다.</p>
     <div class="pains">
-      <div class="pain reveal">
+      <div class="pain edge reveal">
         <div class="pn grad">40.7<span class="u">GB</span></div>
         <h3>탐색기가 못 보는 용량</h3>
         <p>윈도우가 잠가둬서 <b>스캐너에 0으로 보입니다.</b> 아무리 뒤져도 못 찾는 게 당연했습니다.</p>
       </div>
-      <div class="pain reveal">
+      <div class="pain edge reveal">
         <div class="pn grad">39<span class="u">만 개</span></div>
         <h3>열어봐도 알 수 없는 것들</h3>
         <p>이름만 봐서는 지워도 되는 건지 알 수 없으니 <b>결국 그대로 닫게 됩니다.</b></p>
       </div>
-      <div class="pain reveal">
+      <div class="pain edge reveal">
         <div class="pn grad">며칠</div>
         <h3>지워도 다시 차는 주기</h3>
         <p>쌓이는 원인은 그대로라 <b>며칠이면 돌아옵니다.</b></p>
@@ -663,7 +836,7 @@
     <span class="kick reveal"><span class="en">Why</span> · 왜 다른가</span>
     <h2 class="stitle reveal">뭘 지우는지 <span class="grad">알고</span> 지웁니다</h2>
     <p class="ssub reveal">다른 도구는 “정리 완료”만 알려줍니다. 우리는 <b>지울 것을 먼저 보여주고</b> 지웁니다.</p>
-    <div class="del-hero reveal">
+    <div class="del-hero edge reveal">
       <div class="big">14.6GB</div>
       <div class="cap">이 PC에서 지워도 되는 것으로 확인된 용량 — 하나하나 이유가 있습니다</div>
       <div class="rowlist">
@@ -796,37 +969,47 @@
   </div>
 </section>
 
-<!-- 기능 -->
+<!-- 핵심 — 벤토 -->
 <section>
   <div class="wrap">
     <div class="center"><span class="kick reveal"><span class="en">Core</span> · 핵심</span><h2 class="stitle reveal">정직하게, 안전하게, 똑똑하게</h2></div>
-    <div class="feat">
-      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/></svg></div>
-        <h3>지우기 전에 보여줍니다</h3><p>지운 건 되돌릴 수 없어요. 그래서 목록과 이유를 먼저 봅니다.</p>
-        <div class="shot sm" role="img" aria-label="테라클린 앱의 지울 목록 확인 화면: 1,284개 2.1GB를 지우기 전에 항목마다 경로와 지우는 이유를 보여주고, 지우기 버튼이 있다.">
-          <div class="s-top" aria-hidden="true">
-            <span class="s-brand">테라클린<i>.</i></span>
-            <span class="s-nav"><span class="on">홈</span><span>숨은 공간</span><span>되돌리기</span></span>
+    <div class="bento">
+      <!-- 가장 중요한 것 하나를 넓게. 나머지 셋은 한 칸씩. -->
+      <div class="card wide edge reveal">
+        <div class="inner">
+          <div>
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/></svg></div>
+            <h3>지우기 전에 보여줍니다</h3>
+            <p>지운 건 되돌릴 수 없어요. 그래서 <b>목록과 이유를 먼저</b> 봅니다 —
+              항목마다 몇 MB인지, 왜 지워도 되는지가 붙습니다.</p>
           </div>
-          <div class="s-main" aria-hidden="true">
-            <div class="s-card">
-              <div class="s-sechead"><h4>지울 목록 1,284개 · 2.1GB</h4><span class="s-btn" style="margin-left:auto">이대로 지우기</span></div>
-              <div class="s-row">
-                <div class="path">C:\Users\me\AppData\Local\Google\Chrome\User Data\Default\Cache\f_0a3d81</div>
-                <div class="why">412MB · 브라우저 캐시 · 지워도 다시 생겨요</div>
-              </div>
-              <div class="s-row">
-                <div class="path">C:\Users\me\AppData\Local\Temp\vscode-typescript\tsserver.log</div>
-                <div class="why">96MB · 27일 남음 · 로그</div>
-              </div>
-              <div class="s-row">
-                <div class="path">C:\Users\me\AppData\Local\Packages\...\LocalCache\thumbs</div>
-                <div class="why">1.2GB · 12일 남음 · 썸네일 캐시</div>
+          <div class="shot sm" role="img" aria-label="테라클린 앱의 지울 목록 확인 화면: 1,284개 2.1GB를 지우기 전에 항목마다 경로와 지우는 이유를 보여주고, 지우기 버튼이 있다.">
+            <div class="s-top" aria-hidden="true">
+              <span class="s-brand">테라클린<i>.</i></span>
+              <span class="s-nav"><span class="on">홈</span><span>숨은 공간</span><span>되돌리기</span></span>
+            </div>
+            <div class="s-main" aria-hidden="true">
+              <div class="s-card">
+                <div class="s-sechead"><h4>지울 목록 1,284개 · 2.1GB</h4><span class="s-btn" style="margin-left:auto">이대로 지우기</span></div>
+                <div class="s-row">
+                  <div class="path">C:\Users\me\AppData\Local\Google\Chrome\User Data\Default\Cache\f_0a3d81</div>
+                  <div class="why">412MB · 브라우저 캐시 · 지워도 다시 생겨요</div>
+                </div>
+                <div class="s-row">
+                  <div class="path">C:\Users\me\AppData\Local\Temp\vscode-typescript\tsserver.log</div>
+                  <div class="why">96MB · 27일 남음 · 로그</div>
+                </div>
+                <div class="s-row">
+                  <div class="path">C:\Users\me\AppData\Local\Packages\...\LocalCache\thumbs</div>
+                  <div class="why">1.2GB · 12일 남음 · 썸네일 캐시</div>
+                </div>
               </div>
             </div>
           </div>
-        </div></div>
-      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></div>
+        </div>
+      </div>
+
+      <div class="card edge reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></div>
         <h3>숨은 공간 회수</h3><p>탐색기가 못 보는 것까지 찾아, 윈도우 공식 명령으로 회수합니다.</p>
         <div class="shot sm" role="img" aria-label="테라클린 앱 숨은 공간 화면 축약: 최대절전 파일 12.7GB, 지우면 달라지는 점과 되돌리는 방법이 함께 적혀 있다.">
           <div class="s-top" aria-hidden="true">
@@ -849,7 +1032,8 @@
             </div>
           </div>
         </div></div>
-      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+
+      <div class="card edge reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
         <h3>기기를 떠나지 않음</h3><p>분석은 전부 이 컴퓨터 안에서. 서버도 업로드도 없습니다.</p>
         <div class="shot sm" role="img" aria-label="테라클린 앱 홈 화면 축약: 파일은 기기를 한 바이트도 떠나지 않는다는 안내와, 115,165개 56.4GB를 읽은 상태 표시.">
           <div class="s-top" aria-hidden="true">
@@ -867,27 +1051,33 @@
             <div class="s-note">웹 체험 화면은 <b>connect-src 'none'</b> — 브라우저가 네트워크를 아예 막은 채로 돕니다.</div>
           </div>
         </div></div>
-      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></div>
-        <h3>검증된 업데이트</h3><p>받은 파일이 게시된 것과 <b style="color:var(--ink)">해시까지 같을 때만</b> 설치합니다. 다르면 멈춥니다.</p>
-        <div class="shot sm" role="img" aria-label="테라클린 앱 업데이트 팝업: 새 버전이 있다고 알리고, 확인하면 받아서 검증한 뒤 설치한다는 안내와 나중에·지금 업데이트 버튼. 아래에 받은 파일을 검증하는 중이라는 진행 표시.">
-          <div class="s-top" aria-hidden="true">
-            <span class="s-brand">테라클린<i>.</i></span>
-            <span class="s-nav"><span class="on">홈</span><span>숨은 공간</span><span>되돌리기</span></span>
+
+      <div class="card wide edge reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></div>
+        <div class="inner">
+          <div>
+            <h3>검증된 업데이트</h3>
+            <p>받은 파일이 게시된 것과 <b>해시까지 같을 때만</b> 설치합니다. 다르면 멈추고, 왜 멈췄는지 말합니다.</p>
           </div>
-          <div class="s-main" aria-hidden="true" style="min-height:19.5em">
-            <div class="s-card s-hero">
-              <div class="s-big">14.6GB</div>
-              <div class="s-hcap">이 폴더에서 <b>정리 가능</b></div>
-              <span class="s-one">원클릭 최적화<span class="s">확실한 건 알아서 · 애매한 건 모아서 보여드려요</span></span>
+          <div class="shot sm" role="img" aria-label="테라클린 앱 업데이트 팝업: 새 버전이 있다고 알리고, 확인하면 받아서 검증한 뒤 설치한다는 안내와 나중에·지금 업데이트 버튼. 아래에 받은 파일을 검증하는 중이라는 진행 표시.">
+            <div class="s-top" aria-hidden="true">
+              <span class="s-brand">테라클린<i>.</i></span>
+              <span class="s-nav"><span class="on">홈</span><span>숨은 공간</span><span>되돌리기</span></span>
             </div>
-          </div>
-          <div class="s-mod" aria-hidden="true">
-            <div class="box">
-              <div class="k">새 버전</div>
-              <h4>업데이트 v0.4.1이 있어요</h4>
-              <p>지금 버전은 v0.4.0이에요. 확인하시면 받아서 검증한 뒤 설치할게요 — 그 뒤로 누르실 건 없어요.</p>
-              <div class="btns"><span class="s-btn ghost">나중에</span><span class="s-btn">지금 업데이트</span></div>
-              <div class="prog">받은 파일을 검증하는 중…</div>
+            <div class="s-main" aria-hidden="true" style="min-height:14em">
+              <div class="s-card s-hero">
+                <div class="s-big">14.6GB</div>
+                <div class="s-hcap">이 폴더에서 <b>정리 가능</b></div>
+                <span class="s-one">원클릭 최적화<span class="s">확실한 건 알아서 · 애매한 건 모아서 보여드려요</span></span>
+              </div>
+            </div>
+            <div class="s-mod" aria-hidden="true">
+              <div class="box">
+                <div class="k">새 버전</div>
+                <h4>업데이트 v0.4.1이 있어요</h4>
+                <p>지금 버전은 v0.4.0이에요. 확인하시면 받아서 검증한 뒤 설치할게요 — 그 뒤로 누르실 건 없어요.</p>
+                <div class="btns"><span class="s-btn ghost">나중에</span><span class="s-btn">지금 업데이트</span></div>
+                <div class="prog">받은 파일을 검증하는 중…</div>
+              </div>
             </div>
           </div>
         </div></div>
@@ -1048,13 +1238,73 @@
     <p class="why-free reveal"><b>왜 무료인가요?</b><br>
       PC 정리로는 돈을 받지 않습니다. 나중에 청소·정리가 필요해졌을 때 믿을 만한 곳을 연결하는 데서 수익을 냅니다.
       그래서 <b>결제 유도나 광고를 넣을 이유가 없습니다.</b></p>
+  </div>
+</section>
 
-    <div class="partner reveal">
-      <div class="pt">
-        <h3>청소·정리정돈 업체를 운영하고 계신가요?</h3>
-        <p>"정리를 해야겠다"고 마음먹은 사람들이 모입니다. 함께할 업체를 찾습니다.</p>
+<!-- 상담·제휴 문의 -->
+<section id="contact">
+  <div class="wrap">
+    <div class="contact edge reveal">
+      <div class="contact-grid">
+        <div>
+          <span class="kick"><span class="en">Contact</span> · 문의</span>
+          <h2 style="margin-top:var(--s-3)">함께할 청소·정리 업체를 찾습니다</h2>
+          <p class="cl">"정리를 해야겠다"고 마음먹은 사람들이 여기 모입니다.
+            그 사람들이 다음에 필요해지는 게 <b>사람 손</b>이에요.</p>
+          <ul class="cpoints">
+            <li>가입도, 계정도 필요 없습니다. 아래 네 칸만 채우시면 됩니다.</li>
+            <li>영업일 기준 <b style="color:var(--ink-2);font-weight:700">2~3일 안에</b> 적어주신 곳으로 직접 답을 드립니다.</li>
+            <li>적어주신 내용은 답장 외에는 쓰지 않고, 다른 곳에 넘기지 않습니다.</li>
+            <li>제휴가 아니어도 괜찮아요 — 버그 신고나 그냥 하고 싶은 말도 여기로 오면 됩니다.</li>
+          </ul>
+        </div>
+
+        <form id="inq-form" novalidate>
+          <div class="field">
+            <label id="kind-label">어떤 이야기인가요</label>
+            <div class="kinds" role="radiogroup" aria-labelledby="kind-label">
+              <label><input type="radio" name="kind" value="partner" checked /><span>청소·정리 업체 제휴</span></label>
+              <label><input type="radio" name="kind" value="service" /><span>정리 서비스 문의</span></label>
+              <label><input type="radio" name="kind" value="bug" /><span>버그·불편 신고</span></label>
+              <label><input type="radio" name="kind" value="etc" /><span>그 외</span></label>
+            </div>
+          </div>
+
+          <div class="field two">
+            <div class="field" style="margin-top:0">
+              <label for="inq-name">이름 <span class="hint">필수</span></label>
+              <input id="inq-name" name="name" type="text" autocomplete="name" maxlength="60" placeholder="홍길동" required />
+            </div>
+            <div class="field" style="margin-top:0">
+              <label for="inq-company">상호 <span class="hint">있으시면</span></label>
+              <input id="inq-company" name="company" type="text" autocomplete="organization" maxlength="120" placeholder="○○클린" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="inq-contact">답 받으실 곳 <span class="hint">이메일 또는 전화번호 · 필수</span></label>
+            <input id="inq-contact" name="contact" type="text" autocomplete="email" maxlength="160" placeholder="hong@example.com 또는 010-0000-0000" required />
+          </div>
+
+          <div class="field">
+            <label for="inq-message">하실 말씀 <span class="hint">필수</span></label>
+            <textarea id="inq-message" name="message" maxlength="4000" placeholder="어느 지역에서 어떤 일을 하고 계신지, 또는 궁금하신 것을 편하게 적어주세요." required></textarea>
+          </div>
+
+          <!-- 허니팟. 사람에겐 안 보이고, 읽어주는 기계에서도 빠진다. -->
+          <div class="hp" aria-hidden="true">
+            <label for="inq-website">이 칸은 비워두세요</label>
+            <input id="inq-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+          </div>
+
+          <div class="form-foot">
+            <button class="btn btn-pri" id="inq-send" type="submit">문의 보내기</button>
+            <p class="form-note">보내면 이름·연락처·내용이 저장됩니다.
+              답장에만 쓰고, 광고 메일은 보내지 않습니다.</p>
+          </div>
+          <p id="inq-msg" role="status" aria-live="polite"></p>
+        </form>
       </div>
-      <a class="btn btn-pri btn-lg" href="https://github.com/lhs0609a-cpu/teraclean-releases/issues/new?title=%EC%A0%9C%ED%9C%B4%20%EB%AC%B8%EC%9D%98" target="_blank" rel="noopener">제휴 문의하기<span class="sr-only"> (새 창)</span></a>
     </div>
   </div>
 </section>
@@ -1110,6 +1360,7 @@
     <div class="sp"></div>
     <nav aria-label="바닥글 메뉴" style="display:flex;gap:20px;flex-wrap:wrap">
       <a href="#roadmap">로드맵</a>
+      <a href="#contact">문의</a>
       <a href="/app.html">체험</a>
       <a href="https://github.com/lhs0609a-cpu/teraclean-releases" target="_blank" rel="noopener">GitHub<span class="sr-only"> (새 창)</span></a>
       <a href="https://github.com/lhs0609a-cpu/teraclean-releases/releases" target="_blank" rel="noopener">릴리스<span class="sr-only"> (새 창)</span></a>

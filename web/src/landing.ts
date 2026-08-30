@@ -110,13 +110,73 @@ function setupReveal() {
   })
 }
 
-/** 스크롤하면 헤더에 경계선이 생긴다. */
+/**
+ * 스크롤하면 헤더에 경계선이 생기고, 읽은 만큼 막대가 찬다.
+ *
+ * 둘을 한 리스너에서 처리하는 이유: scroll 이벤트에 리스너를 여러 개 달면
+ * 한 프레임 안에 레이아웃을 여러 번 읽게 된다. 여기선 한 번만 읽는다.
+ */
 function setupHeader() {
   const hdr = document.getElementById('hdr')
-  if (!hdr) return
-  const on = () => hdr.classList.toggle('scrolled', window.scrollY > 8)
+  const bar = document.getElementById('progress')
+  const on = () => {
+    const y = window.scrollY
+    hdr?.classList.toggle('scrolled', y > 8)
+    if (bar) {
+      const max = document.documentElement.scrollHeight - window.innerHeight
+      bar.style.width = max > 0 ? `${Math.min(100, (y / max) * 100)}%` : '0'
+    }
+  }
   on()
   window.addEventListener('scroll', on, { passive: true })
+  window.addEventListener('resize', on, { passive: true })
+}
+
+/**
+ * 좁은 화면 메뉴. 링크를 누르면 닫힌다 — 열어둔 채로 두면 목적지를 가린다.
+ * Esc로도 닫는다(키보드만 쓰는 사람이 갇히지 않게).
+ */
+function setupMenu() {
+  const btn = document.getElementById('menu-btn')
+  const sheet = document.getElementById('sheet')
+  if (!btn || !sheet) return
+  const set = (open: boolean) => {
+    sheet.classList.toggle('on', open)
+    btn.setAttribute('aria-expanded', String(open))
+    btn.setAttribute('aria-label', open ? '메뉴 닫기' : '메뉴 열기')
+  }
+  btn.addEventListener('click', () => set(!sheet.classList.contains('on')))
+  sheet.addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('a')) set(false) })
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') set(false) })
+}
+
+/**
+ * 지금 보고 있는 섹션을 메뉴에서 밝힌다.
+ *
+ * ★ scroll 위치를 매 프레임 계산하지 않는다. 섹션이 여덟 개고 페이지가 길어서,
+ *   그 계산을 스크롤마다 하면 저사양 기기에서 눈에 띄게 끊긴다.
+ *   IntersectionObserver는 브라우저가 알아서 합쳐서 알려준다.
+ */
+function setupActiveNav() {
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('#mainnav a[href^="#"]')]
+  if (!links.length || !('IntersectionObserver' in window)) return
+  const byId = new Map(links.map((a) => [a.getAttribute('href')!.slice(1), a]))
+  const targets = [...byId.keys()].map((id) => document.getElementById(id)).filter(Boolean) as HTMLElement[]
+  if (!targets.length) return
+
+  /* 화면 위쪽 1/3에 걸린 섹션을 '지금 보는 것'으로 친다. 정중앙을 쓰면
+     섹션이 화면보다 긴 경우(목업이 큰 섹션들) 한참 지나야 바뀐다. */
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue
+        for (const a of links) a.classList.remove('here')
+        byId.get(e.target.id)?.classList.add('here')
+      }
+    },
+    { rootMargin: '-15% 0px -70% 0px', threshold: 0 }
+  )
+  targets.forEach((t) => io.observe(t))
 }
 
 /** macOS 방문자용 처리 — 없는 빌드를 있는 척하지 않는다. */
@@ -151,9 +211,120 @@ function applyMacFallback(
   }
 }
 
+/**
+ * 다운로드 수를 밴드에 채운다 — 서버가 GitHub에서 실측해 준 값.
+ *
+ * ★ 못 읽으면 그 칸을 통째로 숨긴다. 0을 보여주지 않는다.
+ *   0은 "아무도 안 받았다"는 뜻인데 그건 사실이 아니고, 이 랜딩의 숫자는
+ *   전부 실측이라는 게 이 제품의 신뢰 기반이다(40.7GB·14.6GB가 그렇다).
+ *   한 칸이라도 지어내면 나머지도 같이 의심받는다.
+ *
+ * 반올림도 안 한다("1,000+" 같은 것). 세어진 그대로 쓴다.
+ */
+async function fillPublicStats() {
+  const slot = document.getElementById('stat-dl')
+  const n = document.getElementById('dl-count')
+  if (!slot || !n) return
+  try {
+    const res = await fetch('/api/public-stats', { headers: { Accept: 'application/json' } })
+    if (!res.ok) return
+    const data = await res.json()
+    if (typeof data.downloads !== 'number' || data.downloads <= 0) return
+    n.textContent = data.downloads.toLocaleString('ko-KR')
+    slot.hidden = false
+  } catch {
+    /* 서버 함수가 아직 없거나(정적 미리보기), 네트워크가 막혔다.
+       숫자 하나 때문에 화면에 오류를 띄우지 않는다. */
+  }
+}
+
+/**
+ * 상담·제휴 문의 폼.
+ *
+ * ★ 화면에서 지키는 것
+ *   1) 보내는 동안 버튼을 잠근다. 두 번 눌러 두 건이 들어오는 게 제일 흔한 사고다.
+ *   2) 실패하면 **적은 내용을 지우지 않는다.** 다시 쓰라고 하는 순간 그 사람은 떠난다.
+ *   3) 실패 문구에 대체 연락처를 함께 준다 — 막다른 길을 만들지 않는다.
+ *   4) 성공하면 폼을 감사 문장으로 바꾼다. 빈 폼이 남아 있으면 "보내진 건가?"가 된다.
+ */
+function setupContactForm() {
+  const form = document.getElementById('inq-form') as HTMLFormElement | null
+  const btn = document.getElementById('inq-send') as HTMLButtonElement | null
+  const msg = document.getElementById('inq-msg')
+  if (!form || !btn || !msg) return
+
+  // 폼이 뜬 시각 — 서버가 '3초 안에 제출'을 봇으로 거른다(api/inquiry.js).
+  const shownAt = Date.now()
+
+  const say = (text: string, kind: 'ok' | 'bad') => {
+    msg.textContent = text
+    msg.className = `on ${kind}`
+  }
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault()
+    const data = new FormData(form)
+    const get = (k: string) => String(data.get(k) ?? '').trim()
+
+    // 서버도 확인하지만, 여기서 먼저 말해주는 편이 왕복 한 번을 아낀다.
+    if (!get('name')) return say('이름(또는 상호)을 적어주세요.', 'bad')
+    if (!get('contact')) return say('답 받으실 이메일이나 전화번호를 적어주세요.', 'bad')
+    if (get('message').length < 5) return say('어떤 내용인지 한 줄만 더 적어주세요.', 'bad')
+
+    btn.disabled = true
+    const label = btn.textContent
+    btn.textContent = '보내는 중…'
+    msg.className = ''
+
+    try {
+      const res = await fetch('/api/inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: get('kind') || 'etc',
+          name: get('name'),
+          company: get('company'),
+          contact: get('contact'),
+          message: get('message'),
+          website: get('website'), // 허니팟 — 채워져 있으면 봇이다
+          elapsedMs: Date.now() - shownAt,
+          from: location.pathname + location.hash,
+        }),
+      })
+      const out = await res.json().catch(() => null)
+      if (!res.ok || !out?.ok) {
+        return say(
+          `${out?.error ?? '보내지 못했습니다.'} ` +
+            '계속 안 되면 GitHub 이슈로도 남기실 수 있어요 — github.com/lhs0609a-cpu/teraclean-releases/issues',
+          'bad'
+        )
+      }
+      // 성공 — 폼을 치우고 무슨 일이 일어날지 말한다.
+      form.innerHTML =
+        '<div style="padding:8px 0"><h3 style="font-size:var(--t-xl)">받았습니다.</h3>' +
+        '<p style="margin-top:12px;color:var(--ink-2);line-height:1.75">' +
+        '영업일 기준 2~3일 안에 적어주신 곳으로 직접 답을 드릴게요.<br>' +
+        '급하시면 GitHub 이슈로도 남기실 수 있습니다.</p></div>'
+    } catch {
+      say(
+        '네트워크가 막혀 보내지 못했습니다. 잠시 뒤 다시 시도하시거나, ' +
+          'GitHub 이슈로 남겨주세요 — github.com/lhs0609a-cpu/teraclean-releases/issues',
+        'bad'
+      )
+    } finally {
+      btn.disabled = false
+      if (label) btn.textContent = label
+    }
+  })
+}
+
 async function main() {
   setupReveal()
   setupHeader()
+  setupActiveNav()
+  setupMenu()
+  setupContactForm()
+  fillPublicStats()
   const els = {
     heroDl: document.getElementById('hero-dl'),
     navDl: document.getElementById('nav-dl'),
