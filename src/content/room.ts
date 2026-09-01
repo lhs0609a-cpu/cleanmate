@@ -27,6 +27,7 @@
 
 import {
   ROUTINES,
+  allRoutines,
   dayNumber,
   isDue,
   lastDone,
@@ -141,10 +142,28 @@ function routineFreshness(r: TidyRoutine, state: TidyState, today: string): numb
  * 컴퓨터 공간이 영원히 어두워진다 — 하나를 꾸준히 해도 나머지 다섯이 0을 끌어서.
  * 그건 "잘하고 있다"를 보여주는 화면이 할 일이 아니다.
  */
-export function zoneState(zone: RoomZone, state: TidyState, today: string): ZoneState {
-  const routines = zone.routineIds
+/**
+ * 이 칸에 속하는 항목들.
+ *
+ * 기본 항목은 지도 쪽(routineIds)에 적혀 있고, 사용자가 만든 항목은 지도를
+ * 고칠 수 없으니 항목 쪽(zoneId)에 적힌다. 둘을 여기서 합친다 —
+ * 안 합치면 내가 만든 '화분에 물 주기'가 목록에는 있는데 지도에서만 사라진다.
+ */
+export function zoneRoutines(zone: RoomZone, state: TidyState): TidyRoutine[] {
+  const built = zone.routineIds
     .map((id) => ROUTINES.find((r) => r.id === id))
     .filter((r): r is TidyRoutine => !!r)
+  const mine = (state.custom ?? []).filter((r) => r.zoneId === zone.id)
+  return mine.length ? [...built, ...mine] : built
+}
+
+/** 항목이 어느 칸에 사는가. 지도 밖(맡기는 것·자리 안 정한 내 루틴)이면 null. */
+export function zoneOfRoutine(state: TidyState, routineId: string): RoomZone | null {
+  return ROOM_ZONES.find((z) => zoneRoutines(z, state).some((r) => r.id === routineId)) ?? null
+}
+
+export function zoneState(zone: RoomZone, state: TidyState, today: string): ZoneState {
+  const routines = zoneRoutines(zone, state)
 
   const scores: number[] = []
   let lastDay = -Infinity

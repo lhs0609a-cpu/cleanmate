@@ -19,7 +19,7 @@
  * 되고, 그러면 사람은 바로 이 화면을 닫는다.
  */
 
-export type TidyCategory = 'digital' | 'desk' | 'home' | 'gear' | 'self' | 'upkeep'
+export type TidyCategory = 'home' | 'desk' | 'gear' | 'digital' | 'self' | 'upkeep' | 'mine'
 
 /** 앱이 대신 해줄 수 있는 화면 — 글만 주고 끝내지 않는다 */
 export type AppTab = 'home' | 'hidden' | 'startup' | 'programs' | 'move' | 'quar'
@@ -77,6 +77,14 @@ export interface TidyRoutine {
    *   붙이면 목록 순서가 무작위로 보인다.
    */
   bestTime?: 'morning' | 'evening'
+  /**
+   * 방 지도의 어느 칸에 붙는가 (ROOM_ZONES의 id).
+   *
+   * 기본 항목은 지도 쪽(ROOM_ZONES.routineIds)에 적혀 있어서 이게 필요 없다.
+   * 사용자가 만든 항목은 지도를 고칠 수 없으므로 항목 쪽에 적는다 —
+   * 안 적으면 목록에만 있고 지도에는 안 뜬다(그것도 괜찮다).
+   */
+  zoneId?: string
   /** 없으면 'me' — 지금까지의 항목은 전부 내가 하는 것이었다 */
   doer?: TidyDoer
   /** doer가 'pro'일 때 어떤 업종으로 이어지나 (referral.ts의 SERVICES.id) */
@@ -92,13 +100,23 @@ export interface TidyRoutine {
   optIn?: boolean
 }
 
+/**
+ * ★ 여기 적힌 순서가 곧 화면의 순서다.
+ *
+ *   실물에서 잡혔다(2026-09-01): 'gear' 분류를 만들어놓고 화면의 순서 배열에
+ *   넣는 걸 빠뜨렸다. 그래서 로봇청소기 먼지통·세탁기 거름망처럼 켜야만 나오는
+ *   항목 열 개를 **켤 방법이 아예 없었다** — 만들어놓고 안 만든 것과 같다.
+ *   화면이 이 객체의 키 순서를 그대로 쓰게 해서, 분류를 새로 만들면 자동으로
+ *   목록에 나오게 한다. 손으로 적은 순서는 언젠가 어긋난다.
+ */
 export const CATEGORY_LABEL: Record<TidyCategory, string> = {
-  digital: '디지털',
-  desk: '책상',
   home: '집',
+  desk: '책상',
   gear: '소모품·기기',
+  digital: '디지털',
   self: '나',
   upkeep: '손봐야 할 것',
+  mine: '내가 만든 것',
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -458,7 +476,7 @@ export const ROUTINES: TidyRoutine[] = [
     minutes: 3,
     why:
       '닦는 물건이 더러우면 닦을수록 옮기는 셈이 됩니다. 눈으로는 잘 안 보이고 ' +
-      '**냄새로 먼저** 알게 되는데, 냄새가 났다면 이미 바꿀 때가 지난 것입니다.',
+      '냄새로 먼저 알게 되는데, 냄새가 났다면 이미 바꿀 때가 지난 것입니다.',
     steps: [
       '수세미 냄새를 맡아봅니다 — 이게 가장 정확한 판단 기준입니다.',
       '행주는 삶거나 새것으로 바꿉니다.',
@@ -562,7 +580,7 @@ export const ROUTINES: TidyRoutine[] = [
     everyDays: 7,
     minutes: 3,
     why:
-      '통이 차면 로봇은 계속 돌지만 빨아들이지는 않습니다. **돌고 있으니 청소되고 있다고 믿는 것**이 ' +
+      '통이 차면 로봇은 계속 돌지만 빨아들이지는 않습니다. 돌고 있으니 청소되고 있다고 믿게 되는 것 — 그게 ' +
       '이 기기의 유일한 함정입니다. 소리가 커지거나 흡입이 약해졌다면 대개 이것입니다.',
     steps: [
       '먼지통을 빼서 비웁니다.',
@@ -609,7 +627,7 @@ export const ROUTINES: TidyRoutine[] = [
       '흡입력이 떨어졌을 때 대부분은 고장이 아니라 필터입니다. 새로 사기 전에 여기부터 봅니다.',
     steps: [
       '먼지통을 비우고 안쪽 원통 필터를 뺍니다.',
-      '물세척이 되는 필터면 씻어서 **완전히 말린 뒤** 넣습니다(덜 마른 채로 넣으면 냄새가 납니다).',
+      '물세척이 되는 필터면 씻어서 완전히 말린 뒤에 넣습니다(덜 마른 채로 넣으면 냄새가 납니다).',
       '흡입구와 연장관 안쪽에 걸린 것을 확인합니다.',
     ],
     spots: [
@@ -709,7 +727,7 @@ export const ROUTINES: TidyRoutine[] = [
     minutes: 5,
     why:
       '방문 관리를 받고 있으면 업체가 챙기지만, 직접 쓰는 제품이면 아무도 안 알려줍니다. ' +
-      '교체 주기는 제품마다 달라서 여기서는 **확인할 때**만 알려드립니다.',
+      '교체 주기는 제품마다 달라서 여기서는 확인할 때가 됐다는 것만 알려드립니다.',
     steps: [
       '마지막 교체일을 확인합니다(본체 스티커나 앱에 적혀 있는 경우가 많습니다).',
       '제품 설명서의 권장 주기와 비교합니다.',
@@ -967,6 +985,98 @@ export interface TidyState {
 
 export const emptyState = (): TidyState => ({ done: {} })
 
+/** 사용자가 만든 항목의 id는 이걸로 시작한다 — 기본 항목과 절대 안 겹치게 */
+export const CUSTOM_PREFIX = 'my-'
+
+export const isCustom = (id: string) => id.startsWith(CUSTOM_PREFIX)
+
+/**
+ * 기본 항목 + 사용자가 만든 항목.
+ *
+ * ★ 상태를 받는 자리는 전부 이걸 써야 한다. ROUTINES를 직접 훑으면 사용자가
+ *   만든 항목이 그 화면에서만 조용히 사라진다 — 목록엔 있는데 방 지도엔 없거나,
+ *   오늘 할 것엔 뜨는데 이번 달 리포트엔 안 잡히는 식이다.
+ */
+export function allRoutines(state: TidyState): TidyRoutine[] {
+  return state.custom?.length ? [...ROUTINES, ...state.custom] : ROUTINES
+}
+
+export interface NewRoutine {
+  title: string
+  /** 며칠마다 */
+  everyDays: number
+  /** 한 번에 걸리는 시간(분) */
+  minutes: number
+  /** 왜 하는지 — 안 적어도 된다. 자기가 만든 것에 우리가 근거를 요구할 이유가 없다 */
+  why?: string
+  /** 방 지도의 어느 칸에 붙일지 */
+  zoneId?: string
+}
+
+export type AddResult =
+  | { ok: true; state: TidyState; id: string }
+  | { ok: false; problem: string }
+
+/**
+ * 내 루틴을 만든다.
+ *
+ * ★ 왜 못 만들었는지 화면이 그대로 쓸 수 있는 한국어로 돌려준다.
+ *   "Invalid input"이 폼 밑에 뜨면 그 사람은 그냥 창을 닫는다.
+ */
+export function addCustomRoutine(state: TidyState, input: NewRoutine, now = Date.now()): AddResult {
+  const title = (input.title ?? '').trim().slice(0, 40)
+  if (!title) return { ok: false, problem: '무엇을 할 건지 이름을 적어주세요.' }
+
+  const everyDays = Math.round(Number(input.everyDays))
+  if (!Number.isFinite(everyDays) || everyDays < 1 || everyDays > 3650) {
+    return { ok: false, problem: '주기는 1일부터 3650일(10년) 사이로 적어주세요.' }
+  }
+  const minutes = Math.round(Number(input.minutes))
+  if (!Number.isFinite(minutes) || minutes < 1 || minutes > 600) {
+    return { ok: false, problem: '걸리는 시간은 1분부터 600분 사이로 적어주세요.' }
+  }
+
+  const list = allRoutines(state)
+  if (list.some((r) => r.title === title)) {
+    return { ok: false, problem: `'${title}'은 이미 목록에 있어요.` }
+  }
+
+  /* id는 만든 시각에서 뽑는다. 같은 밀리초에 두 번 만들 수 없으므로 안 겹치고,
+     제목에서 뽑으면 제목을 고칠 때 기록이 끊긴다. */
+  let id = `${CUSTOM_PREFIX}${now.toString(36)}`
+  for (let n = 1; list.some((r) => r.id === id); n++) id = `${CUSTOM_PREFIX}${now.toString(36)}${n}`
+
+  const routine: TidyRoutine = {
+    id,
+    title,
+    category: 'mine',
+    everyDays,
+    minutes,
+    why: (input.why ?? '').trim().slice(0, 500),
+    /* 단계는 안 받는다. 우리가 안 쓴 단계를 지어내면 '같이 하기'가 거짓말이 된다 —
+       그래서 사용자가 만든 항목은 '했어요'만 있고 단계 안내가 없다. */
+    steps: [],
+    ...(input.zoneId ? { zoneId: input.zoneId } : {}),
+  }
+  return { ok: true, state: { ...state, custom: [...(state.custom ?? []), routine] }, id }
+}
+
+/**
+ * 내 루틴을 목록에서 아주 지운다.
+ *
+ * ★ 기록도 같이 지운다. 여기서만 남겨두면 이번 달 리포트의 횟수에는 잡히는데
+ *   그게 뭐였는지 화면 어디에도 없는 유령이 된다. 그래서 지울 때 화면이
+ *   "기록도 함께 지워집니다"라고 먼저 밝힌다.
+ *   잠깐 안 보고 싶은 것뿐이면 끄기(setRoutineOn)가 맞는 길이다.
+ */
+export function removeCustomRoutine(state: TidyState, id: string): TidyState {
+  if (!isCustom(id)) return state // 기본 항목은 못 지운다. 끄는 것만 된다
+  const { [id]: _gone, ...done } = state.done
+  const on = { ...(state.on ?? {}) }
+  delete on[id]
+  return { ...state, done, on, custom: (state.custom ?? []).filter((r) => r.id !== id) }
+}
+
 /** 이 항목이 지금 이 사람의 목록에 있는가 */
 export function isRoutineOn(state: TidyState, r: TidyRoutine): boolean {
   const explicit = state.on?.[r.id]
@@ -975,7 +1085,7 @@ export function isRoutineOn(state: TidyState, r: TidyRoutine): boolean {
 }
 
 /** 켠 항목만. 화면·통계·업체 제안이 전부 이걸 거쳐야 한 화면 안에서 숫자가 안 어긋난다. */
-export function enabledRoutines(state: TidyState, routines = ROUTINES): TidyRoutine[] {
+export function enabledRoutines(state: TidyState, routines = allRoutines(state)): TidyRoutine[] {
   return routines.filter((r) => isRoutineOn(state, r))
 }
 
@@ -1108,7 +1218,7 @@ export interface TidyPlan {
  *
  * 끈 항목은 아예 안 나온다 — 끄고도 목록에 남으면 끈 게 아니다.
  */
-export function planToday(state: TidyState, today: string, routines = ROUTINES): TidyPlan {
+export function planToday(state: TidyState, today: string, routines = allRoutines(state)): TidyPlan {
   const due: TidyPlan['due'] = []
   const book: TidyPlan['book'] = []
   const later: TidyPlan['later'] = []

@@ -811,6 +811,50 @@
      방 지도·달력·리포트는 그대로 두되 테두리만 옅게 눕힌다. */
   .life .card,.life .room,.life .coach{border-color:var(--line);box-shadow:none}
 
+
+  /* 하루 몫 — "20개"가 아니라 "합쳐서 14분" */
+  .lsum{font-size:var(--t-caption);color:var(--muted);margin-top:var(--s-3);
+        font-variant-numeric:tabular-nums}
+  .lrest{font-size:var(--t-caption);color:var(--muted);margin-top:var(--s-2)}
+  .lmore{border:0;background:none;padding:0;margin-left:6px;cursor:pointer;font:inherit;
+         font-size:var(--t-caption);color:var(--accent);text-decoration:underline;
+         text-underline-offset:3px}
+  .lmine{font-size:var(--t-small);color:var(--muted)}
+
+  /* 이번 주 일곱 칸 — 안 한 날에 X를 치지 않는다. 비어 있을 뿐이다. */
+  .wk{margin-top:var(--s-5);padding-top:var(--s-4);border-top:1px solid var(--line)}
+  .wk-row{display:flex;gap:6px;min-width:0}
+  .wk-c{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;
+        padding:8px 0;border-radius:var(--r-md);background:var(--surface-2)}
+  .wk-c.on{background:var(--accent);color:var(--accent-ink)}
+  .wk-c.today{outline:2px solid var(--accent);outline-offset:1px}
+  .wk-d{font-size:var(--t-micro);color:var(--muted)}
+  .wk-c.on .wk-d{color:var(--accent-ink);opacity:.85}
+  .wk-n{font-size:var(--t-caption);font-weight:var(--w-num);min-height:1em;
+        font-variant-numeric:tabular-nums}
+  .wk-l{font-size:var(--t-caption);color:var(--muted);margin-top:var(--s-3)}
+  .wk-l b{color:var(--ink-2);font-weight:var(--w-em)}
+
+  /* 내 루틴 만들기 */
+  .mine{margin-top:var(--s-5);padding-top:var(--s-4);border-top:1px solid var(--line)}
+  .mine > summary{list-style:none;cursor:pointer;font-size:var(--t-small);
+                  font-weight:var(--w-ui);color:var(--accent)}
+  .mine > summary::-webkit-details-marker{display:none}
+  .mine-f{display:flex;gap:var(--s-3);flex-wrap:wrap;align-items:flex-end;margin-top:var(--s-4)}
+  .mine-f > *{min-width:0}
+  .mine-f label{display:flex;flex-direction:column;gap:5px;font-size:var(--t-micro);
+                color:var(--muted);flex:1 1 8em}
+  .mine-f label.wide{flex:1 1 100%}
+  .mine-f input,.mine-f select{width:100%;font:inherit;font-size:var(--t-small);
+    padding:9px 11px;border:1px solid var(--line-2);border-radius:var(--r-sm);
+    background:var(--surface);color:var(--ink)}
+  .mine-f input:focus-visible,.mine-f select:focus-visible{outline:2px solid var(--accent);
+    outline-offset:1px;border-color:var(--accent)}
+  .mine-f .btn{flex:none}
+  .mine-msg{font-size:var(--t-caption);margin-top:var(--s-3);min-height:1em}
+  .mine-msg.bad{color:var(--lock)}
+  .pick .del{color:var(--muted)}
+
   /* ── 정리 코치 ────────────────────────────────────────────────
      시작 · 분석 · 오늘 여기 · 같이 하기 · 이번 달 리포트.
 

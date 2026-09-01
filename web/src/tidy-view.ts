@@ -309,8 +309,9 @@ export function rowHtml(
         ${(r.streak ?? 0) > 1 ? `<span class="st">${r.streak}회째</span>` : ''}
       </summary>
       <div class="lb">
-        <p>${esc(r.why)}</p>
-        <ol>${r.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>
+        ${r.why ? `<p>${esc(r.why)}</p>` : ''}
+        ${r.steps.length ? `<ol>${r.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : ''}
+        ${!r.why && !r.steps.length ? `<p class="lmine">직접 만드신 항목이에요. 언제 했는지만 세어 드릴게요.</p>` : ''}
         ${r.spots?.length
           ? `<div class="sp"><b>빠지기 쉬운 곳</b>
                <ul>${r.spots.map((s) => `<li>${esc(s)}</li>`).join('')}</ul></div>`
@@ -327,4 +328,36 @@ export function rowsHtml(title: string, rows: string[], empty: string, open = tr
     <summary><h3>${esc(title)} <span>${rows.length}</span></h3></summary>
     ${rows.join('')}
   </details>`
+}
+
+/**
+ * 이번 주 일곱 칸 — 한 날에 점이 찍힌다.
+ *
+ * ★ 달력은 '기록' 탭에 3개월치가 있다. 그런데 그건 일부러 열어야 보이고,
+ *   매일 여는 화면에서 쌓이는 감각을 주는 건 **지금 눈앞에 있는 것**뿐이다.
+ *   그래서 오늘 화면 아래에 이레만 둔다.
+ *
+ * ★ 안 한 날을 비워둘 뿐 X를 치지 않는다. 빠진 날에 표를 하면 그건 결석부다.
+ *   오늘까지만 그린다 — 아직 오지 않은 날을 '안 한 날'로 세지 않는다.
+ */
+export function weekHtml(habit: HabitStats | null | undefined): string {
+  if (!habit?.days7?.length) return ''
+  const dow = ['일', '월', '화', '수', '목', '금', '토']
+  const cells = habit.days7.map((d, i) => {
+    const last = i === habit.days7.length - 1
+    const day = dow[new Date(`${d.date}T00:00:00Z`).getUTCDay()]
+    return `<div class="wk-c ${d.count ? 'on' : ''} ${last ? 'today' : ''}"
+        title="${esc(d.date)}${d.count ? ` · ${d.count}개` : ''}">
+      <span class="wk-d">${esc(day)}</span>
+      <span class="wk-n" aria-hidden="true">${d.count ? d.count : ''}</span>
+    </div>`
+  }).join('')
+
+  const doneDays = habit.days7.filter((d) => d.count).length
+  return `<div class="wk">
+    <div class="wk-row">${cells}</div>
+    <p class="wk-l">${doneDays
+      ? `이레 중 <b>${doneDays}일</b> 하셨어요${habit.currentDays > 1 ? ` · ${habit.currentDays}일째 이어가는 중` : ''}`
+      : '이번 주는 아직이에요. 하나만 하면 오늘 칸에 불이 들어옵니다.'}</p>
+  </div>`
 }

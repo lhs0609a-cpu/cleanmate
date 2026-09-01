@@ -196,6 +196,24 @@ test('검증할 수 없는 수치를 콘텐츠에 쓰지 않는다', () => {
   }
 })
 
+test('★ 콘텐츠는 평문이다 — 마크업이 섞이면 화면에 그대로 뜬다', () => {
+  /* 실물에서 잡혔다(2026-09-01): why에 적어둔 **강조**가 화면에 별표째로
+     나왔다. 화면은 콘텐츠를 esc()해서 그리므로(그게 맞다) 마크다운은 변환되지
+     않고 글자로 남는다. 콘텐츠에 서식을 넣는 순간 화면마다 다르게 보이고,
+     esc를 풀면 콘텐츠가 마크업을 주입할 수 있게 된다 — 둘 다 안 된다. */
+  for (const r of ROUTINES) {
+    const fields: [string, string][] = [
+      ['why', r.why], ['tip', r.tip ?? ''],
+      ['steps', r.steps.join(' ')], ['spots', (r.spots ?? []).join(' ')],
+    ]
+    for (const [name, text] of fields) {
+      assert.ok(!text.includes('**'), `${r.id}.${name}: 굵게 표시(**)가 화면에 그대로 나온다`)
+      assert.ok(!/<[a-z/]/i.test(text), `${r.id}.${name}: 태그가 섞였다`)
+      assert.ok(!/\[[^\]]*\]\(/.test(text), `${r.id}.${name}: 링크 문법이 섞였다`)
+    }
+  }
+})
+
 test('lastDone은 가장 최근 날짜를 준다', () => {
   let s = markDone(emptyState(), 'test', '2026-08-01')
   s = markDone(s, 'test', '2026-08-03')

@@ -126,6 +126,8 @@ import {
   planToday,
   habitStats,
   setRoutineOn,
+  addCustomRoutine,
+  removeCustomRoutine,
   todayISO,
   type TidyState,
 } from './content/tidy.ts'
@@ -2170,6 +2172,7 @@ async function main() {
           today,
           ...planToday(state, today),
           catalog: ROUTINES.length,
+          custom: state.custom ?? [],
           stuck: stuckRoutines(state, today),
           coach: coachBoard(state, today),
           habit: habitStats(state, today),
@@ -2343,6 +2346,48 @@ async function main() {
        *
        * ★ 규칙이 화면에 복사되면 안 된다. 브라우저도 같은 coachBoard()를 부른다.
        */
+      /**
+       * 내 루틴 — tidy-add <제목> <주기(일)> <시간(분)> [공간id] [왜]
+       *          tidy-del <id>
+       *
+       * ★ 우리가 마흔 개를 채워도 그 집에만 있는 것은 못 맞춘다. 자기 것이
+       *   하나도 없는 목록은 아무리 길어도 남의 기준이다.
+       * ★ 규칙(이름 중복·주기 범위)은 addCustomRoutine 한 곳에만 있다.
+       *   화면이 다시 검사하면 두 규칙이 어긋난다.
+       */
+      case 'tidy-add': {
+        const state = await readTidy()
+        const today = todayISO()
+        const res = addCustomRoutine(state, {
+          title: args[0] ?? '',
+          everyDays: Number(args[1]),
+          minutes: Number(args[2]),
+          zoneId: args[3] || undefined,
+          why: args[4] || undefined,
+        })
+        if (!res.ok) fail(res.problem)
+        await writeTidy(res.state)
+        out({ today, id: res.id, ...planToday(res.state, today), catalog: ROUTINES.length,
+              custom: res.state.custom ?? [], habit: habitStats(res.state, today),
+              stuck: stuckRoutines(res.state, today), coach: coachBoard(res.state, today),
+              ...tidyBoard(res.state, today) })
+        break
+      }
+      case 'tidy-del': {
+        if (!args[0]) fail('지울 항목 id가 필요합니다.')
+        const state = await readTidy()
+        if (!(state.custom ?? []).some((r) => r.id === args[0])) {
+          fail('직접 만드신 항목만 지울 수 있습니다. 기본 항목은 목록에서 빼기만 됩니다.')
+        }
+        const today = todayISO()
+        const next = removeCustomRoutine(state, args[0])
+        await writeTidy(next)
+        out({ today, ...planToday(next, today), catalog: ROUTINES.length,
+              custom: next.custom ?? [], habit: habitStats(next, today),
+              stuck: stuckRoutines(next, today), coach: coachBoard(next, today),
+              ...tidyBoard(next, today) })
+        break
+      }
       case 'tidy-coach': {
         const state = await readTidy()
         const today = todayISO()
@@ -2361,6 +2406,7 @@ async function main() {
           today,
           ...planToday(next, today),
           catalog: ROUTINES.length,
+          custom: next.custom ?? [],
           stuck: stuckRoutines(next, today),
           coach: coachBoard(next, today),
           habit: habitStats(next, today),
@@ -2387,6 +2433,7 @@ async function main() {
           today,
           ...planToday(next, today),
           catalog: ROUTINES.length,
+          custom: next.custom ?? [],
           stuck: stuckRoutines(next, today),
           coach: coachBoard(next, today),
           habit: habitStats(next, today),

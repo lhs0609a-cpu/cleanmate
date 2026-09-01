@@ -93,10 +93,15 @@ export function pickHtml(pick: TodayPick | null): string {
       <span>${r.everyDays}일마다</span>
     </div>
     <p class="pk-why">${esc(pick.because)}</p>
-    <p class="pk-sub">${esc(r.why)}</p>
+    ${r.why ? `<p class="pk-sub">${esc(r.why)}</p>` : ''}
     ${spots}
     <div class="pk-act">
-      <button class="btn" id="coach-start">같이 하기</button>
+      ${r.steps.length
+        /* ★ 단계가 없으면 '같이 하기'를 못 준다. 내가 만든 항목에는 우리가 쓴
+           단계가 없고, 없는 단계를 지어내면 그 화면이 통째로 거짓말이 된다.
+           그래서 그때는 바로 끝내는 버튼만 준다. */
+        ? `<button class="btn" id="coach-start">같이 하기</button>`
+        : `<button class="btn" id="coach-done">했어요</button>`}
       <button class="opt" id="coach-skip">오늘은 넘길게요</button>
       <button class="opt" id="coach-other">다른 곳 보기</button>
     </div>

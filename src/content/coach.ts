@@ -29,14 +29,19 @@ import {
   type TidyRoutine,
   type TidyState,
 } from './tidy.ts'
-import { ROOM_ZONES, roomView } from './room.ts'
+import { ROOM_ZONES, roomView, zoneOfRoutine } from './room.ts'
 
-/** 항목 id → 그 항목이 사는 공간. 지도에 없는 것(맡기는 항목)은 null. */
-const ZONE_OF = new Map<string, { id: string; name: string }>(
-  ROOM_ZONES.flatMap((z) => z.routineIds.map((id) => [id, { id: z.id, name: z.name }] as const))
-)
-
-export const zoneOf = (routineId: string) => ZONE_OF.get(routineId) ?? null
+/**
+ * 항목 id → 그 항목이 사는 공간. 지도 밖이면 null.
+ *
+ * ★ 상태를 받는다. 사용자가 만든 항목은 지도가 아니라 항목 쪽에 자리가 적혀
+ *   있어서(zoneId), 고정된 표로는 못 찾는다 — 그러면 내가 만든 항목만
+ *   "어디 것인지" 꼬리표가 안 붙는다.
+ */
+export function zoneOf(routineId: string, state?: TidyState): { id: string; name: string } | null {
+  const z = zoneOfRoutine(state ?? { done: {} }, routineId)
+  return z ? { id: z.id, name: z.name } : null
+}
 
 /** 내가 지금 이 자리에서 할 수 있는 것만 (맡기는 항목은 뺀다) */
 const mine = (state: TidyState) => enabledRoutines(state).filter((r) => r.doer !== 'pro')
@@ -150,7 +155,7 @@ export function pickToday(
   const shortest = (rs: TidyRoutine[]) => [...rs].sort((a, b) => a.minutes - b.minutes)[0]
   const wrap = (r: TidyRoutine, rule: TodayPick['rule'], because: string): TodayPick => ({
     routine: r,
-    zone: zoneOf(r.id),
+    zone: zoneOf(r.id, state),
     because,
     rule,
     spots: r.spots ?? [],
@@ -159,7 +164,7 @@ export function pickToday(
   const never = list.filter((r) => !lastDone(state, r.id))
   if (never.length) {
     const r = shortest(never)
-    const z = zoneOf(r.id)
+    const z = zoneOf(r.id, state)
     return wrap(
       r,
       'first',
@@ -174,10 +179,10 @@ export function pickToday(
      지난 일수로 견준다 — 자리가 없다고 목록에서 빠지면 안 된다. */
   const room = roomView(state, today)
   const dimmest = [...room.zones]
-    .filter((z) => z.mood !== 'never' && due.some((r) => zoneOf(r.id)?.id === z.id))
+    .filter((z) => z.mood !== 'never' && due.some((r) => zoneOf(r.id, state)?.id === z.id))
     .sort((a, b) => a.freshness - b.freshness)[0]
 
-  const pool = dimmest ? due.filter((r) => zoneOf(r.id)?.id === dimmest.id) : due
+  const pool = dimmest ? due.filter((r) => zoneOf(r.id, state)?.id === dimmest.id) : due
   const r = shortest(pool)
   const late = -(daysUntilDue(r, state, today) ?? 0)
 
@@ -233,7 +238,7 @@ export function monthReport(state: TidyState, today: string): MonthReport {
   const activeDays = new Set<string>()
 
   for (const [id, dates] of Object.entries(state.done)) {
-    const z = zoneOf(id)
+    const z = zoneOf(id, state)
     for (const d of dates) {
       if (d.startsWith(prevYm)) prevDoneCount++
       if (!d.startsWith(ym)) continue
@@ -272,7 +277,7 @@ export function monthReport(state: TidyState, today: string): MonthReport {
     .map((r) => ({
       id: r.id,
       title: r.title,
-      zoneName: zoneOf(r.id)?.name ?? '',
+      zoneName: zoneOf(r.id, state)?.name ?? '',
       minutes: r.minutes,
     }))
     .sort((a, b) => a.minutes - b.minutes)
@@ -283,7 +288,7 @@ export function monthReport(state: TidyState, today: string): MonthReport {
     .map(({ r, left }) => ({
       id: r.id,
       title: r.title,
-      zoneName: zoneOf(r.id)?.name ?? '',
+      zoneName: zoneOf(r.id, state)?.name ?? '',
       daysLate: -left,
       everyDays: r.everyDays,
     }))
@@ -304,7 +309,7 @@ export function monthReport(state: TidyState, today: string): MonthReport {
     add(s.id, s.title, `${s.everyDays}일마다인데 ${s.daysLate}일 지났어요 — 지금 가장 많이 밀린 것입니다.`)
   }
   if (fading[0]) {
-    const zoneDue = list.filter((r) => zoneOf(r.id)?.id === fading[0].id && isDue(r, state, today))
+    const zoneDue = list.filter((r) => zoneOf(r.id, state)?.id === fading[0].id && isDue(r, state, today))
     const r = [...zoneDue].sort((a, b) => a.minutes - b.minutes)[0]
     if (r) add(r.id, r.title, `${fading[0].name}은 이번 달에 한 번도 안 오셨어요. 여기서 제일 짧은 것입니다.`)
   }

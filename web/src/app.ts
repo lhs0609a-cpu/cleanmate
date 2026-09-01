@@ -25,16 +25,20 @@ import {
   isRoutineOn,
   CATEGORY_LABEL,
   todayISO,
+  addCustomRoutine,
+  removeCustomRoutine,
+  isCustom,
   type TidyState,
   type TidyRoutine,
+  type NewRoutine,
 } from '../../src/content/tidy.ts'
 import { ROOM_ZONES, tidyBoard } from '../../src/content/room.ts'
 // 방 지도·달력·이번 달을 그리는 순수 함수들. 순수해서 Node에서 그대로 테스트한다.
 import {
   roomHtml, calendarHtml, monthHtml,
-  segHtml, greetHtml, rowHtml, rowsHtml, type TidySeg,
+  segHtml, greetHtml, rowHtml, rowsHtml, weekHtml, type TidySeg,
 } from './tidy-view.ts'
-import { dayPart, greeting, sortByTime } from '../../src/content/daypart.ts'
+import { dailyPicks, dayPart, greeting, sortByTime } from '../../src/content/daypart.ts'
 import { coachBoard } from '../../src/content/coach.ts'
 import {
   startSession, sessionView, nextStep, backStep, pauseSession, resumeSession,
@@ -2427,11 +2431,41 @@ async function tidyPlan(
     // 규칙은 한 군데에만 둔다 — 화면이 다시 계산하면 엔진과 어긋난다.
     stuck: stuckRoutines(state, today),
     coach: coachBoard(state, today),
+    // 목록 고르기가 사용자가 만든 항목까지 그리려면 이게 있어야 한다.
+    custom: state.custom ?? [],
     habit: habitStats(state, today),
     ...tidyBoard(state, today),
   }
 }
 
+
+/**
+ * 내 루틴을 만든다. 데스크톱은 엔진, 브라우저는 같은 순수 함수 —
+ * 규칙(이름 중복·주기 범위)이 두 군데 있으면 한쪽만 고쳐진다.
+ */
+async function tidyAdd(input: NewRoutine): Promise<{ ok: true } | { ok: false; problem: string }> {
+  if (inTauri) {
+    try {
+      await engine('tidy-add', [
+        input.title, String(input.everyDays), String(input.minutes),
+        input.zoneId ?? '', input.why ?? '',
+      ])
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, problem: String((err as Error)?.message ?? err) }
+    }
+  }
+  const res = addCustomRoutine(readLocalTidy(), input)
+  if (!res.ok) return { ok: false, problem: res.problem }
+  try { localStorage.setItem(TIDY_KEY, JSON.stringify(res.state)) } catch { /* 사생활 모드 */ }
+  return { ok: true }
+}
+
+async function tidyDel(id: string) {
+  if (inTauri) { await engine('tidy-del', [id]); return }
+  const next = removeCustomRoutine(readLocalTidy(), id)
+  try { localStorage.setItem(TIDY_KEY, JSON.stringify(next)) } catch { /* 사생활 모드 */ }
+}
 
 /**
  * "마지막으로 한 게 언제쯤인가요?"에 답한 것을 기록한다.
@@ -2640,6 +2674,9 @@ let tidyZoneFilter: string | null = null
  */
 let tidySeg: TidySeg = 'today'
 
+/** '지금 다 보기'를 누르면 하루 몫을 넘어 전부 보여준다. 탭을 옮기면 돌아온다. */
+let tidyShowAll = false
+
 /**
  * 생활 정리 화면을 그린다.
  *
@@ -2741,22 +2778,28 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
        냉장고가 없는 집도 있고 식탁에서 일하는 사람도 있다. 그리고 몸에 대한
        항목은 기본이 꺼짐이라 **여기가 유일한 통로**다 — 묻지도 않고 머리
        이야기를 꺼내지 않으려고 그렇게 뒀다. */
+  /* ★ ROUTINES가 아니라 '지금 이 사람의 전체 항목'을 훑는다.
+     사용자가 만든 항목이 목록 고르기에 안 나오면 지울 수도, 끌 수도 없다. */
+  const allNow: TidyRoutine[] = [...ROUTINES, ...((d.custom ?? []) as TidyRoutine[])]
   const onIds = new Set<string>([
     ...d.due.map((r: any) => r.id),
     ...(d.book ?? []).map((r: any) => r.id),
     ...d.later.map((r: any) => r.id),
     ...d.doneToday,
   ])
-  const catOrder = ['home', 'desk', 'digital', 'self', 'upkeep'] as const
+  /* ★ 손으로 적지 않는다. 분류를 새로 만들었을 때 여기 넣는 걸 빠뜨리면
+     그 분류의 항목은 화면에 영영 안 나온다 — 실제로 'gear'를 그렇게 놓쳐서
+     로봇청소기·세탁기 필터 열 개를 켤 방법이 없었다. */
+  const catOrder = Object.keys(CATEGORY_LABEL) as (keyof typeof CATEGORY_LABEL)[]
   const pickerHtml = `<section class="card">
     <details>
       <summary class="sechead" style="cursor:pointer;margin:0">
-        <h2 style="display:inline">내 목록 고르기 — ${onIds.size}/${d.catalog ?? ROUTINES.length}개 켜짐</h2>
+        <h2 style="display:inline">내 목록 고르기 — ${onIds.size}/${allNow.length}개 켜짐</h2>
       </summary>
       <p class="note" style="margin:12px 0">켠 것만 화면에 나옵니다.
         끄면 <b>기록은 그대로 남고</b> 목록에서만 빠져요 — 다시 켜면 이어집니다.</p>
       ${catOrder.map((cat) => {
-        const items = ROUTINES.filter((r) => r.category === cat)
+        const items = allNow.filter((r) => r.category === cat)
         if (!items.length) return ''
         const proNote = items.every((r) => r.doer === 'pro')
           ? `<p class="note" style="margin:0 0 8px">여기는 기본이 꺼짐입니다. 묻지도 않고 꺼낼 이야기가 아니라서요.</p>`
@@ -2771,10 +2814,31 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
               <span class="meta">${r.everyDays}일마다 · ${r.minutes}분${r.doer === 'pro' ? ' · 맡기는 것' : ''}</span>
               <button class="opt" data-pick="${esc(r.id)}" data-on="${on ? '0' : '1'}"
                 >${on ? '목록에서 빼기' : '목록에 넣기'}</button>
+              ${isCustom(r.id)
+                ? `<button class="opt del" data-del="${esc(r.id)}">지우기</button>`
+                : ''}
             </div>`
           }).join('')}
         </div>`
       }).join('')}
+      <details class="mine">
+        <summary>+ 내 루틴 만들기</summary>
+        <p class="note">우리가 마흔 개를 채워도 그 집에만 있는 것은 못 맞춥니다 —
+          화분에 물 주기, 렌즈 세척액, 반려동물 화장실. <b>여기 적으시면 똑같이 세어 드릴게요.</b></p>
+        <form id="mine-form" class="mine-f">
+          <label>무엇을<input name="title" maxlength="40" placeholder="화분에 물 주기" required></label>
+          <label>며칠마다<input name="everyDays" type="number" min="1" max="3650" value="7" required></label>
+          <label>몇 분<input name="minutes" type="number" min="1" max="600" value="5" required></label>
+          <label>어디에<select name="zoneId">
+            <option value="">자리 안 정함</option>
+            ${ROOM_ZONES.map((z) => `<option value="${esc(z.id)}">${esc(z.name)}</option>`).join('')}
+          </select></label>
+          <label class="wide">왜 하는지 (안 적으셔도 됩니다)
+            <input name="why" maxlength="200" placeholder=""></label>
+          <button class="btn" type="submit">만들기</button>
+        </form>
+        <p id="mine-msg" class="mine-msg"></p>
+      </details>
     </details>
   </section>`
 
@@ -2799,14 +2863,25 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
   const row = (r: any, state: 'due' | 'later' | 'done') =>
     rowHtml(r, { state, zoneName: ZONE_OF.get(r.id)?.name, fits: state === 'due' && fitsNow(r) })
 
+  /* ★ 하루 몫만 낸다.
+     "오늘 할 것 20"은 사실이지만, 사실을 그대로 쌓으면 그 화면은 빚 목록이
+     된다. 스무 줄을 본 사람은 하나도 안 하고 닫는다 — 고르는 것 자체가 일이라서다.
+     나머지를 숨기는 게 아니라 다른 날로 나누는 것이고, 화면도 그렇게 말한다. */
+  const quota = dailyPicks(ordered)
+  const restLine = quota.rest.length
+    ? `<p class="lrest">나머지 ${quota.rest.length}개는 다른 날에 나눠 드릴게요.
+         <button class="lmore" id="tidy-more">지금 다 보기</button></p>`
+    : ''
+
+  const shown = tidyShowAll ? ordered : quota.today
+
   const emptyLine = tidyZoneFilter
     ? `${zoneName ?? ''}은 지금 할 게 없어요.`
     : '오늘 할 건 다 하셨어요. 더 안 하셔도 됩니다.'
 
   /* ── 오늘 ─────────────────────────────────────────────────
      ★ 밤에는 목록을 접어둔다(g.quiet). 밤 열한 시에 열었더니 "12개 밀렸어요"가
-       뜨는 것이 할 일 앱이 사람을 지치게 하는 바로 그 지점이다. 볼 사람은
-       펼쳐 보면 되고, 그건 그 사람이 정한 것이다. */
+       뜨는 것이 할 일 앱이 사람을 지치게 하는 바로 그 지점이다. */
   const todayHtml = `
     ${greetHtml(g, doneToday.length)}
     <div id="coach-body"></div>
@@ -2816,10 +2891,13 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
       : ''}
     ${rowsHtml(
       tidyZoneFilter ? `${zoneName ?? ''}에서 할 것` : '오늘 할 것',
-      ordered.map((r: any) => row(r, 'due')),
+      shown.map((r: any) => row(r, 'due')),
       emptyLine,
       !g.quiet
     )}
+    ${shown.length && !tidyShowAll && !tidyZoneFilter
+      ? `<p class="lsum">합쳐서 ${quota.minutes}분이에요.</p>${restLine}`
+      : ''}
     ${doneToday.length
       ? rowsHtml('오늘 끝낸 것',
           doneToday.map((id: string) => row({ ...byId.get(id), streak: 0 }, 'done')), '', false)
@@ -2828,6 +2906,7 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
       ? rowsHtml('아직 때가 아닌 것', later.map((r: any) => row(r, 'later')), '', false)
       : ''}
     ${bookHtml}
+    ${weekHtml(d.habit)}
     <div id="referral"></div>
     <p class="lnote">기록은 이 컴퓨터에만 있습니다.
       <b>못 한 날을 세지 않습니다</b> — 며칠 걸러도 연속 기록은 이어집니다.</p>`
@@ -2855,8 +2934,13 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
   host.querySelectorAll<HTMLButtonElement>('[data-seg]').forEach((btn) => {
     btn.addEventListener('click', () => {
       tidySeg = btn.dataset.seg as TidySeg
+      tidyShowAll = false // 탭을 옮기면 다시 오늘 몫으로 돌아온다
       loadTidy()
     })
+  })
+  document.getElementById('tidy-more')?.addEventListener('click', () => {
+    tidyShowAll = true
+    loadTidy()
   })
 
   /* 지도의 칸과 제안 줄이 같은 data-zone을 쓴다 — 둘 다 '그 공간만 보기'다.
@@ -2873,6 +2957,46 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
   document.getElementById('tidy-all')?.addEventListener('click', () => {
     tidyZoneFilter = null
     loadTidy()
+  })
+
+  /* ── 내 루틴 만들기 ──────────────────────────────────────────
+     ★ 우리가 마흔 개를 채워도 그 사람 집에만 있는 것은 못 맞춘다 —
+       화분에 물 주기, 렌즈 세척액, 반려동물 화장실. 자기 것이 하나도 없는
+       목록은 아무리 길어도 여전히 남의 기준이다. */
+  const addForm = document.getElementById('mine-form') as HTMLFormElement | null
+  addForm?.addEventListener('submit', async (ev) => {
+    ev.preventDefault()
+    const f = new FormData(addForm)
+    const get = (k: string) => String(f.get(k) ?? '').trim()
+    const msg = document.getElementById('mine-msg')!
+    const res = await tidyAdd({
+      title: get('title'),
+      everyDays: Number(get('everyDays')),
+      minutes: Number(get('minutes')),
+      why: get('why'),
+      zoneId: get('zoneId'),
+    })
+    if (!res.ok) {
+      msg.textContent = res.problem
+      msg.className = 'mine-msg bad'
+      return
+    }
+    loadTidy()
+  })
+  host.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.del!
+      /* 되돌릴 수 없는 일이라 한 번 묻는다. 잠깐 안 보고 싶은 것뿐이면
+         '목록에서 빼기'가 맞는 길이라는 것도 같이 알려준다. */
+      if (btn.dataset.sure !== '1') {
+        btn.dataset.sure = '1'
+        btn.textContent = '정말 지울까요? (기록도 함께)'
+        return
+      }
+      btn.disabled = true
+      await tidyDel(id)
+      loadTidy()
+    })
   })
 
   host.querySelectorAll<HTMLButtonElement>('[data-tidy]').forEach((btn) => {

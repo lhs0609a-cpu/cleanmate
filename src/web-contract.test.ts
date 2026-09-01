@@ -172,6 +172,50 @@ test('★ 생활 정리 화면이 목록만 있던 시절로 돌아가지 않았
   assert.match(app, /\$\{monthHtml\(/, '이번 달 요약을 안 그린다')
 })
 
+test('★ 하루 몫만 내고, 나머지는 "다른 날에"라고 쓴다', () => {
+  /* 실물(2026-09-01): "오늘 할 것 20"이 스무 줄로 펼쳐져 있었다. 사실이지만
+     그대로 쌓으면 빚 목록이고, 스무 줄을 본 사람은 하나도 안 하고 닫는다. */
+  const app = read('web/src/app.ts')
+  assert.match(app, /dailyPicks\(ordered\)/, '하루 몫으로 안 자른다')
+  assert.match(app, /나머지 \$\{quota\.rest\.length\}개는 다른 날에/, '나머지를 빚처럼 쓴다')
+  assert.match(app, /합쳐서 \$\{quota\.minutes\}분/, '오늘 몫이 몇 분인지 안 쓴다')
+  // 다 보고 싶은 사람의 길은 남겨둔다.
+  assert.match(app, /id="tidy-more"/, '전부 볼 방법이 없다')
+})
+
+test('★ 내 루틴을 만들 통로가 화면에 있다', () => {
+  const app = read('web/src/app.ts')
+  assert.match(app, /id="mine-form"/, '내 루틴을 만들 폼이 없다')
+  assert.match(app, /data-del="/, '내가 만든 것을 지울 수가 없다')
+  assert.match(app, /engine\('tidy-add'/, '데스크톱에서 만들 방법이 없다')
+  assert.match(app, /addCustomRoutine\(readLocalTidy\(\)/, '브라우저가 같은 함수를 안 쓴다')
+  for (const c of ["case 'tidy-add':", "case 'tidy-del':"]) {
+    assert.ok(read('src/engine-cli.ts').includes(c), `엔진에 ${c}가 없다`)
+  }
+  // 지우기는 되돌릴 수 없다 — 한 번 묻는다.
+  assert.match(app, /정말 지울까요\? \(기록도 함께\)/, '되돌릴 수 없는 일을 한 번에 한다')
+})
+
+test('★ 이번 주 일곱 칸이 오늘 화면에 있다', () => {
+  /* 달력은 '기록' 탭에 3개월치가 있지만 일부러 열어야 보인다. 매일 여는
+     화면에서 쌓이는 감각을 주는 건 지금 눈앞에 있는 것뿐이다. */
+  const app = read('web/src/app.ts')
+  const i = app.indexOf('const todayHtml =')
+  assert.ok(i > 0)
+  assert.match(app.slice(i, i + 1400), /weekHtml\(d\.habit\)/, '오늘 화면에 이번 주가 없다')
+  // 3개월 달력은 '기록' 탭에 그대로 남아 있어야 한다.
+  const j = app.indexOf('const logTab =')
+  assert.match(app.slice(j, j + 400), /calendarHtml\(/, '기록 탭에서 달력이 사라졌다')
+})
+
+test('★ 목록 고르기 순서를 손으로 적지 않는다', () => {
+  /* 실물: 'gear' 분류를 만들어놓고 화면의 순서 배열에 넣는 걸 빠뜨려서
+     로봇청소기·세탁기 필터 열 개를 켤 방법이 아예 없었다. */
+  const app = read('web/src/app.ts')
+  assert.match(app, /const catOrder = Object\.keys\(CATEGORY_LABEL\)/, '분류 순서를 손으로 적었다')
+  assert.doesNotMatch(app, /\['home', 'desk', 'digital'/, '옛 목록이 남아 있다')
+})
+
 test('★ 생활 정리가 파일 탭과 다른 옷을 입는다', () => {
   /* 실물 지적(2026-08-31): "너무 다른 거랑 똑같아." 맞는 말이었다.
      숨은 공간·시작프로그램·같은 파일과 정확히 같은 구조였다 — 흰 카드,
