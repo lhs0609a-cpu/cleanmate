@@ -128,6 +128,9 @@ import {
   setRoutineOn,
   addCustomRoutine,
   removeCustomRoutine,
+  setPlace,
+  setHere,
+  currentPlace,
   todayISO,
   type TidyState,
 } from './content/tidy.ts'
@@ -2173,6 +2176,8 @@ async function main() {
           ...planToday(state, today),
           catalog: ROUTINES.length,
           custom: state.custom ?? [],
+          place: state.place ?? null,
+          here: currentPlace(state),
           stuck: stuckRoutines(state, today),
           coach: coachBoard(state, today),
           habit: habitStats(state, today),
@@ -2383,9 +2388,39 @@ async function main() {
         const next = removeCustomRoutine(state, args[0])
         await writeTidy(next)
         out({ today, ...planToday(next, today), catalog: ROUTINES.length,
-              custom: next.custom ?? [], habit: habitStats(next, today),
+              custom: next.custom ?? [],
+          place: next.place ?? null,
+          here: currentPlace(next), habit: habitStats(next, today),
               stuck: stuckRoutines(next, today), coach: coachBoard(next, today),
               ...tidyBoard(next, today) })
+        break
+      }
+      /**
+       * 여기가 어디인가 — tidy-place <home|office|both> / tidy-here <home|office>
+       *
+       * ★ 이 앱이 사용자에게 묻는 거의 유일한 질문이다. PC를 켜는 자리는 집
+       *   아니면 사무실인데, 목록은 집을 전제로 만들어져 있었다. 사무실에서
+       *   켠 사람에게 수건 갈기가 뜨면 그건 틀린 알림이고, 틀린 알림이 두 번
+       *   뜨면 목록 전체를 안 보게 된다.
+       * ★ 직접 켜고 끈 항목은 장소를 바꿔도 안 건드린다(isRoutineOn).
+       *   손수 정한 걸 되돌리면 그 버튼이 아무 의미가 없었던 게 된다.
+       */
+      case 'tidy-place':
+      case 'tidy-here': {
+        const arg = (args[0] ?? '').toLowerCase()
+        const okPlace = command === 'tidy-place'
+          ? ['home', 'office', 'both']
+          : ['home', 'office']
+        if (!okPlace.includes(arg)) fail(`${okPlace.join(' 또는 ')} 중 하나여야 합니다.`)
+        const today = todayISO()
+        const next = command === 'tidy-place'
+          ? setPlace(await readTidy(), arg as 'home' | 'office' | 'both')
+          : setHere(await readTidy(), arg as 'home' | 'office')
+        await writeTidy(next)
+        out({ today, ...planToday(next, today), catalog: ROUTINES.length,
+              custom: next.custom ?? [], place: next.place ?? null, here: currentPlace(next),
+              habit: habitStats(next, today), stuck: stuckRoutines(next, today),
+              coach: coachBoard(next, today), ...tidyBoard(next, today) })
         break
       }
       case 'tidy-coach': {
@@ -2407,6 +2442,8 @@ async function main() {
           ...planToday(next, today),
           catalog: ROUTINES.length,
           custom: next.custom ?? [],
+          place: next.place ?? null,
+          here: currentPlace(next),
           stuck: stuckRoutines(next, today),
           coach: coachBoard(next, today),
           habit: habitStats(next, today),
@@ -2434,6 +2471,8 @@ async function main() {
           ...planToday(next, today),
           catalog: ROUTINES.length,
           custom: next.custom ?? [],
+          place: next.place ?? null,
+          here: currentPlace(next),
           stuck: stuckRoutines(next, today),
           coach: coachBoard(next, today),
           habit: habitStats(next, today),

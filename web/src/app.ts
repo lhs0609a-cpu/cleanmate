@@ -28,6 +28,9 @@ import {
   addCustomRoutine,
   removeCustomRoutine,
   isCustom,
+  setPlace,
+  setHere,
+  currentPlace,
   type TidyState,
   type TidyRoutine,
   type NewRoutine,
@@ -36,7 +39,8 @@ import { ROOM_ZONES, tidyBoard } from '../../src/content/room.ts'
 // 방 지도·달력·이번 달을 그리는 순수 함수들. 순수해서 Node에서 그대로 테스트한다.
 import {
   roomHtml, calendarHtml, monthHtml,
-  segHtml, greetHtml, rowHtml, rowsHtml, weekHtml, type TidySeg,
+  segHtml, greetHtml, rowHtml, rowsHtml, weekHtml,
+  placeAskHtml, hereSwitchHtml, placeSettingHtml, type TidySeg,
 } from './tidy-view.ts'
 import { dailyPicks, dayPart, greeting, sortByTime } from '../../src/content/daypart.ts'
 import { coachBoard } from '../../src/content/coach.ts'
@@ -2433,11 +2437,32 @@ async function tidyPlan(
     coach: coachBoard(state, today),
     // 목록 고르기가 사용자가 만든 항목까지 그리려면 이게 있어야 한다.
     custom: state.custom ?? [],
+    place: state.place ?? null,
+    here: currentPlace(state),
     habit: habitStats(state, today),
     ...tidyBoard(state, today),
   }
 }
 
+
+/**
+ * 여기가 어디인지 정한다 — 이 앱이 사용자에게 묻는 거의 유일한 질문이다.
+ *
+ * ★ 이게 '떠넘긴 판단'의 답이다. 지금까지는 "마흔 개를 하나씩 켜고 끄세요"였고,
+ *   그건 판단을 마흔 번 떠넘기는 것이었다. 한 번 물으면 그 마흔 번이 한 번이 된다.
+ */
+async function tidySetPlace(place: 'home' | 'office' | 'both') {
+  if (inTauri) { await engine('tidy-place', [place]); return }
+  const next = setPlace(readLocalTidy(), place)
+  try { localStorage.setItem(TIDY_KEY, JSON.stringify(next)) } catch { /* 사생활 모드 */ }
+}
+
+/** 들고 다니는 사람이 오늘 어디인지 바꾼다 */
+async function tidySetHere(here: 'home' | 'office') {
+  if (inTauri) { await engine('tidy-here', [here]); return }
+  const next = setHere(readLocalTidy(), here)
+  try { localStorage.setItem(TIDY_KEY, JSON.stringify(next)) } catch { /* 사생활 모드 */ }
+}
 
 /**
  * 내 루틴을 만든다. 데스크톱은 엔진, 브라우저는 같은 순수 함수 —
@@ -2882,7 +2907,12 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
   /* ── 오늘 ─────────────────────────────────────────────────
      ★ 밤에는 목록을 접어둔다(g.quiet). 밤 열한 시에 열었더니 "12개 밀렸어요"가
        뜨는 것이 할 일 앱이 사람을 지치게 하는 바로 그 지점이다. */
-  const todayHtml = `
+  /* ★ 아직 안 물어봤으면 다른 건 아무것도 안 보여준다.
+     사무실에서 켠 사람에게 수건 갈기를 스무 줄 늘어놓고 나서 "어디세요?"라고
+     묻는 건 순서가 거꾸로다. 여기에 없는 물건은 애초에 안 꺼낸다. */
+  const todayHtml = d.place
+    ? `
+    ${d.place === 'both' ? hereSwitchHtml(d.here ?? 'home') : ''}
     ${greetHtml(g, doneToday.length)}
     <div id="coach-body"></div>
     ${tidyZoneFilter
@@ -2910,9 +2940,11 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
     <div id="referral"></div>
     <p class="lnote">기록은 이 컴퓨터에만 있습니다.
       <b>못 한 날을 세지 않습니다</b> — 며칠 걸러도 연속 기록은 이어집니다.</p>`
+    : placeAskHtml()
 
   /* ── 내 방 ── */
   const roomTab = `
+    ${placeSettingHtml(d.place ?? undefined)}
     ${roomHtml(d.room)}
     ${pickerHtml}`
 
@@ -2935,6 +2967,20 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
     btn.addEventListener('click', () => {
       tidySeg = btn.dataset.seg as TidySeg
       tidyShowAll = false // 탭을 옮기면 다시 오늘 몫으로 돌아온다
+      loadTidy()
+    })
+  })
+  host.querySelectorAll<HTMLButtonElement>('[data-place]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true
+      await tidySetPlace(btn.dataset.place as 'home' | 'office' | 'both')
+      loadTidy()
+    })
+  })
+  host.querySelectorAll<HTMLButtonElement>('[data-here]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true
+      await tidySetHere(btn.dataset.here as 'home' | 'office')
       loadTidy()
     })
   })

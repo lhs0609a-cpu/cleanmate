@@ -147,7 +147,8 @@ test('★ 내 루틴이 모든 화면에 나온다 — 한 군데라도 빠지�
   assert.equal(zoneOfRoutine(s, r.id)?.id, 'living', '방 지도에 자리가 없다')
 
   const living = roomView(s, TODAY).zones.find((z) => z.id === 'living')!
-  assert.equal(living.totalCount, 7, '거실 칸이 내 항목을 안 센다')
+  // 거실의 기기 여섯 개는 전부 켜야 나오는 것이라 안 세고, 내가 만든 하나만 센다.
+  assert.equal(living.totalCount, 1, '거실 칸이 내 항목을 안 센다')
 
   assert.ok(monthReport(s, TODAY).missed.some((m) => m.id === r.id), '리포트가 안 본다')
 

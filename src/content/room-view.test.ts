@@ -36,9 +36,11 @@ test('★ 처음 켠 사람에게 0%를 들이밀지 않는다', () => {
 
   assert.ok(!html.includes('room-score'), '기록이 하나도 없는데 상태 숫자를 띄운다')
   assert.match(html, /아직 아무 곳도 기록이 없어요/, '무엇부터 하면 되는지 말하지 않는다')
-  // 여섯 칸은 그려야 한다 — 빈 화면이 아니라 '아직 안 해본 방'을 보여주는 것이다.
-  assert.equal((html.match(/class="zone /g) ?? []).length, ROOM_ZONES.length)
-  assert.equal((html.match(/class="zone never"/g) ?? []).length, ROOM_ZONES.length)
+  /* 칸은 그려야 한다 — 빈 화면이 아니라 '아직 안 해본 방'을 보여주는 것이다.
+     다만 지금 목록에 항목이 하나도 없는 칸(기기를 안 켠 사람의 거실)은 안 그린다. */
+  assert.ok(b.room.zones.length > 0)
+  assert.equal((html.match(/class="zone /g) ?? []).length, b.room.zones.length)
+  assert.equal((html.match(/class="zone never"/g) ?? []).length, b.room.zones.length)
 })
 
 test('한 번이라도 하면 상태 숫자가 뜬다', () => {
@@ -46,7 +48,8 @@ test('한 번이라도 하면 상태 숫자가 뜬다', () => {
   assertClean(html, '방 지도')
   assert.match(html, /class="room-score"/, '기록이 있는데 상태 숫자가 없다')
   assert.match(html, /100<span class="u">%<\/span>/, '방금 한 항목이 100%로 안 잡힌다')
-  assert.match(html, new RegExp(`${ROOM_ZONES.length}곳 중 <b>1곳</b>`), '몇 곳을 기록 중인지 안 말한다')
+  const zones = tidyBoard(st({ bed: [TODAY] }), TODAY).room.zones.length
+  assert.match(html, new RegExp(`${zones}곳 중 <b>1곳</b>`), '몇 곳을 기록 중인지 안 말한다')
 })
 
 test('★ 화면이 사람을 나무라지 않는다 — 밀린 방에도 경고 문구가 없다', () => {
@@ -72,8 +75,9 @@ test('다 최근에 했으면 "안 하셔도 됩니다"라고 말한다 — 없�
 })
 
 test('공간을 누르면 그 공간만 보이게 — data-zone이 붙어 있다', () => {
-  const html = roomHtml(tidyBoard(st({ bed: [TODAY] }), TODAY).room)
-  for (const z of ROOM_ZONES) {
+  const b = tidyBoard(st({ bed: [TODAY] }), TODAY)
+  const html = roomHtml(b.room)
+  for (const z of b.room.zones) {
     assert.ok(html.includes(`data-zone="${z.id}"`), `${z.name} 칸을 누를 수 없다`)
   }
 })

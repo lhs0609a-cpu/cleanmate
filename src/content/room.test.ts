@@ -30,7 +30,11 @@ const st = (done: Record<string, string[]>): TidyState => ({ done })
 
 test('★ 처음 켠 사람에게 0점짜리 방을 들이밀지 않는다', () => {
   const r = roomView(emptyState(), '2026-08-28')
-  assert.equal(r.untouchedZones, ROOM_ZONES.length, '전부 안 해본 곳이어야 한다')
+  /* ★ 지도에 그리는 칸은 '지금 이 사람 목록에 항목이 있는 칸'뿐이다.
+     기기를 하나도 안 켠 사람에게 거실 칸을 그려놓고 "아직 안 해본 곳"이라고
+     쓰면, 없는 물건을 안 치웠다고 하는 셈이다. */
+  assert.ok(r.zones.length > 0 && r.zones.length <= ROOM_ZONES.length)
+  assert.equal(r.untouchedZones, r.zones.length, '전부 안 해본 곳이어야 한다')
   for (const z of r.zones) {
     assert.equal(z.mood, 'never', `${z.id}가 '밀린 곳'으로 그려진다`)
   }
@@ -52,7 +56,7 @@ test('공간 점수는 평균을 못 낸 곳을 빼고 낸다 — 안 해본 공
   const view = roomView(st({ bed: ['2026-08-28'] }), '2026-08-28')
   // 침대만 했다. 나머지 공간은 전부 'never'라 평균에서 빠지고 100이 나온다.
   assert.equal(view.score, 100)
-  assert.equal(view.untouchedZones, ROOM_ZONES.length - 1)
+  assert.equal(view.untouchedZones, view.zones.length - 1)
 })
 
 test('주기를 한참 넘겨도 음수로 내려가지 않는다 — "180% 밀렸어요"는 정보가 아니다', () => {
@@ -189,6 +193,6 @@ test('기록이 없으면 요약이 0으로 조용히 나온다 — 던지지 �
 test('묶음 하나로 화면이 필요한 걸 다 받는다', () => {
   const b = tidyBoard(st({ bed: ['2026-08-28'] }), '2026-08-28', 3)
   assert.equal(b.calendar.length, 3)
-  assert.equal(b.room.zones.length, ROOM_ZONES.length)
+  assert.ok(b.room.zones.length > 0 && b.room.zones.length <= ROOM_ZONES.length)
   assert.equal(b.month.doneCount, 1)
 })

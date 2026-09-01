@@ -812,6 +812,31 @@
   .life .card,.life .room,.life .coach{border-color:var(--line);box-shadow:none}
 
 
+
+  /* 여기가 어디인가 — 이 앱이 사용자에게 묻는 거의 유일한 질문 */
+  .ask-place{border:1px solid var(--accent);border-radius:var(--r-lg);background:var(--surface);
+             padding:var(--pad-card);min-width:0}
+  .ask-place h2{font-size:var(--t-h2);line-height:var(--lh-h2);letter-spacing:var(--tr-h2);
+                font-weight:var(--w-num)}
+  .ask-place p{font-size:var(--t-small);line-height:var(--lh-small);color:var(--ink-2);
+               margin-top:var(--s-3);max-width:var(--measure)}
+  .ask-b{display:flex;gap:var(--s-2);flex-wrap:wrap;margin-top:var(--s-5)}
+  .ask-b > *{min-width:0}
+
+  /* 들고 다니는 사람의 전환 — 화면 맨 위, 눈에 띄되 요란하지 않게 */
+  .here{display:flex;gap:var(--s-3);align-items:center;flex-wrap:wrap;margin-bottom:var(--s-4)}
+  .here > *{min-width:0}
+  .here-l{font-size:var(--t-micro);color:var(--muted)}
+  .here-s{display:flex;gap:2px;background:var(--surface-2);border-radius:var(--r-full);padding:3px}
+  .here-s button{flex:none;border:0;background:none;cursor:pointer;font:inherit;
+                 font-size:var(--t-caption);font-weight:var(--w-ui);color:var(--muted);
+                 padding:5px 14px;border-radius:var(--r-full)}
+  .here-s button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+
+  .place-set .place-b{display:flex;gap:var(--s-2);flex-wrap:wrap;margin-top:var(--s-4)}
+  .place-set .place-b > *{min-width:0}
+  .place-set .opt.on{border-color:var(--accent);color:var(--accent);font-weight:var(--w-em)}
+
   /* 하루 몫 — "20개"가 아니라 "합쳐서 14분" */
   .lsum{font-size:var(--t-caption);color:var(--muted);margin-top:var(--s-3);
         font-variant-numeric:tabular-nums}

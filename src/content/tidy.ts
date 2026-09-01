@@ -44,6 +44,24 @@ export type AppTab = 'home' | 'hidden' | 'startup' | 'programs' | 'move' | 'quar
  */
 export type TidyDoer = 'me' | 'pro'
 
+/**
+ * 이 컴퓨터가 놓인 곳.
+ *
+ * ★ 이 앱을 켜는 자리는 둘 중 하나다 — 집 아니면 사무실.
+ *   그런데 지금까지 목록은 **집을 전제**로 만들어져 있었다. 사무실에서 켠
+ *   사람에게 수건 갈기·칫솔모·욕실 배수구·싱크대 배수망이 뜬다. 사무실엔
+ *   그런 게 없다. 틀린 알림이 두 번 뜨면 사람은 목록 전체를 안 보게 된다.
+ *
+ * ★ 그리고 이게 '떠넘긴 판단' 문제의 답이다.
+ *   지금까지의 해법은 "마흔 개를 하나씩 켜고 끄세요"였다. 그건 사용자에게
+ *   **판단을 마흔 번 떠넘기는 것**이다. 어디인지 한 번만 물으면 그 마흔 번이
+ *   한 번이 된다. 물어보는 게 미안해서 안 묻고 틀리는 것보다, 한 번 묻고
+ *   맞히는 편이 언제나 낫다.
+ */
+export type TidyPlace = 'home' | 'office'
+
+export const PLACE_LABEL: Record<TidyPlace, string> = { home: '집', office: '사무실' }
+
 export interface TidyRoutine {
   id: string
   title: string
@@ -85,6 +103,14 @@ export interface TidyRoutine {
    * 안 적으면 목록에만 있고 지도에는 안 뜬다(그것도 괜찮다).
    */
   zoneId?: string
+  /**
+   * 이 항목이 있을 수 있는 곳. 없으면 집에만 있는 것으로 본다.
+   *
+   * 사무실에도 있는 건 생각보다 적다 — 책상·서랍·가방·종이, 그리고 컴퓨터.
+   * 나머지(수건·냉장고·욕실·가전)는 남의 집 물건이거나 회사가 관리한다.
+   * 몸·옷처럼 장소와 상관없는 것은 둘 다에 둔다.
+   */
+  places?: TidyPlace[]
   /** 없으면 'me' — 지금까지의 항목은 전부 내가 하는 것이었다 */
   doer?: TidyDoer
   /** doer가 'pro'일 때 어떤 업종으로 이어지나 (referral.ts의 SERVICES.id) */
@@ -153,6 +179,7 @@ export const ROUTINES: TidyRoutine[] = [
     title: '책상 위 비우기',
     category: 'desk',
     bestTime: 'evening',
+    places: ['home', 'office'],
     everyDays: 1,
     minutes: 3,
     why:
@@ -178,6 +205,7 @@ export const ROUTINES: TidyRoutine[] = [
     id: 'desktop-icons',
     title: '컴퓨터 바탕화면 정리',
     category: 'digital',
+    places: ['home', 'office'],
     everyDays: 7,
     minutes: 10,
     why:
@@ -196,6 +224,7 @@ export const ROUTINES: TidyRoutine[] = [
     id: 'downloads',
     title: '다운로드 폴더 비우기',
     category: 'digital',
+    places: ['home', 'office'],
     everyDays: 7,
     minutes: 5,
     why:
@@ -213,6 +242,7 @@ export const ROUTINES: TidyRoutine[] = [
     id: 'startup-apps',
     title: '시작프로그램 점검',
     category: 'digital',
+    places: ['home', 'office'],
     everyDays: 90,
     minutes: 5,
     why:
@@ -231,6 +261,7 @@ export const ROUTINES: TidyRoutine[] = [
     id: 'photos',
     title: '사진·스크린샷 정리',
     category: 'digital',
+    places: ['home', 'office'],
     everyDays: 30,
     minutes: 15,
     why:
@@ -248,6 +279,7 @@ export const ROUTINES: TidyRoutine[] = [
     id: 'bookmarks',
     title: '즐겨찾기 정리',
     category: 'digital',
+    places: ['home', 'office'],
     everyDays: 90,
     minutes: 10,
     why:
@@ -264,6 +296,7 @@ export const ROUTINES: TidyRoutine[] = [
     id: 'inbox',
     title: '메일함 비우기',
     category: 'digital',
+    places: ['home', 'office'],
     everyDays: 7,
     minutes: 15,
     why:
@@ -281,6 +314,7 @@ export const ROUTINES: TidyRoutine[] = [
     id: 'desk-cables',
     title: '책상 전선 정리',
     category: 'desk',
+    places: ['home', 'office'],
     everyDays: 180,
     minutes: 20,
     why:
@@ -302,6 +336,7 @@ export const ROUTINES: TidyRoutine[] = [
     id: 'drawer',
     title: '서랍 한 칸만 비우기',
     category: 'desk',
+    places: ['home', 'office'],
     everyDays: 7,
     minutes: 10,
     why:
@@ -324,6 +359,7 @@ export const ROUTINES: TidyRoutine[] = [
     id: 'bag',
     title: '가방 비우기',
     category: 'home',
+    places: ['home', 'office'],
     everyDays: 7,
     minutes: 5,
     why:
@@ -388,6 +424,7 @@ export const ROUTINES: TidyRoutine[] = [
     id: 'paper',
     title: '종이·서류 정리',
     category: 'home',
+    places: ['home', 'office'],
     everyDays: 30,
     minutes: 10,
     why:
@@ -798,6 +835,7 @@ export const ROUTINES: TidyRoutine[] = [
     doer: 'pro',
     serviceId: 'hair',
     optIn: true,
+    places: ['home', 'office'],
     everyDays: 42,
     minutes: 60,
     why:
@@ -819,6 +857,7 @@ export const ROUTINES: TidyRoutine[] = [
     doer: 'pro',
     serviceId: 'nails',
     optIn: true,
+    places: ['home', 'office'],
     everyDays: 28,
     minutes: 50,
     why:
@@ -837,6 +876,7 @@ export const ROUTINES: TidyRoutine[] = [
     doer: 'pro',
     serviceId: 'dental',
     optIn: true,
+    places: ['home', 'office'],
     everyDays: 365,
     minutes: 40,
     why:
@@ -856,6 +896,7 @@ export const ROUTINES: TidyRoutine[] = [
     doer: 'pro',
     serviceId: 'eyes',
     optIn: true,
+    places: ['home', 'office'],
     everyDays: 365,
     minutes: 30,
     why:
@@ -874,6 +915,7 @@ export const ROUTINES: TidyRoutine[] = [
     doer: 'pro',
     serviceId: 'checkup',
     optIn: true,
+    places: ['home', 'office'],
     everyDays: 730,
     minutes: 180,
     why:
@@ -893,6 +935,7 @@ export const ROUTINES: TidyRoutine[] = [
     doer: 'pro',
     serviceId: 'laundry',
     optIn: true,
+    places: ['home', 'office'],
     everyDays: 180,
     minutes: 30,
     why:
@@ -912,6 +955,7 @@ export const ROUTINES: TidyRoutine[] = [
     doer: 'pro',
     serviceId: 'repair-leather',
     optIn: true,
+    places: ['home', 'office'],
     everyDays: 180,
     minutes: 20,
     why:
@@ -981,9 +1025,51 @@ export interface TidyState {
    *   기준이고, 남의 기준으로 밀린 목록은 그냥 안 보게 된다.
    */
   on?: Record<string, boolean>
+  /**
+   * 사용자가 직접 만든 항목.
+   *
+   * ★ 우리가 아무리 넓혀도 그 사람 집에만 있는 것은 못 맞춘다 — 화분에 물 주기,
+   *   렌즈 세척액, 반려동물 화장실. 마흔 개를 채워도 자기 것이 하나도 없으면
+   *   그 목록은 여전히 남의 기준이다.
+   */
+  custom?: TidyRoutine[]
+  /**
+   * 이 컴퓨터가 어디에 있나. 없으면 아직 안 물어본 것이다.
+   * 'both'는 들고 다니는 노트북 — 그때는 `here`가 오늘 어디인지를 정한다.
+   */
+  place?: TidyPlace | 'both'
+  /** 'both'일 때 지금 있는 곳. 화면 위에서 한 번에 바꾼다. */
+  here?: TidyPlace
 }
 
 export const emptyState = (): TidyState => ({ done: {} })
+
+/** 이 항목이 있을 수 있는 곳 (안 적혀 있으면 집) */
+export const placesOf = (r: TidyRoutine): TidyPlace[] => r.places ?? ['home']
+
+/**
+ * 지금 어디에 있나. 아직 안 물어봤으면 null.
+ *
+ * ★ null일 때는 집으로 친다. 예전부터 쓰던 사람의 목록이 갑자기 줄면 안 된다 —
+ *   그 사람은 아무것도 안 했는데 화면이 바뀌는 셈이다.
+ */
+export function currentPlace(state: TidyState): TidyPlace | null {
+  if (!state.place) return null
+  return state.place === 'both' ? state.here ?? 'home' : state.place
+}
+
+/** 여기가 어디인지 정한다 — 이 앱이 사용자에게 묻는 거의 유일한 질문이다 */
+export function setPlace(state: TidyState, place: TidyPlace | 'both'): TidyState {
+  const next: TidyState = { ...state, place }
+  if (place !== 'both') delete next.here
+  else if (!next.here) next.here = 'home'
+  return next
+}
+
+/** 들고 다니는 사람이 오늘 어디인지 바꾼다 */
+export function setHere(state: TidyState, here: TidyPlace): TidyState {
+  return { ...state, place: 'both', here }
+}
 
 /** 사용자가 만든 항목의 id는 이걸로 시작한다 — 기본 항목과 절대 안 겹치게 */
 export const CUSTOM_PREFIX = 'my-'
@@ -1079,9 +1165,13 @@ export function removeCustomRoutine(state: TidyState, id: string): TidyState {
 
 /** 이 항목이 지금 이 사람의 목록에 있는가 */
 export function isRoutineOn(state: TidyState, r: TidyRoutine): boolean {
+  /* 직접 켜고 끈 것이 언제나 먼저다. 장소를 바꿨다고 그 사람이 손수 정한 걸
+     되돌리면, 켜고 끈 버튼이 아무 의미가 없었던 게 된다. */
   const explicit = state.on?.[r.id]
   if (typeof explicit === 'boolean') return explicit
-  return !r.optIn
+  if (r.optIn) return false
+  // 여기에 없는 물건은 안 묻는다 — 사무실에서 수건 갈기가 뜨면 그건 틀린 알림이다.
+  return placesOf(r).includes(currentPlace(state) ?? 'home')
 }
 
 /** 켠 항목만. 화면·통계·업체 제안이 전부 이걸 거쳐야 한 화면 안에서 숫자가 안 어긋난다. */

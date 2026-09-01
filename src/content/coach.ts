@@ -86,8 +86,8 @@ export function analyze(state: TidyState, today: string, exclude: ReadonlySet<st
     },
     {
       key: 'zones',
-      label: `집 안 ${ROOM_ZONES.length}곳을 둘러보는 중`,
-      result: never === ROOM_ZONES.length
+      label: `여기 ${room.zones.length}곳을 둘러보는 중`,
+      result: never === room.zones.length
         ? '아직 아무 곳도 안 봤어요'
         : [
             fresh ? `${fresh}곳은 최근에` : '',

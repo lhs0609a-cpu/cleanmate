@@ -14,7 +14,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ROUTINES, emptyState, markDone, setRoutineOn, type TidyState } from './tidy.ts'
-import { ROOM_ZONES } from './room.ts'
+import { ROOM_ZONES, roomView } from './room.ts'
 import { analyze, coachBoard, monthReport, pickToday, zoneOf } from './coach.ts'
 
 const TODAY = '2026-08-28'
@@ -52,7 +52,8 @@ test('★ 분석의 숫자가 기록과 맞는다 — 여기서 어긋나면 화
   assert.match(by.get('records')!, /2일/)
   assert.match(by.get('records')!, /3번/)
   // 침대·욕실 두 곳만 기록이 있다.
-  assert.match(by.get('zones')!, new RegExp(`${ROOM_ZONES.length - 2}곳은 처음`))
+  const zones = roomView(s, TODAY).zones.length
+  assert.match(by.get('zones')!, new RegExp(`${zones - 2}곳은 처음`))
 })
 
 test('놓치고 있는 것을 실제로 센다', () => {

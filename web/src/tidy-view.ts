@@ -15,7 +15,6 @@
  */
 
 import {
-  ROOM_ZONES,
   ZONE_MOOD_LABEL,
   WEEKDAYS,
   type RoomView,
@@ -108,13 +107,13 @@ export function roomHtml(room: RoomView | null | undefined): string {
 
   /* 아직 잴 게 없는 사람과 재본 사람에게 다른 문장을 준다.
      같은 화면에 "0%"를 띄우면 시작하기도 전에 진 기분이 든다. */
-  const fresh = room.untouchedZones < ROOM_ZONES.length
+  const fresh = room.untouchedZones < room.zones.length
   const head = fresh
     ? `<div class="room-score"><div class="n">${room.score}<span class="u">%</span></div>
          <div class="l">지금 방 상태</div></div>`
     : ''
   const sub = fresh
-    ? `${ROOM_ZONES.length}곳 중 <b>${ROOM_ZONES.length - room.untouchedZones}곳</b>을 기록하고 있어요.
+    ? `${room.zones.length}곳 중 <b>${room.zones.length - room.untouchedZones}곳</b>을 기록하고 있어요.
        진할수록 최근에 손댄 곳입니다.`
     : '아직 아무 곳도 기록이 없어요. 아래에서 하나만 눌러보시면 그 칸에 불이 들어옵니다.'
 
@@ -127,7 +126,7 @@ export function roomHtml(room: RoomView | null | undefined): string {
          <button class="opt strong" data-zone="${esc(s.id)}">${esc(s.name)} 할 일 보기</button>
        </div>`
     // 할 게 없으면 없다고 말한다. 없는 할 일을 만들어내지 않는다.
-    : `<div class="room-next calm"><span class="txt">${ROOM_ZONES.length}곳 다 최근에 손대셨어요. <b>오늘은 안 하셔도 됩니다.</b></span></div>`
+    : `<div class="room-next calm"><span class="txt">${room.zones.length}곳 다 최근에 손대셨어요. <b>오늘은 안 하셔도 됩니다.</b></span></div>`
 
   return `<section class="room">
     <div class="room-h">
@@ -360,4 +359,53 @@ export function weekHtml(habit: HabitStats | null | undefined): string {
       ? `이레 중 <b>${doneDays}일</b> 하셨어요${habit.currentDays > 1 ? ` · ${habit.currentDays}일째 이어가는 중` : ''}`
       : '이번 주는 아직이에요. 하나만 하면 오늘 칸에 불이 들어옵니다.'}</p>
   </div>`
+}
+
+/* ── 여기가 어디인가 ────────────────────────────────────────
+   ★ 이 앱이 사용자에게 묻는 거의 유일한 질문이다.
+
+     PC를 켜는 자리는 둘 중 하나다 — 집 아니면 사무실. 그런데 목록은 집을
+     전제로 만들어져 있어서, 사무실에서 켠 사람에게 수건 갈기·칫솔모·욕실
+     배수구가 뜬다. 사무실엔 그런 게 없다. 틀린 알림이 두 번 뜨면 사람은
+     목록 전체를 안 보게 된다.
+
+     그리고 이게 '떠넘긴 판단' 문제의 답이다. 지금까지의 해법은 "마흔 개를
+     하나씩 켜고 끄세요"였는데, 그건 판단을 마흔 번 떠넘기는 것이다.
+     한 번 물으면 그 마흔 번이 한 번이 된다. */
+
+/** 아직 안 물어본 사람에게 딱 한 번 나오는 질문 */
+export function placeAskHtml(): string {
+  return `<section class="ask-place">
+    <h2>이 컴퓨터는 어디에 있나요?</h2>
+    <p>여기에 없는 물건은 안 물어볼게요. 사무실이면 수건이나 냉장고를 꺼내지 않습니다.</p>
+    <div class="ask-b">
+      <button class="btn" data-place="home">집</button>
+      <button class="btn" data-place="office">사무실</button>
+      <button class="opt" data-place="both">둘 다 — 들고 다녀요</button>
+    </div>
+    <p class="note">나중에 '내 방'에서 언제든 바꿀 수 있어요.</p>
+  </section>`
+}
+
+/** 들고 다니는 사람이 오늘 어디인지 한 번에 바꾸는 자리 */
+export function hereSwitchHtml(here: 'home' | 'office'): string {
+  const b = (p: 'home' | 'office', label: string) =>
+    `<button type="button" data-here="${p}" class="${p === here ? 'on' : ''}"
+      aria-pressed="${p === here}">${label}</button>`
+  return `<div class="here">
+    <span class="here-l">지금</span>
+    <div class="here-s">${b('home', '집')}${b('office', '사무실')}</div>
+  </div>`
+}
+
+/** '내 방'에서 장소를 다시 정하는 자리 */
+export function placeSettingHtml(place: 'home' | 'office' | 'both' | undefined): string {
+  const b = (p: 'home' | 'office' | 'both', label: string) =>
+    `<button type="button" class="opt ${p === place ? 'on' : ''}" data-place="${p}">${label}</button>`
+  return `<section class="card place-set">
+    <div class="sechead"><h2>이 컴퓨터가 있는 곳</h2></div>
+    <p class="note">여기에 없는 물건은 목록에 안 나옵니다.
+      직접 켜고 끄신 항목은 <b>장소를 바꿔도 그대로</b>예요.</p>
+    <div class="place-b">${b('home', '집')}${b('office', '사무실')}${b('both', '들고 다녀요')}</div>
+  </section>`
 }

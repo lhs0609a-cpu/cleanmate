@@ -172,6 +172,23 @@ test('★ 생활 정리 화면이 목록만 있던 시절로 돌아가지 않았
   assert.match(app, /\$\{monthHtml\(/, '이번 달 요약을 안 그린다')
 })
 
+test('★ 어디인지 먼저 묻고 나서 목록을 낸다', () => {
+  /* 실물(2026-09-01): "나는 지금 사무실인데 행주를 빨라고 하면 어떻게해."
+     사무실에서 켠 사람에게 수건·칫솔·욕실 배수구를 스무 줄 늘어놓고 나서
+     "어디세요?"를 묻는 건 순서가 거꾸로다. 여기에 없는 물건은 애초에 안 꺼낸다. */
+  const app = read('web/src/app.ts')
+  assert.match(app, /const todayHtml = d\.place/, '안 물어보고 목록부터 낸다')
+  assert.match(app, /placeAskHtml\(\)/, '어디인지 묻는 화면이 없다')
+  assert.match(app, /hereSwitchHtml\(/, '들고 다니는 사람이 오늘 어디인지 못 바꾼다')
+  assert.match(app, /placeSettingHtml\(/, "'내 방'에서 다시 정할 수가 없다")
+  assert.match(app, /engine\('tidy-place'/, '데스크톱에서 장소를 못 정한다')
+  assert.match(app, /setPlace\(readLocalTidy\(\)\)|setPlace\(readLocalTidy\(\), place\)/,
+    '브라우저가 같은 함수를 안 쓴다')
+  for (const c of ["case 'tidy-place':", "case 'tidy-here':"]) {
+    assert.ok(read('src/engine-cli.ts').includes(c), `엔진에 ${c}가 없다`)
+  }
+})
+
 test('★ 하루 몫만 내고, 나머지는 "다른 날에"라고 쓴다', () => {
   /* 실물(2026-09-01): "오늘 할 것 20"이 스무 줄로 펼쳐져 있었다. 사실이지만
      그대로 쌓으면 빚 목록이고, 스무 줄을 본 사람은 하나도 안 하고 닫는다. */

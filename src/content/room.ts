@@ -28,6 +28,7 @@
 import {
   ROUTINES,
   allRoutines,
+  isRoutineOn,
   dayNumber,
   isDue,
   lastDone,
@@ -66,8 +67,8 @@ export interface RoomZone {
 
 export const ROOM_ZONES: RoomZone[] = [
   { id: 'bed', name: '침대', routineIds: ['bed', 'bedding'], col: 1, row: 1, span: 1, hint: '하루 중 가장 먼저 끝내는 1분' },
-  { id: 'desk', name: '책상', routineIds: ['desk-surface', 'desk-cables'], col: 2, row: 1, span: 2, hint: '작업대이지 수납장이 아닙니다' },
-  { id: 'wardrobe', name: '옷장', routineIds: ['wardrobe', 'bag'], col: 4, row: 1, span: 1, hint: '계절이 바뀔 때 한 번' },
+  { id: 'desk', name: '책상', routineIds: ['desk-surface', 'desk-cables', 'bag'], col: 2, row: 1, span: 2, hint: '작업대이지 수납장이 아닙니다' },
+  { id: 'wardrobe', name: '옷장', routineIds: ['wardrobe'], col: 4, row: 1, span: 1, hint: '계절이 바뀔 때 한 번' },
   { id: 'pc', name: '컴퓨터', routineIds: ['desktop-icons', 'downloads', 'startup-apps', 'photos', 'bookmarks', 'inbox'], col: 1, row: 2, span: 2, hint: '앱이 대신 해드릴 수 있는 곳' },
   { id: 'storage', name: '서랍', routineIds: ['drawer', 'paper'], col: 3, row: 2, span: 1, hint: '한 칸씩만 비웁니다' },
   { id: 'kitchen', name: '주방', routineIds: ['fridge', 'sink-strainer', 'dish-sponge', 'microwave', 'hood-filter', 'water-filter'], col: 4, row: 2, span: 1, hint: '냄새는 거의 배수망에서 시작합니다' },
@@ -154,7 +155,11 @@ export function zoneRoutines(zone: RoomZone, state: TidyState): TidyRoutine[] {
     .map((id) => ROUTINES.find((r) => r.id === id))
     .filter((r): r is TidyRoutine => !!r)
   const mine = (state.custom ?? []).filter((r) => r.zoneId === zone.id)
-  return mine.length ? [...built, ...mine] : built
+  /* ★ 목록에 없는 항목은 이 칸에서도 안 센다.
+     로봇청소기가 없는 사람의 거실 칸이 "일곱 개 중 0개 했음"으로 보이면
+     그건 사실이 아니라 계산 실수다. 사무실에서 켠 사람의 욕실 칸도 같다 —
+     여기에 없는 물건을 세는 칸은 화면에서 아예 빠져야 한다. */
+  return [...built, ...mine].filter((r) => isRoutineOn(state, r))
 }
 
 /** 항목이 어느 칸에 사는가. 지도 밖(맡기는 것·자리 안 정한 내 루틴)이면 null. */
@@ -219,7 +224,12 @@ export interface RoomView {
 }
 
 export function roomView(state: TidyState, today: string): RoomView {
-  const zones = ROOM_ZONES.map((z) => zoneState(z, state, today))
+  /* 지금 이 사람의 목록에 항목이 하나도 없는 칸은 지도에서 뺀다.
+     사무실에서 켠 사람에게 침대·주방·욕실 칸을 그려놓고 "아직 안 해본 곳"이라고
+     쓰면, 그건 없는 방을 안 치웠다고 하는 셈이다. */
+  const zones = ROOM_ZONES
+    .map((z) => zoneState(z, state, today))
+    .filter((z) => z.totalCount > 0)
   const known = zones.filter((z) => z.mood !== 'never')
   const score = known.length
     ? Math.round((known.reduce((a, z) => a + z.freshness, 0) / known.length) * 100)
