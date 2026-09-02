@@ -813,6 +813,23 @@
 
 
 
+
+  /* 하루의 흐름 — 여기 있는 동안 저기는 어떻게 되고 있나 */
+  .brief{border:1px solid var(--line);border-radius:var(--r-md);padding:var(--s-3) var(--s-4);
+         margin-top:var(--s-4);background:var(--surface-2);min-width:0}
+  .brief.done{border-left:3px solid var(--safe)}
+  /* 지금 못 하는 일이다 — 그래서 경고색이 아니라 그냥 옅다 */
+  .brief.todo{border-left:3px solid var(--line-2)}
+  .brief-h{font-size:var(--t-micro);font-weight:var(--w-ui);color:var(--muted)}
+  .brief-i{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--s-2);min-width:0}
+  .brief-i > *{min-width:0}
+  .brief .chip{font-size:var(--t-caption);color:var(--ink-2);background:var(--surface);
+               border:1px solid var(--line);border-radius:var(--r-full);padding:3px 11px}
+  .brief.done .chip{color:var(--safe);border-color:var(--line)}
+  .brief .chip b{font-weight:var(--w-ui);color:var(--muted);font-variant-numeric:tabular-nums}
+  .brief-n{font-size:var(--t-micro);color:var(--muted);margin-top:var(--s-2);max-width:var(--measure)}
+  .brief-n b{color:var(--ink-2);font-weight:var(--w-em)}
+
   /* 여기가 어디인가 — 이 앱이 사용자에게 묻는 거의 유일한 질문 */
   .ask-place{border:1px solid var(--accent);border-radius:var(--r-lg);background:var(--surface);
              padding:var(--pad-card);min-width:0}

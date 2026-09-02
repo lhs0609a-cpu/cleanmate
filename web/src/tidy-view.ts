@@ -226,7 +226,7 @@ export function monthHtml(m: MonthSummary | null | undefined): string {
      ④ '했어요'를 체크로 — 실행이 아니라 표시다
    ════════════════════════════════════════════════════════════ */
 
-import type { Greeting } from '../../src/content/daypart.ts'
+import type { DayBrief, Greeting } from '../../src/content/daypart.ts'
 import type { TidyRoutine } from '../../src/content/tidy.ts'
 
 export type TidySeg = 'today' | 'room' | 'log'
@@ -408,4 +408,35 @@ export function placeSettingHtml(place: 'home' | 'office' | 'both' | undefined):
       직접 켜고 끄신 항목은 <b>장소를 바꿔도 그대로</b>예요.</p>
     <div class="place-b">${b('home', '집')}${b('office', '사무실')}${b('both', '들고 다녀요')}</div>
   </section>`
+}
+
+/* ── 하루의 흐름 ────────────────────────────────────────────
+   들고 다니는 사람에게 '지금 있는 곳'만 보여주는 건 반쪽이다.
+   아침에 집에서 뭘 하고 나왔는지, 퇴근하면 뭘 하게 되는지를 같이 준다.
+
+   ★ '오늘 할 것'에 섞지 않는다. 사무실에서 싱크대 배수망을 목록에 넣으면
+     그건 또 틀린 알림이다. 지금 못 하는 일이라고 화면이 분명히 말한다. */
+
+/** 오늘 저쪽에서 이미 한 것 — 성취는 눈에 보여야 한다 */
+export function briefDoneHtml(brief: DayBrief | null, label: string): string {
+  if (!brief?.doneThere.length) return ''
+  return `<div class="brief done">
+    <div class="brief-h">${esc(label)}</div>
+    <div class="brief-i">${brief.doneThere
+      .map((x) => `<span class="chip">${esc(x.title)}</span>`).join('')}</div>
+    <p class="brief-n">${brief.doneThere.length}개 하고 나오셨어요.</p>
+  </div>`
+}
+
+/** 저쪽에 가야만 할 수 있는 것 — 미리 알면 오는 길이 달라진다 */
+export function briefTodoHtml(brief: DayBrief | null, label: string): string {
+  if (!brief?.todoThere.length) return ''
+  return `<div class="brief todo">
+    <div class="brief-h">${esc(label)}</div>
+    <div class="brief-i">${brief.todoThere
+      .map((x) => `<span class="chip">${esc(x.title)} <b>${x.minutes}분</b></span>`).join('')}</div>
+    <p class="brief-n">합쳐서 ${brief.todoMinutes}분이에요${
+      brief.todoRest ? ` · 그 밖에 ${brief.todoRest}개` : ''
+    } — <b>여기서는 못 하는 것</b>이라 목록에 안 넣었어요.</p>
+  </div>`
 }

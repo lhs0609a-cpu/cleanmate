@@ -1040,6 +1040,22 @@ export interface TidyState {
   place?: TidyPlace | 'both'
   /** 'both'일 때 지금 있는 곳. 화면 위에서 한 번에 바꾼다. */
   here?: TidyPlace
+  /**
+   * 어디서 했는지. `"<id>@<날짜>" → 장소`.
+   *
+   * ★ 왜 따로 남기나 — 추론하면 틀린다.
+   *   항목의 places로 짐작할 수도 있다(수건은 집에만 있으니 집에서 했겠지).
+   *   그런데 '책상 위 비우기'는 양쪽에 다 있다. 짐작으로 "오늘 아침 집에서
+   *   하셨어요"라고 쓰면 그건 지어낸 문장이다. 기록할 때 적어두면 정확하다.
+   * ★ done 구조는 안 건드린다. 옛 기록에는 이게 없고, 없으면 '모름'이다 —
+   *   모르는 걸 아는 척하지 않는다.
+   */
+  at?: Record<string, TidyPlace>
+}
+
+/** 그 항목을 그날 어디서 했나. 안 남아 있으면 null(옛 기록·장소를 안 정한 때). */
+export function placeOfDone(state: TidyState, id: string, date: string): TidyPlace | null {
+  return state.at?.[`${id}@${date}`] ?? null
 }
 
 export const emptyState = (): TidyState => ({ done: {} })
@@ -1272,14 +1288,24 @@ export function streak(routine: TidyRoutine, state: TidyState, today: string): n
 export function markDone(state: TidyState, id: string, today: string): TidyState {
   const list = state.done[id] ?? []
   if (list[list.length - 1] === today) return state
-  return { ...state, done: { ...state.done, [id]: [...list, today].slice(-60) } }
+  const next: TidyState = { ...state, done: { ...state.done, [id]: [...list, today].slice(-60) } }
+  /* 어디서 했는지도 같이 적는다. 나중에 짐작하면 틀리고, 짐작으로 쓴 문장은
+     지어낸 문장이다("오늘 아침 집에서 하셨어요"). */
+  const place = currentPlace(state)
+  if (place) next.at = { ...(state.at ?? {}), [`${id}@${today}`]: place }
+  return next
 }
 
 /** 잘못 눌렀을 때 되돌린다 — 여기서도 되돌리기는 기본이다. */
 export function undoDone(state: TidyState, id: string, today: string): TidyState {
   const list = state.done[id] ?? []
   if (list[list.length - 1] !== today) return state
-  return { ...state, done: { ...state.done, [id]: list.slice(0, -1) } }
+  const next: TidyState = { ...state, done: { ...state.done, [id]: list.slice(0, -1) } }
+  if (state.at?.[`${id}@${today}`]) {
+    const { [`${id}@${today}`]: _gone, ...rest } = state.at
+    next.at = rest
+  }
+  return next
 }
 
 export interface TidyPlan {

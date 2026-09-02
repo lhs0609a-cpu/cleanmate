@@ -141,6 +141,7 @@ import { tidyBoard } from './content/room.ts'
    데스크톱 화면만 그 신호를 통째로 못 보는 상태가 됐다. */
 import { stuckRoutines } from './content/referral.ts'
 import { coachBoard } from './content/coach.ts'
+import { dayBrief } from './content/daypart.ts'
 import {
   probePrograms, detectSilentUninstall, uninstallCommandFor, needsElevation, isStillInstalled,
 } from './probes/programs.ts'
@@ -2178,6 +2179,7 @@ async function main() {
           custom: state.custom ?? [],
           place: state.place ?? null,
           here: currentPlace(state),
+          brief: dayBrief(state, today),
           stuck: stuckRoutines(state, today),
           coach: coachBoard(state, today),
           habit: habitStats(state, today),
@@ -2390,7 +2392,8 @@ async function main() {
         out({ today, ...planToday(next, today), catalog: ROUTINES.length,
               custom: next.custom ?? [],
           place: next.place ?? null,
-          here: currentPlace(next), habit: habitStats(next, today),
+          here: currentPlace(next),
+          brief: dayBrief(next, today), habit: habitStats(next, today),
               stuck: stuckRoutines(next, today), coach: coachBoard(next, today),
               ...tidyBoard(next, today) })
         break
@@ -2418,7 +2421,7 @@ async function main() {
           : setHere(await readTidy(), arg as 'home' | 'office')
         await writeTidy(next)
         out({ today, ...planToday(next, today), catalog: ROUTINES.length,
-              custom: next.custom ?? [], place: next.place ?? null, here: currentPlace(next),
+              custom: next.custom ?? [], place: next.place ?? null, here: currentPlace(next), brief: dayBrief(next, today),
               habit: habitStats(next, today), stuck: stuckRoutines(next, today),
               coach: coachBoard(next, today), ...tidyBoard(next, today) })
         break
@@ -2444,6 +2447,7 @@ async function main() {
           custom: next.custom ?? [],
           place: next.place ?? null,
           here: currentPlace(next),
+          brief: dayBrief(next, today),
           stuck: stuckRoutines(next, today),
           coach: coachBoard(next, today),
           habit: habitStats(next, today),
@@ -2473,6 +2477,7 @@ async function main() {
           custom: next.custom ?? [],
           place: next.place ?? null,
           here: currentPlace(next),
+          brief: dayBrief(next, today),
           stuck: stuckRoutines(next, today),
           coach: coachBoard(next, today),
           habit: habitStats(next, today),

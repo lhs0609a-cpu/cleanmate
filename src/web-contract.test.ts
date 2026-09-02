@@ -172,6 +172,23 @@ test('★ 생활 정리 화면이 목록만 있던 시절로 돌아가지 않았
   assert.match(app, /\$\{monthHtml\(/, '이번 달 요약을 안 그린다')
 })
 
+test('★ 여기 있는 동안 저기 이야기를 같이 준다', () => {
+  /* 실물(2026-09-02): "오늘 집을 나서기 전 어떤 정리를 했는지, 퇴근하면
+     어떤 정리를 집에 가서 할 건지 알려주고." 들고 다니는 사람에게
+     '지금 있는 곳'만 보여주는 건 반쪽이다. */
+  const app = read('web/src/app.ts')
+  assert.match(app, /briefDoneHtml\(d\.brief/, '아침에 하고 나온 걸 안 보여준다')
+  assert.match(app, /briefTodoHtml\(d\.brief/, '퇴근하고 할 걸 안 알려준다')
+  assert.match(app, /briefLabels\(d\.brief, part\)/, '언제 이야기인지를 시각으로 안 정한다')
+  assert.match(app, /brief: dayBrief\(state, today\)/, '브라우저가 같은 함수를 안 쓴다')
+  assert.match(read('src/engine-cli.ts'), /brief: dayBrief\(/, '엔진이 안 준다')
+
+  /* ★ 자리를 나눈 게 핵심이다. 지금 못 하는 일을 '오늘 할 것'에 섞으면
+     그건 또 틀린 알림이다. */
+  const view = read('web/src/tidy-view.ts')
+  assert.match(view, /여기서는 못 하는 것/, '왜 목록 밖에 있는지 안 말한다')
+})
+
 test('★ 어디인지 먼저 묻고 나서 목록을 낸다', () => {
   /* 실물(2026-09-01): "나는 지금 사무실인데 행주를 빨라고 하면 어떻게해."
      사무실에서 켠 사람에게 수건·칫솔·욕실 배수구를 스무 줄 늘어놓고 나서

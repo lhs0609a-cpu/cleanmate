@@ -40,9 +40,10 @@ import { ROOM_ZONES, tidyBoard } from '../../src/content/room.ts'
 import {
   roomHtml, calendarHtml, monthHtml,
   segHtml, greetHtml, rowHtml, rowsHtml, weekHtml,
-  placeAskHtml, hereSwitchHtml, placeSettingHtml, type TidySeg,
+  placeAskHtml, hereSwitchHtml, placeSettingHtml,
+  briefDoneHtml, briefTodoHtml, type TidySeg,
 } from './tidy-view.ts'
-import { dailyPicks, dayPart, greeting, sortByTime } from '../../src/content/daypart.ts'
+import { briefLabels, dailyPicks, dayBrief, dayPart, greeting, sortByTime } from '../../src/content/daypart.ts'
 import { coachBoard } from '../../src/content/coach.ts'
 import {
   startSession, sessionView, nextStep, backStep, pauseSession, resumeSession,
@@ -2439,6 +2440,7 @@ async function tidyPlan(
     custom: state.custom ?? [],
     place: state.place ?? null,
     here: currentPlace(state),
+    brief: dayBrief(state, today),
     habit: habitStats(state, today),
     ...tidyBoard(state, today),
   }
@@ -2882,6 +2884,9 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
      그건 틀린 화면이다. */
   const part = dayPart()
   const g = greeting(part)
+  /* 저쪽 이야기를 언제 이야기로 쓸지는 시각이 정한다 — 저녁에 "오늘 사무실에서
+     하실 것"이라고 쓰면 이미 지난 이야기가 된다. */
+  const briefLabel = d.brief ? briefLabels(d.brief, part) : { done: '', todo: '' }
   const ordered = sortByTime(due, part)
   const fitsNow = (r: any) => r.bestTime === part
 
@@ -2914,6 +2919,7 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
     ? `
     ${d.place === 'both' ? hereSwitchHtml(d.here ?? 'home') : ''}
     ${greetHtml(g, doneToday.length)}
+    ${briefDoneHtml(d.brief ?? null, briefLabel.done)}
     <div id="coach-body"></div>
     ${tidyZoneFilter
       ? `<div class="lfilter"><span>${esc(zoneName ?? '')}만 보고 있어요</span>
@@ -2935,6 +2941,7 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
     ${later.length
       ? rowsHtml('아직 때가 아닌 것', later.map((r: any) => row(r, 'later')), '', false)
       : ''}
+    ${briefTodoHtml(d.brief ?? null, briefLabel.todo)}
     ${bookHtml}
     ${weekHtml(d.habit)}
     <div id="referral"></div>

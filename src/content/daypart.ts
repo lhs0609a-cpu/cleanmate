@@ -154,3 +154,108 @@ export function dailyPicks<T extends { minutes: number }>(
   }
   return { today, rest: list.slice(today.length), minutes }
 }
+
+/* ════════════════════════════════════════════════════════════
+   하루의 흐름 — 여기 있는 동안 저기는 어떻게 되고 있나
+
+   ★ 들고 다니는 사람에게 '지금 있는 곳'만 보여주는 건 반쪽이다.
+     사무실에서 열어도 알고 싶은 게 둘 더 있다:
+
+       · 오늘 아침 집에서 나서기 전에 뭘 하고 나왔나
+         → 이미 두 개 했다는 걸 알면 그날 하루가 다르게 보인다.
+           지금 화면은 그걸 하나도 안 세고 "여기서 할 것"만 준다.
+       · 퇴근하면 집에서 뭘 하게 되나
+         → 마음의 준비다. 냉장고 비우기가 떠 있으면 오는 길에 장을 볼지가
+           달라진다. 집에 도착해서야 아는 것과는 다른 정보다.
+
+   ★ 그걸 '오늘 할 것'에 섞지 않는다.
+     사무실에서 싱크대 배수망을 목록에 넣으면 그건 또 틀린 알림이다.
+     지금 못 하는 일이라고 화면이 분명히 말하고, 따로 둔다.
+
+   ★ 한 곳에만 있는 사람에게는 아무것도 안 준다.
+     집 PC와 사무실 PC가 다르면 각자 자기 기록만 갖는다. 그때 "오늘 사무실에서
+     한 것"을 보여주려면 지어내는 수밖에 없다 — 그래서 null을 준다.
+   ════════════════════════════════════════════════════════════ */
+
+import {
+  currentPlace,
+  enabledRoutines,
+  isDue,
+  lastDone,
+  placesOf,
+  setHere,
+  type TidyPlace,
+  type TidyState,
+} from './tidy.ts'
+
+export interface DayBrief {
+  /** 지금 있는 곳 */
+  here: TidyPlace
+  /** 지금 없는 쪽 */
+  there: TidyPlace
+  /** 오늘 저쪽에서 이미 한 것 */
+  doneThere: { id: string; title: string }[]
+  /** 오늘 저쪽에 가면 할 것 (하루 몫만큼) */
+  todoThere: { id: string; title: string; minutes: number }[]
+  /** todoThere의 합계(분) */
+  todoMinutes: number
+  /** 저쪽에서 할 게 더 있는데 몫에 안 담긴 수 */
+  todoRest: number
+}
+
+/**
+ * 지금 여기가 아닌 곳의 오늘.
+ *
+ * @returns 들고 다니는 사람이 아니면 null — 없는 기록을 지어내지 않는다.
+ */
+export function dayBrief(
+  state: TidyState,
+  today: string,
+  quota = DAILY_MINUTES
+): DayBrief | null {
+  if (state.place !== 'both') return null
+  const here = currentPlace(state) ?? 'home'
+  const there: TidyPlace = here === 'home' ? 'office' : 'home'
+
+  /* 저쪽 기준으로 목록을 다시 뽑는다. 같은 함수를 쓰므로 규칙이 갈라지지 않는다. */
+  const asThere = setHere(state, there)
+  const list = enabledRoutines(asThere)
+
+  const doneThere = list
+    .filter((r) => lastDone(state, r.id) === today && state.at?.[`${r.id}@${today}`] === there)
+    .map((r) => ({ id: r.id, title: r.title }))
+
+  /* ★ 여기서도 할 수 있는 건 빼야 한다.
+     '책상 위 비우기'는 사무실에도 있다. 그걸 "퇴근하고 집에서"에 넣으면
+     지금 할 수 있는 일을 나중으로 미루라는 말이 된다. 이 칸의 뜻은
+     **저쪽에 가야만 할 수 있는 것**이다. */
+  const pending = list
+    .filter((r) => !placesOf(r).includes(here))
+    .filter((r) => lastDone(state, r.id) !== today && isDue(r, state, today))
+    .sort((a, b) => a.minutes - b.minutes)
+  const picked = dailyPicks(pending, quota)
+
+  return {
+    here,
+    there,
+    doneThere,
+    todoThere: picked.today.map((r) => ({ id: r.id, title: r.title, minutes: r.minutes })),
+    todoMinutes: picked.minutes,
+    todoRest: picked.rest.length,
+  }
+}
+
+/**
+ * 저쪽 이야기를 언제 이야기로 쓸 것인가.
+ *
+ * 사무실에 있으면 집은 '퇴근하고'다. 집에 있으면 사무실은 아침·낮에는 '오늘',
+ * 저녁·밤에는 '내일'이다 — 저녁에 "오늘 사무실에서 하실 것"이라고 쓰면
+ * 이미 지난 이야기가 된다.
+ */
+export function briefLabels(brief: DayBrief, part: DayPart = dayPart()): { done: string; todo: string } {
+  if (brief.here === 'office') {
+    return { done: '오늘 집에서 나서기 전에', todo: '퇴근하고 집에서' }
+  }
+  const late = part === 'evening' || part === 'night'
+  return { done: '오늘 사무실에서', todo: late ? '내일 사무실에서' : '오늘 사무실에서' }
+}
