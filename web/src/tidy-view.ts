@@ -399,11 +399,23 @@ export function hereSwitchHtml(here: 'home' | 'office'): string {
 }
 
 /** '내 방'에서 장소를 다시 정하는 자리 */
-export function placeSettingHtml(place: 'home' | 'office' | 'both' | undefined): string {
+export function placeSettingHtml(
+  place: 'home' | 'office' | 'both' | undefined,
+  now?: { here: 'home' | 'office'; shown: number; total: number }
+): string {
   const b = (p: 'home' | 'office' | 'both', label: string) =>
     `<button type="button" class="opt ${p === place ? 'on' : ''}" data-place="${p}">${label}</button>`
+  /* ★ 지금 무엇을 보고 있는지를 숫자로 밝힌다.
+     실물에서 "사무실로 바꿔도 내용이 안 바뀐다"는 말이 나왔다. 실제로는
+     바뀌었는데(21개 → 11개) 화면이 그걸 아무 데서도 말해주지 않았다.
+     바뀐 걸 안 보여주면 안 바뀐 것과 같다. */
+  const line = now
+    ? `<p class="place-now"><b>${now.here === 'home' ? '집' : '사무실'}</b> 기준으로 보고 있어요 —
+         전체 ${now.total}개 중 <b>${now.shown}개</b>가 목록에 있습니다.</p>`
+    : ''
   return `<section class="card place-set">
     <div class="sechead"><h2>이 컴퓨터가 있는 곳</h2></div>
+    ${line}
     <p class="note">여기에 없는 물건은 목록에 안 나옵니다.
       직접 켜고 끄신 항목은 <b>장소를 바꿔도 그대로</b>예요.</p>
     <div class="place-b">${b('home', '집')}${b('office', '사무실')}${b('both', '들고 다녀요')}</div>

@@ -61,7 +61,7 @@ import {
 import type { FileEntry, Question } from '../../src/types.ts'
 
 /** 이 빌드의 버전. 릴리스마다 tauri.conf/Cargo와 함께 올린다. */
-const APP_VERSION = '0.26.0'
+const APP_VERSION = '0.26.1'
 /**
  * GitHub 릴리스 API — 최신 버전·설치파일 URL을 준다(CORS 허용, 검증됨).
  * ★ 소스 저장소가 아니라 '배포 저장소'다. 소스는 비공개라 릴리스 API가 인증 없이는
@@ -2704,6 +2704,9 @@ let tidySeg: TidySeg = 'today'
 /** '지금 다 보기'를 누르면 하루 몫을 넘어 전부 보여준다. 탭을 옮기면 돌아온다. */
 let tidyShowAll = false
 
+/** 마지막으로 그린 목록 개수 — 장소를 바꾼 뒤 무엇이 달라졌는지 말할 때 쓴다 */
+let lastEnabled = 0
+
 /**
  * 생활 정리 화면을 그린다.
  *
@@ -2754,6 +2757,7 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
     return
   }
   host.dataset.ready = '1'
+  lastEnabled = d.enabled ?? 0
 
 
   /* ── 맡길 때가 된 것 ─────────────────────────────────────────
@@ -2836,9 +2840,14 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
           ${proNote}
           ${items.map((r) => {
             const on = onIds.has(r.id)
-            return `<div class="pick ${on ? 'on' : ''}">
+            /* ★ 여기에 없는 물건이라고 화면이 말한다. 사무실로 바꿨는데 목록
+               고르기가 마흔 개를 그대로 늘어놓으면 "안 바뀐다"로 읽힌다.
+               다만 켜는 길은 막지 않는다 — 사무실에 개인 수건을 두는 사람도 있다. */
+            const away = d.here && !(r.places ?? ['home']).includes(d.here) && !isCustom(r.id)
+            return `<div class="pick ${on ? 'on' : ''} ${away && !on ? 'away' : ''}">
               <b>${esc(r.title)}</b>
-              <span class="meta">${r.everyDays}일마다 · ${r.minutes}분${r.doer === 'pro' ? ' · 맡기는 것' : ''}</span>
+              <span class="meta">${r.everyDays}일마다 · ${r.minutes}분${r.doer === 'pro' ? ' · 맡기는 것' : ''}${
+                away ? ` · <span class="aw">${d.here === 'office' ? '집에 있는 것' : '사무실에 있는 것'}</span>` : ''}</span>
               <button class="opt" data-pick="${esc(r.id)}" data-on="${on ? '0' : '1'}"
                 >${on ? '목록에서 빼기' : '목록에 넣기'}</button>
               ${isCustom(r.id)
@@ -2951,7 +2960,7 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
 
   /* ── 내 방 ── */
   const roomTab = `
-    ${placeSettingHtml(d.place ?? undefined)}
+    ${placeSettingHtml(d.place ?? undefined, d.place ? { here: d.here ?? 'home', shown: d.enabled, total: allNow.length } : undefined)}
     ${roomHtml(d.room)}
     ${pickerHtml}`
 
@@ -2977,18 +2986,29 @@ async function loadTidy(mark?: { id: string; done: boolean }, pick?: { id: strin
       loadTidy()
     })
   })
+  /* ★ 바꾸면 '오늘'로 데려간다.
+     '내 방'에 남아 있으면 바로 아래 목록 고르기가 마흔 개를 그대로 늘어놓아서
+     "눌러도 안 바뀐다"로 읽힌다. 실제로 달라진 화면을 보여주는 게 맞다. */
   host.querySelectorAll<HTMLButtonElement>('[data-place]').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      const p = btn.dataset.place as 'home' | 'office' | 'both'
       btn.disabled = true
-      await tidySetPlace(btn.dataset.place as 'home' | 'office' | 'both')
-      loadTidy()
+      await tidySetPlace(p)
+      tidySeg = 'today'
+      tidyShowAll = false
+      await loadTidy()
+      toast(p === 'both'
+        ? '들고 다니는 걸로 해뒀어요. 화면 맨 위에서 지금 어디인지 바꾸시면 됩니다.'
+        : `${p === 'home' ? '집' : '사무실'} 기준으로 바꿨어요 — 오늘 할 것이 ${lastEnabled}개 중에서 나옵니다.`, 'good')
     })
   })
   host.querySelectorAll<HTMLButtonElement>('[data-here]').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      const p = btn.dataset.here as 'home' | 'office'
       btn.disabled = true
-      await tidySetHere(btn.dataset.here as 'home' | 'office')
-      loadTidy()
+      await tidySetHere(p)
+      await loadTidy()
+      toast(`${p === 'home' ? '집' : '사무실'}으로 옮기셨네요 — 여기서 할 수 있는 것만 남겼어요.`, 'good')
     })
   })
   document.getElementById('tidy-more')?.addEventListener('click', () => {

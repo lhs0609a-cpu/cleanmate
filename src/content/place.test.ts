@@ -200,6 +200,18 @@ test("'내 방'에서 언제든 바꿀 수 있고, 손수 정한 건 그대로�
   for (const p of ['home', 'office', 'both']) assert.match(html, new RegExp(`data-place="${p}"`))
 })
 
+test('★ 지금 무엇을 보고 있는지 숫자로 밝힌다', () => {
+  /* 실물(2026-09-02): "사무실로 바꿔도 내용이 안 바뀌어." 실제로는 바뀌었다
+     (21개 → 11개). 화면이 그걸 아무 데서도 말해주지 않았을 뿐이다.
+     바뀐 걸 안 보여주면 안 바뀐 것과 같다. */
+  const html = placeSettingHtml('office', { here: 'office', shown: 11, total: 41 })
+  assert.match(html, /<b>사무실<\/b> 기준으로 보고 있어요/)
+  assert.match(html, /전체 41개 중 <b>11개<\/b>/)
+
+  // 아직 안 정한 사람에겐 지어낸 숫자를 안 쓴다.
+  assert.doesNotMatch(placeSettingHtml(undefined), /기준으로 보고 있어요/)
+})
+
 test('장소 이름이 화면에 쓸 수 있게 있다', () => {
   assert.equal(PLACE_LABEL.home, '집')
   assert.equal(PLACE_LABEL.office, '사무실')

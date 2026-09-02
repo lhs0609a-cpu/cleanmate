@@ -814,6 +814,15 @@
 
 
 
+
+  /* 지금 무엇을 보고 있는지 — 바뀐 걸 안 보여주면 안 바뀐 것과 같다 */
+  .place-now{font-size:var(--t-small);line-height:var(--lh-small);color:var(--ink-2);
+             margin-top:var(--s-2);max-width:var(--measure)}
+  .place-now b{color:var(--accent);font-weight:var(--w-em)}
+  /* 여기에 없는 물건 — 지우는 게 아니라 흐리게 두고 말로 밝힌다 */
+  .pick.away b{color:var(--faint)}
+  .pick .aw{color:var(--faint)}
+
   /* 하루의 흐름 — 여기 있는 동안 저기는 어떻게 되고 있나 */
   .brief{border:1px solid var(--line);border-radius:var(--r-md);padding:var(--s-3) var(--s-4);
          margin-top:var(--s-4);background:var(--surface-2);min-width:0}

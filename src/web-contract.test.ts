@@ -172,6 +172,23 @@ test('★ 생활 정리 화면이 목록만 있던 시절로 돌아가지 않았
   assert.match(app, /\$\{monthHtml\(/, '이번 달 요약을 안 그린다')
 })
 
+test('★ 장소를 바꾸면 달라진 화면을 보여준다', () => {
+  /* 실물(2026-09-02): "사무실로 바꿔도 내용이 안 바뀌어." 데이터는 바뀌고
+     있었다(21개 → 11개). 문제는 '내 방'에 그대로 머무는데 바로 아래
+     목록 고르기가 마흔 개를 똑같이 늘어놓는다는 것이었다. */
+  const app = read('web/src/app.ts')
+  const i = app.indexOf("querySelectorAll<HTMLButtonElement>('[data-place]')")
+  assert.ok(i > 0, '장소 버튼 배선을 못 찾았다')
+  const body = app.slice(i, i + 900)
+  assert.match(body, /tidySeg = 'today'/, "바꾼 뒤 '내 방'에 그대로 머문다 — 달라진 게 안 보인다")
+  assert.match(body, /toast\(/, '무엇이 달라졌는지 말해주지 않는다')
+
+  // 목록 고르기도 여기 없는 물건이라고 말해야 한다.
+  assert.match(app, /집에 있는 것|사무실에 있는 것/, '여기 없는 물건을 그냥 늘어놓는다')
+  assert.match(app, /placeSettingHtml\(d\.place \?\? undefined, d\.place/,
+    '지금 무엇을 보고 있는지 숫자로 안 밝힌다')
+})
+
 test('★ 여기 있는 동안 저기 이야기를 같이 준다', () => {
   /* 실물(2026-09-02): "오늘 집을 나서기 전 어떤 정리를 했는지, 퇴근하면
      어떤 정리를 집에 가서 할 건지 알려주고." 들고 다니는 사람에게
