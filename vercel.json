@@ -8,16 +8,23 @@
       "source": "/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" },
         { "key": "Referrer-Policy", "value": "no-referrer" }
       ]
+    },
+    {
+      "source": "/((?!community\\.html$).*)",
+      "headers": [{ "key": "X-Frame-Options", "value": "DENY" }]
+    },
+    {
+      "source": "/community.html",
+      "headers": [{ "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'self' http://tauri.localhost https://tauri.localhost tauri:" }]
     },
     {
       "source": "/app.html",
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; frame-src 'self' https://cleanmate-henna.vercel.app; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"
         }
       ]
     },
@@ -32,7 +39,7 @@
       ]
     },
     {
-      "source": "/((?!app\\.html|admin\\.html).*)",
+      "source": "/((?!app\\.html|admin\\.html|community\\.html).*)",
       "headers": [
         {
           "key": "Content-Security-Policy",

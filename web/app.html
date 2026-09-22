@@ -1596,6 +1596,7 @@
   /* 토스트는 화면 가운데 콘텐츠를 가리면 안 된다 — 오른쪽 아래로. */
   .toast{left:auto;right:24px;transform:translateY(8px)}
   .toast.on{transform:translateY(0)}
+  .community-frame{display:block;width:100%;height:calc(100vh - 210px);min-height:500px;border:1px solid var(--line);border-radius:16px;background:#f5f8f6}
 </style>
 </head>
 <body>
@@ -1642,6 +1643,7 @@
       <button data-go="move"><svg class="ic"><use href="#i-move"/></svg>드라이브 옮기기</button>
       <button data-go="quar"><svg class="ic"><use href="#i-undo"/></svg>되돌리기</button>
       <button data-go="tidy"><svg class="ic"><use href="#i-check"/></svg>생활 정리</button>
+      <button data-go="community"><svg class="ic"><use href="#i-home"/></svg>커뮤니티</button>
     </nav>
     <div class="side-foot">
       <div class="verline">
@@ -1859,6 +1861,12 @@
       </details>
     </header>
     <div class="card"><div id="move-body"><div class="empty">'드라이브 옮기기' 탭을 열면 옮길 수 있는 것을 찾습니다.</div></div></div>
+  </section>
+
+  <section class="screen" id="s-community">
+    <header class="pagehead"><h2>함께 가볍게</h2><p class="sub">정리 질문과 경험을 나눠 보세요. 작성한 내용만 온라인 커뮤니티에 전송되며, PC 파일과 분석 결과는 공유되지 않습니다.</p></header>
+    <iframe id="community-frame" class="community-frame" title="테라클린 커뮤니티" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" referrerpolicy="no-referrer"></iframe>
+    <p class="sub" style="margin-top:12px">온라인 연결이 필요합니다. <a href="https://cleanmate-henna.vercel.app/community.html" target="_blank" rel="noopener noreferrer">커뮤니티 새 창에서 보기 ↗</a></p>
   </section>
 
   <!-- ════ 생활 정리 ════ -->

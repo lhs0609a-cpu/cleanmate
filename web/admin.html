@@ -238,6 +238,7 @@
       <div class="tabs" role="tablist">
         <button data-go="dash" class="on" role="tab">대시보드</button>
         <button data-go="inq" role="tab">문의 <span id="inq-badge"></span></button>
+        <button data-go="community" role="tab">커뮤니티·광고</button>
       </div>
       <div class="sp"></div>
       <button class="btn btn-ghost btn-sm" id="refresh">새로고침</button>
@@ -268,6 +269,19 @@
         </div>
       </div>
       <div id="inq-body"><div class="skel">불러오는 중…</div></div>
+    </section>
+    <section class="screen" id="s-community">
+      <div class="card"><h2>커뮤니티 검수</h2><p>글·댓글은 검수 후 공개됩니다. 개인정보·위험한 안내·스팸을 확인해 주세요.</p><div class="filters"><button class="on" data-community-status="pending">공개 대기</button><button data-community-status="reported">신고 접수</button></div></div>
+      <div id="community-admin"></div>
+      <div class="card" style="margin-top:32px"><h2>커뮤니티 후원 광고</h2><p>직접 계약한 광고주를 등록합니다. 결제와 정산은 별도 계약으로 처리하며, 저장만으로 광고 수익이 발생하지 않습니다.</p>
+      <form id="sponsor-form">
+        <label style="display:block;margin:16px 0"><input name="active" type="checkbox"> 광고 게재</label>
+        <label style="display:block;margin:12px 0">광고주<input name="advertiser" maxlength="50" style="display:block;width:100%"></label>
+        <label style="display:block;margin:12px 0">제목<input name="title" maxlength="80" style="display:block;width:100%"></label>
+        <label style="display:block;margin:12px 0">설명<input name="description" maxlength="160" style="display:block;width:100%"></label>
+        <label style="display:block;margin:12px 0">광고주 HTTPS 주소<input name="url" type="url" style="display:block;width:100%" placeholder="https://"></label>
+        <button class="btn btn-pri" type="submit">광고 설정 저장</button><p id="sponsor-status" role="status" style="margin-top:16px"></p>
+      </form></div>
     </section>
   </main>
 </div>

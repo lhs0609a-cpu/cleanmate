@@ -698,6 +698,36 @@
   .s-metrics span{display:block;color:var(--s-ink-2);font-size:.8em}.s-metrics b{display:block;font-size:1.5em;margin-top:.35em}.s-metrics>div:first-child{background:var(--s-acc-soft);color:var(--s-acc)}
   .s-dashboard .s-one{margin:1em 0 0;text-align:center}.s-dashboard .s-hcap{font-size:.9em;line-height:1.6;margin-top:.8em}
   @media(max-width:600px){.s-dashboard{gap:1em;align-items:flex-start}.s-disk{width:6em;height:6em}.s-disk-in{width:4.8em;height:4.8em}.s-disk-in b{font-size:1.6em}.s-metrics{gap:.35em}.s-metrics>div{padding:.6em .4em}.s-metrics b{font-size:1.15em}.service-art{max-height:280px;object-fit:contain}.contact-art{width:180px}}
+
+  /* Generated lifestyle photography, shared ivory and sage palette. */
+  .hero{padding-top:64px}
+  .hero-intro{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:48px;align-items:center;text-align:left}
+  .hero-copy{min-width:0}
+  .hero-copy h1{font-size:clamp(40px,5vw,64px)}
+  .hero-copy .pill{font-size:12px;padding:8px 12px}
+  .hero-copy .lede{margin-left:0}
+  .hero-copy .cta{justify-content:flex-start;gap:10px}
+  .hero-copy .btn-lg{padding:15px 18px;font-size:16px}
+  .hero-portrait{position:relative;margin:0;overflow:hidden;border-radius:28px;border:1px solid var(--line-3);background:#dce5de;box-shadow:0 24px 80px -40px rgba(55,214,203,.3)}
+  .hero-portrait img{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:cover}
+  .hero-portrait figcaption{position:absolute;inset:auto 0 0;padding:56px 24px 22px;background:linear-gradient(transparent,rgba(5,15,16,.8));color:#fff}
+  .hero-portrait figcaption span{display:block;font-size:20px;font-weight:700;letter-spacing:-.03em}
+  .hero-portrait small{display:block;margin-top:4px;font-size:11px;color:#d6e2df}
+  .service-art{aspect-ratio:4/3;object-fit:cover}
+  .contact-art{width:100%;max-width:360px;aspect-ratio:16/9;object-fit:cover}
+  @media(max-width:800px){
+    .hero{padding-top:40px}
+    .hero-intro{grid-template-columns:1fr;gap:32px;text-align:center}
+    .hero-copy .lede{margin-inline:auto}
+    .hero-copy .cta{justify-content:center}
+    .hero-copy .pill{font-size:11px}
+    .hero-portrait{width:100%;max-width:440px;margin-inline:auto;text-align:left}
+    .hero-copy .btn-lg{font-size:15px;padding:14px 16px}
+    .service-art{max-height:none;object-fit:cover}
+  }
+  .download-btn{flex-direction:column;gap:3px;line-height:1.35}
+  .download-version{font-size:12px;font-weight:750;letter-spacing:0}
+  #hero-ver,#final-ver{color:var(--ink-2);font-weight:650}
 </style>
 </head>
 <body>
@@ -713,14 +743,14 @@
       <a href="#why">왜 다른가</a>
       <a href="#how">작동 방식</a>
       <a href="#screens">화면</a>
-      <a href="#compare">비교</a>
+      <a href="/community.html">커뮤니티</a>
       <a href="#roadmap">로드맵</a>
       <a href="/guide/">정리 가이드</a>
       <a href="#contact">문의</a>
     </nav>
     <div class="sp"></div>
     <a class="btn btn-ghost demo" href="/app.html" style="padding:9px 16px;font-size:var(--t-sm)">브라우저 체험</a>
-    <a class="btn btn-pri" id="nav-dl" href="#get" style="padding:10px 18px;font-size:var(--t-sm)">무료 다운로드</a>
+    <a class="btn btn-pri download-btn" id="nav-dl" href="#get" style="padding:10px 18px;font-size:var(--t-sm)"><span>무료 다운로드</span><small class="download-version" aria-live="polite">버전 확인 중…</small></a>
     <button class="menu-btn" id="menu-btn" aria-expanded="false" aria-controls="sheet" aria-label="메뉴 열기">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
     </button>
@@ -746,17 +776,25 @@
   <div class="grid-bg" aria-hidden="true"></div>
   <div class="aurora" aria-hidden="true"></div>
   <div class="wrap">
+    <div class="hero-intro">
+    <div class="hero-copy">
     <span class="pill"><span class="d" aria-hidden="true"></span>"저장 공간이 부족합니다" — 이번 달에만 몇 번째인가요</span>
     <h1>다 지웠는데도<br><span class="grad">용량이 안 줄죠.</span></h1>
     <p class="lede">자리를 차지하는 건 <b>탐색기에 안 보입니다.</b><br>
       그걸 찾아내고, <b>지워도 되는 것만 이유와 함께</b> 보여드립니다.</p>
     <div class="cta">
-      <a class="btn btn-pri btn-lg" id="hero-dl" href="#get">Windows용 무료 다운로드</a>
+      <a class="btn btn-pri btn-lg download-btn" id="hero-dl" href="#get"><span>Windows용 무료 다운로드</span><small class="download-version" aria-live="polite">버전 확인 중…</small></a>
       <a class="btn btn-ghost btn-lg" href="/app.html">브라우저에서 체험 →</a>
     </div>
     <p class="trust">무료 · 지우기 전에 목록과 이유부터 · 파일은 기기를 떠나지 않습니다</p>
     <div class="dlmeta" id="hero-ver" aria-live="polite">최신 버전 확인 중…</div>
     <p class="osnote" id="os-note"></p>
+    </div>
+    <figure class="hero-portrait">
+      <img src="/images/hero-photo-v1-960.webp" srcset="/images/hero-photo-v1-480.webp 480w, /images/hero-photo-v1-960.webp 960w" sizes="(max-width: 800px) calc(100vw - 48px), 440px" width="1122" height="1402" alt="밝고 정돈된 작업 공간에서 노트북과 함께 미소 짓는 여성 모델" fetchpriority="high" decoding="async" />
+      <figcaption><span>가벼워진 PC, 여유로운 일상.</span><small>AI 생성 모델 이미지</small></figcaption>
+    </figure>
+    </div>
 
     <!-- 앱 화면 — /app.html(데스크톱 앱 프론트엔드)의 '홈' 탭 재현 -->
     <div class="shotwrap reveal">
@@ -1283,21 +1321,21 @@
 
     <div class="steps">
       <div class="step now reveal">
-        <img class="service-art" src="/illustrations/pc-640.webp" srcset="/illustrations/pc-320.webp 320w, /illustrations/pc-640.webp 640w" sizes="(max-width: 720px) 280px, 340px" width="640" height="640" alt="컴퓨터 속 폴더를 가지런히 정리한 모습" loading="lazy" decoding="async" />
+        <img class="service-art" src="/images/pc-photo-v1-640.webp" srcset="/images/pc-photo-v1-320.webp 320w, /images/pc-photo-v1-640.webp 640w" sizes="(max-width: 720px) 280px, 340px" width="640" height="640" alt="노트북과 소품이 가지런히 놓인 밝은 작업 공간" loading="lazy" decoding="async" />
         <span class="sn">STEP 1</span>
         <span class="badge on">지금 이용 가능</span>
         <h3>PC 정리 프로그램</h3>
         <p>지금 받아서 쓸 수 있고, 앞으로도 무료입니다.</p>
       </div>
       <div class="step reveal">
-        <img class="service-art" src="/illustrations/home-640.webp" srcset="/illustrations/home-320.webp 320w, /illustrations/home-640.webp 640w" sizes="(max-width: 720px) 280px, 340px" width="640" height="640" alt="청소 도구와 깨끗하게 정돈된 거실" loading="lazy" decoding="async" />
+        <img class="service-art" src="/images/home-photo-v1-640.webp" srcset="/images/home-photo-v1-320.webp 320w, /images/home-photo-v1-640.webp 640w" sizes="(max-width: 720px) 280px, 340px" width="640" height="640" alt="햇살이 드는 깨끗하고 정돈된 거실" loading="lazy" decoding="async" />
         <span class="sn">STEP 2</span>
         <span class="badge soon">준비 중</span>
         <h3>집 청소 연결</h3>
         <p>검증된 청소 업체를 필요한 만큼만 연결합니다.</p>
       </div>
       <div class="step reveal">
-        <img class="service-art" src="/illustrations/storage-640.webp" srcset="/illustrations/storage-320.webp 320w, /illustrations/storage-640.webp 640w" sizes="(max-width: 720px) 280px, 340px" width="640" height="640" alt="수건과 책을 용도별로 정돈한 수납장" loading="lazy" decoding="async" />
+        <img class="service-art" src="/images/storage-photo-v1-640.webp" srcset="/images/storage-photo-v1-320.webp 320w, /images/storage-photo-v1-640.webp 640w" sizes="(max-width: 720px) 280px, 340px" width="640" height="640" alt="수건과 책을 용도별로 정돈한 수납장" loading="lazy" decoding="async" />
         <span class="sn">STEP 3</span>
         <span class="badge soon">준비 중</span>
         <h3>정리정돈 전문가</h3>
@@ -1306,8 +1344,9 @@
     </div>
 
     <p class="why-free reveal"><b>왜 무료인가요?</b><br>
-      PC 정리로는 돈을 받지 않습니다. 나중에 청소·정리가 필요해졌을 때 믿을 만한 곳을 연결하는 데서 수익을 냅니다.
-      그래서 <b>결제 유도나 광고를 넣을 이유가 없습니다.</b></p>
+      기본 PC 정리는 무료입니다. 커뮤니티의 광고·후원과 청소·정리 서비스 제휴로 운영비를 마련하고자 합니다.
+      <b>광고는 광고라고 표시하며, 내 PC의 파일과 분석 결과를 광고에 사용하지 않습니다.</b>
+      <a href="/community.html">정리 경험을 나누는 커뮤니티 →</a></p>
   </div>
 </section>
 
@@ -1319,7 +1358,7 @@
         <div>
           <span class="kick"><span class="en">Contact</span> · 문의</span>
           <h2 style="margin-top:var(--s-3)">함께할 청소·정리 업체를 찾습니다</h2>
-          <img class="contact-art" src="/illustrations/home-320.webp" width="320" height="320" alt="" loading="lazy" decoding="async" />
+          <img class="contact-art" src="/images/home-photo-v1-320.webp" width="320" height="320" alt="" loading="lazy" decoding="async" />
           <p class="cl">"정리를 해야겠다"고 마음먹은 사람들이 여기 모입니다.
             그 사람들이 다음에 필요해지는 게 <b>사람 손</b>이에요.</p>
           <ul class="cpoints">
@@ -1403,7 +1442,7 @@
         </div>
       </div>
 
-      <a class="btn btn-pri btn-lg" id="final-dl" href="https://github.com/lhs0609a-cpu/teraclean-releases/releases/latest/download/TeraClean-Setup.exe">Windows용 무료 다운로드</a>
+      <a class="btn btn-pri btn-lg download-btn" id="final-dl" href="https://github.com/lhs0609a-cpu/teraclean-releases/releases/latest/download/TeraClean-Setup.exe"><span>Windows용 무료 다운로드</span><small class="download-version" aria-live="polite">버전 확인 중…</small></a>
       <div class="meta" id="final-ver" aria-live="polite">최신 버전 확인 중…</div>
     </div>
       <!-- ★ 경고를 각주로 숨기지 않는다.

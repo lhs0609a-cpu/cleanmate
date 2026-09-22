@@ -15,6 +15,7 @@ export default defineConfig({
         main: resolve('web/index.html'),
         app: resolve('web/app.html'),
         admin: resolve('web/admin.html'),
+        community: resolve('web/community.html'),
       },
     },
   },

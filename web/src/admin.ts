@@ -13,7 +13,7 @@
  *   이 저장소의 다른 코드(엔진·앱)와 다른 방식이 하나 더 생긴다.
  */
 
-export {} // 모듈로 취급되게
+import { setupCommunityAdmin } from './community-admin.ts'
 
 const $ = (id: string) => document.getElementById(id)
 const esc = (s: string) =>
@@ -355,7 +355,10 @@ $('inq-filters')!.addEventListener('click', (ev) => {
 function loadAll() {
   loadDash()
   loadInq()
+  loadCommunityAdmin()
 }
+
+const loadCommunityAdmin = setupCommunityAdmin(api)
 
 /* ── 시작 ──────────────────────────────────────────────────────
    이미 쿠키가 살아 있으면 로그인 화면을 건너뛴다. 매번 비밀번호를 묻는

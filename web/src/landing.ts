@@ -49,20 +49,24 @@ interface LatestInfo {
 }
 
 async function fetchLatest(): Promise<LatestInfo | null> {
+  for (const endpoint of ['/api/latest-release', LATEST_API]) {
   try {
-    const res = await fetch(LATEST_API, { headers: { Accept: 'application/vnd.github+json' } })
-    if (!res.ok) return null
+    const res = await fetch(endpoint, { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(6000) })
+    if (!res.ok) continue
     const r = await res.json()
-    const exe = (r.assets ?? []).find((a: any) => /\.exe$/i.test(a.name))
-    if (!exe) return null
+    const exe = (r.assets ?? []).find((a: any) => a.name === SETUP_NAME)
+      ?? (r.assets ?? []).find((a: any) => /\.exe$/i.test(a.name))
+    if (!exe?.browser_download_url || !r.tag_name || r.draft || r.prerelease) continue
     return {
       version: (r.tag_name ?? '').replace(/^v/, ''),
       url: exe.browser_download_url,
       date: r.published_at ? new Date(r.published_at).toLocaleDateString('ko-KR') : '',
     }
   } catch {
-    return null
+    // Try the public API if same-origin discovery is unavailable.
   }
+  }
+  return null
 }
 
 function setDownload(el: HTMLElement | null, url: string) {
@@ -339,10 +343,14 @@ async function main() {
   setDownload(els.heroDl, winUrl)
   setDownload(els.navDl, winUrl)
   setDownload(els.finalDl, winUrl)
+  for (const el of [els.heroDl, els.navDl, els.finalDl]) {
+    const version = el?.querySelector('.download-version')
+    if (version) version.textContent = latest ? `최신 v${latest.version}` : '버전 확인 불가'
+  }
   const label = latest
     ? `최신 버전 v${latest.version}${latest.date ? ` · ${latest.date}` : ''} · Windows 10/11`
     // 버전을 못 읽었을 뿐이지 받을 수는 있다. "페이지로 가세요"라고 떠넘기지 않는다.
-    : 'Windows 10/11 · 최신 버전 내려받기'
+    : 'Windows 10/11 · 버전 확인이 지연되고 있습니다. 다운로드는 최신 설치파일로 연결됩니다.'
   if (els.heroVer) els.heroVer.textContent = label
   if (els.finalVer) els.finalVer.textContent = label
 

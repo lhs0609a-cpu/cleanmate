@@ -321,7 +321,7 @@ async function loadDisk() {
 }
 
 /* ── 화면 전환 ─────────────────────────────────────────────── */
-const screens = ['home', 'hidden', 'startup', 'programs', 'dupes', 'move', 'quar', 'tidy']
+const screens = ['home', 'hidden', 'startup', 'programs', 'dupes', 'move', 'quar', 'tidy', 'community']
 let hiddenLoaded = false, quarLoaded = false, programsLoaded = false, moveLoaded = false
 let startupLoaded = false, dupesLoaded = false
 function go(name: string) {
@@ -331,6 +331,10 @@ function go(name: string) {
   if (name === 'home') refreshDisk()
   // 생활 정리는 파일을 안 건드리므로 브라우저에서도 그대로 돈다(기록만 localStorage).
   if (name === 'tidy') loadTidy()
+  if (name === 'community') {
+    const frame = $('community-frame') as HTMLIFrameElement
+    if (!frame.getAttribute('src')) frame.src = inTauri ? 'https://cleanmate-henna.vercel.app/community.html' : '/community.html'
+  }
   if (inTauri && name === 'startup' && !startupLoaded) { startupLoaded = true; loadStartup() }
   if (inTauri && name === 'hidden' && !hiddenLoaded) { hiddenLoaded = true; loadHidden() }
   if (inTauri && name === 'quar' && !quarLoaded) { quarLoaded = true; loadQuar() }
