@@ -90,6 +90,7 @@ import { ownerOf, ownerHeadline } from './owners.ts'
 import { computeProgress, stepProgress, timeProgress, type RootWeight } from './progress.ts'
 import { analyze, type AnalyzeFile } from './analyze.ts'
 import { UNKNOWN_EXPLAIN } from './content/unknowns.ts'
+import type { Finding } from './types.ts'
 import { gatherFacts } from './probes/facts.ts'
 import { probeHiberfil } from './probes/hiberfil.ts'
 import { gatherReclaimFacts, probeRecycleBin, probeUpdateCache } from './probes/reclaim.ts'
@@ -1919,54 +1920,63 @@ async function main() {
         break
       }
       case 'probe': {
-        /* 조사할 곳이 다섯이고 하나씩 끝난다 — 그러면 셀 수 있다.
-           단계마다 걸리는 시간이 달라서(시스템 복원 조회가 제일 느리다) 눈금이
-           고르지는 않지만, "지금 무엇을 보는 중"을 같이 말하므로 읽을 수 있다. */
+        /* 다섯 군데를 **한꺼번에** 본다.
+
+           ★ 왜 바꿨나 (실측)
+             전에는 하나씩 줄을 세워 불렀다. 조사 자체는 다 합쳐 2초인데, 화면은
+             55초를 기다렸다. 여기서 부르는 건 전부 powershell.exe를 새로 띄우는
+             일이고, 느린 PC에서는 그 '띄우는 값'이 조사 시간보다 훨씬 크다
+             (백신이 프로세스를 하나하나 열어보는 PC가 흔하다). 줄을 세우면 그
+             값이 다섯 번 곱해진다.
+
+             그런데 이 다섯은 서로 아무것도 주고받지 않는다 — 휴지통 크기를
+             알아야 가상 메모리를 볼 수 있는 게 아니다. 줄을 세울 이유가 없었다.
+             동시에 띄우면 기다리는 시간이 '합'이 아니라 '가장 느린 하나'가 된다.
+
+           ★ 한쪽이 실패해도 나머지는 그대로 낸다. 예전 try/catch가 하던 일
+             그대로다 — 한쪽이 안 된다고 다른 쪽을 못 보여줄 이유가 없다.
+             이제 '시간을 다 썼다'도 실패의 한 종류다(probes/shell.ts). */
         const STEPS = 5
         out(await withTaskProgress('probe', async (ctl) => {
-          ctl.step(0, STEPS, '이 PC의 기본 정보를 읽는 중')
-          const facts = await gatherFacts()
-          const findings = [probeHiberfil(facts)]
+          /* 동시에 도니까 '지금 무엇을 보는 중'을 하나로 못 집는다. 대신 다섯 중
+             몇 군데가 답했는지를 센다 — 이쪽이 오히려 안 튄다(단계마다 길이가
+             다르지 않다). 개수 자체는 화면에 안 띄운다(coarseSteps 머리말). */
+          let answered = 0
+          const label = '이 PC의 다섯 군데를 한꺼번에 확인하는 중'
+          ctl.step(0, STEPS, label)
+          const tick = () => ctl.step(++answered, STEPS, label)
 
-          // 휴지통·업데이트 캐시는 별도 조회다. 실패해도 hiberfil 결과까지
-          // 통째로 날리지 않는다 — 한쪽이 안 된다고 다른 쪽을 못 보여줄 이유가 없다.
-          ctl.step(1, STEPS, '휴지통과 업데이트 캐시를 확인하는 중')
-          try {
-            const rec = await gatherReclaimFacts()
-            findings.push(probeRecycleBin(rec), probeUpdateCache(rec))
-          } catch (err) {
-            process.stderr.write(`회수 프로브 실패: ${(err as Error).message}\n`)
+          /** 한 군데가 실패하거나 시간을 다 써도 나머지는 낸다. */
+          const part = async <T>(what: string, run: () => Promise<T>): Promise<T | null> => {
+            try {
+              return await run()
+            } catch (err) {
+              process.stderr.write(`${what} 실패: ${(err as Error).message}\n`)
+              return null
+            } finally {
+              tick()
+            }
           }
 
+          const [facts, rec, pf, rs, bulk] = await Promise.all([
+            // 이 하나만은 없으면 안 된다 — 최대절전 판단의 바탕이고, 화면의 머리글이다.
+            gatherFacts().finally(tick),
+            part('회수 프로브', gatherReclaimFacts),
+            part('가상 메모리 프로브', gatherPageFile),
+            part('시스템 복원 프로브', gatherRestore),
+            part('큰 덩어리 프로브', gatherBulkFacts),
+          ])
+
+          const findings: (Finding | null)[] = [probeHiberfil(facts)]
+          // 휴지통·업데이트 캐시는 한 조회에서 같이 온다.
+          if (rec) findings.push(probeRecycleBin(rec), probeUpdateCache(rec))
           /* 윈도우가 자기 몫으로 잡아둔 공간(가상 메모리·시스템 복원).
              실측에서 pagefile 65GB, 시스템 복원 최대 155GB가 나왔다 — 파일 정리를
              다 합친 것보다 크다. 여기 없으면 사용자는 이게 있는 줄도 모른다. */
-          ctl.step(2, STEPS, '가상 메모리를 확인하는 중')
-          try {
-            const pf = await gatherPageFile()
-            const pfFinding = pf && probePageFile(pf)
-            if (pfFinding) findings.push(pfFinding)
-          } catch (err) {
-            process.stderr.write(`가상 메모리 프로브 실패: ${(err as Error).message}\n`)
-          }
-
-          ctl.step(3, STEPS, '시스템 복원 공간을 확인하는 중')
-          try {
-            const rs = probeRestore(await gatherRestore())
-            if (rs) findings.push(rs)
-          } catch (err) {
-            process.stderr.write(`시스템 복원 프로브 실패: ${(err as Error).message}\n`)
-          }
-
-          // 큰 덩어리(WSL·Docker·Windows.old)도 같은 이유로 따로 감싼다.
-          ctl.step(4, STEPS, '큰 덩어리(WSL·Docker·Windows.old)를 찾는 중')
-          try {
-            // 스프레드로 넘기지 않는다 — 배열 길이만큼 인자를 만드는 자리를 안 만든다(breakdown.ts 머리말)
-            for (const f of probeBulk(await gatherBulkFacts())) findings.push(f)
-          } catch (err) {
-            process.stderr.write(`큰 덩어리 프로브 실패: ${(err as Error).message}\n`)
-          }
-          ctl.step(STEPS, STEPS)
+          if (pf) findings.push(probePageFile(pf))
+          if (rs) findings.push(probeRestore(rs))
+          // 큰 덩어리(WSL·Docker·Windows.old)
+          if (bulk) for (const f of probeBulk(bulk)) findings.push(f)
 
           return {
             facts: {
@@ -1977,7 +1987,6 @@ async function main() {
             },
             findings: findings.filter(Boolean).sort((a, b) => b!.bytes - a!.bytes),
           }
-        // 실측: 다섯 단계 중 휴지통 조회 하나가 16초 중 9초다 — 시간으로 메운다.
         }, { coarseSteps: true }))
         break
       }

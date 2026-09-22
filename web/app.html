@@ -453,6 +453,52 @@
   .fact-p{margin-top:var(--s-3);max-width:var(--measure);color:var(--ink-2);
           font-size:var(--t-body);line-height:var(--lh-body);letter-spacing:var(--tr-body)}
   .fact-p b{color:var(--ink);font-weight:var(--w-em)}
+
+  /* ── 그림 ────────────────────────────────────────────────────
+     장식이 아니라 잰 값이다. 그래서 카드 안에서 본문보다 앞에 온다 —
+     이 항목에서 가장 먼저 알아야 할 것이 그림에 들어 있기 때문이다.
+     그리는 규칙은 web/src/figures.ts 머리말에 있다.
+
+     ★ 폭은 viewBox가 잡고 여기선 100%만 준다. 창이 좁아져도 안 깨지고,
+       최소폭 아래로는 이 상자 안에서만 가로로 밀린다(화면 전체가 안 밀린다).
+     ★ max-width를 --measure로 두지 않는다. 글이 아니라 그림이라, 읽는 폭이 아니라
+       카드 폭을 쓴다. 대신 너무 커지지 않게 --measure-wide에서 멈춘다. */
+  .fact-fig{margin:var(--s-4) 0 0;max-width:var(--measure-wide);
+            background:var(--surface-2);border:1px solid var(--line);
+            border-radius:var(--r-md);padding:var(--s-4);overflow-x:auto}
+  .fact-fig svg{display:block;width:100%;height:auto;min-width:300px}
+  /* 화면 머리말에 오는 그림은 카드 안이 아니라 제목 아래에 선다. */
+  .head-fig{margin:var(--s-3) 0 var(--s-5)}
+
+  /* ══ 그림 문법 ═══════════════════════════════════════════════
+       실선·회색 채움 = 지금 있는 것    점선·청록 = 아직 아닌 것
+       점선·빈칸      = 못 잰 것        점선 안내선 = 안 변한 것
+     이 넷이 여섯 화면의 그림을 한 언어로 묶는다. 한 화면에서 배운 읽는 법이
+     다음 화면에서도 그대로 통해야 그림이 '언어'가 된다.
+     판정 3색(초록·주황·빨강)은 그림에서도 판정에만 쓴다. */
+  .d-now{fill:var(--surface-3);stroke:var(--line-2);stroke-width:1}
+  .d-off{fill:var(--surface-2);stroke:var(--line-2);stroke-width:1}
+  .d-soon{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.4;stroke-dasharray:5 4}
+  .d-empty{fill:var(--surface-2);stroke:var(--line-2);stroke-width:1}
+  .d-box{fill:none;stroke:var(--ink-2);stroke-width:1.6}
+  .d-keep{fill:var(--surface);stroke:var(--ink-2);stroke-width:1.6}
+  .d-gone{fill:none;stroke:var(--faint);stroke-width:1.2;stroke-dasharray:4 4}
+  .d-guide{stroke:var(--faint);stroke-width:1;stroke-dasharray:3 4}
+  .d-tick{stroke:var(--accent);stroke-width:1.2;stroke-dasharray:3 3}
+  .d-axis{stroke:var(--line-2);stroke-width:1.5}
+  .d-dot{fill:var(--surface);stroke:var(--ink-2);stroke-width:1.6}
+  .d-arrow{stroke:var(--ink-2);stroke-width:1.6;fill:none}
+  .d-mark{stroke:var(--ink-2);stroke-width:1.5;fill:none;stroke-linecap:round}
+  .d-lock{fill:none;stroke:var(--accent);stroke-width:1.4}
+  .arw{fill:var(--ink-2)}
+  /* 그림 속 글자도 램프를 쓴다. 라벨과 값의 위계는 크기가 아니라
+     색과 굵기로 낸다 — 여기서 한 단 더 작은 크기를 만들면 램프에 구멍이 난다. */
+  .dl{fill:var(--muted);font-size:var(--t-micro);font-family:var(--font-sans)}
+  .dv{fill:var(--ink);font-size:var(--t-micro);font-weight:var(--w-ui);
+      font-family:var(--font-sans);font-variant-numeric:tabular-nums}
+  .dv.ac{fill:var(--accent)}
+  .dv.sf{fill:var(--safe)}
+  .dv.q{fill:var(--muted);font-weight:var(--w-text)}
   /* 위험은 접지 않는다. 배경색을 주는 건 장식이 아니라 "여기서 눈을 멈추라"다. */
   .fact-risk{margin-top:var(--s-4);max-width:var(--measure);
              background:var(--amb-soft);border-radius:var(--r-md);
@@ -921,6 +967,9 @@
                max-width:var(--measure)}
 
   /* 시작 — 이 탭의 유일한 '문'이다. 아래 목록이 마흔 개라도 여기만 누르면 된다. */
+  .coach-art{width:128px;height:128px;object-fit:cover;border-radius:var(--r-lg);flex:none}
+  .state-art{display:block;width:120px;height:90px;margin:0 auto 16px}
+  .room-art{display:block;width:48px;height:48px;margin-bottom:12px;color:var(--accent);opacity:calc(.45 + var(--f,0) * .55)}
   .coach.start{display:flex;gap:var(--s-4);align-items:center;flex-wrap:wrap}
   .coach.start > *{min-width:0}
   .coach.start .t{flex:1 1 20em}
@@ -1282,7 +1331,20 @@
   .pcard-eg{margin-top:6px;font-size:var(--t-caption);color:var(--ink-2);
             min-width:0;max-width:100%;overflow-x:auto}
   .pcard-eg div{overflow-wrap:anywhere;opacity:.85;min-width:0}
-  .pcard-act{flex:none}
+  .pcard-act{flex:none;min-width:0}
+  /* ★ 실물에서 터진 자리 — 이 칸이 버튼일 때와 **문장**일 때가 다르다.
+
+     다 지우고 나면 여기에 결과가 들어온다: "85개는 다른 프로그램이 쓰고 있어서
+     못 지웠어요 — '되돌리기' 화면에서…" 한 문장이다. 그런데 flex:none은
+     '줄지 마라'는 뜻이라, 그 문장이 **한 줄로 폈을 때의 길이 그대로** 자리를
+     차지한다. 옆칸(.pcard-main)은 min-width:0이라 얼마든지 눌려서, 남은 90px에
+     밀어 넣어진다 — 그래서 "52.0 / GB", "MusicF / actory"처럼 글자가 한 줄에
+     두세 자씩 떨어졌다. 글꼴이 깨진 게 아니라 칸이 없어진 것이다.
+
+     '줄지 마라'는 버튼을 위한 규칙이지 문장을 위한 규칙이 아니다. 문장이
+     들어올 때는 한 줄을 통째로 내준다 — 결과는 행동이 아니라 카드의 결말이고,
+     결말은 카드 폭 전부를 써도 된다. (layout-guard.test.ts에서 잠근다) */
+  .pcard-act.pcard-act-wide{flex:1 1 100%;margin-top:var(--s-2)}
   @media (max-width:640px){
     .pcard{flex-wrap:wrap}
     .pcard-act{width:100%;margin-top:var(--s-2)}
@@ -1441,7 +1503,7 @@
   /* ══ 앱 골격 — 좌측 고정 내비 + 우측 작업 영역 ═══════════════
      데스크톱 앱의 기본 골격이다. 상단 탭은 웹페이지 문법이라
      창 안에 들어가면 "브라우저를 띄운 것"처럼 보인다. */
-  .shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+  .shell{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}
   .side{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;
         gap:var(--s-2);padding:var(--s-5) var(--s-3);background:var(--surface);
         border-right:1px solid var(--line)}
@@ -1467,13 +1529,13 @@
   .content main{padding:var(--s-7) var(--s-6) var(--s-8);max-width:960px;width:100%;margin-inline:auto}
   .content footer{margin-top:auto}
   @media(max-width:820px){
-    .shell{grid-template-columns:1fr}
-    .side{position:static;height:auto;flex-direction:row;align-items:center;
+    .shell{grid-template-columns:minmax(0,1fr)}
+    .side{min-width:0;position:static;height:auto;flex-direction:row;align-items:center;
           gap:var(--s-3);border-right:0;border-bottom:1px solid var(--line);
           padding:var(--s-3) var(--s-4)}
-    .side .brand{padding:0;font-size:var(--t-title)}
-    .side .nav{flex-direction:row;overflow-x:auto;flex:1}
-    .side .nav button{width:auto;white-space:nowrap}
+    .side .brand{padding:0;font-size:var(--t-title);flex:none}
+    .side .nav{min-width:0;flex-direction:row;overflow-x:auto;flex:1}
+    .side .nav button{width:auto;white-space:nowrap;flex:none}
     .side-foot{display:none}
     .content main{padding:var(--s-5) var(--s-4) var(--s-7)}
   }

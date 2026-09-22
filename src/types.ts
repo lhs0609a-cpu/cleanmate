@@ -223,6 +223,191 @@ export interface MeasureAction {
 }
 
 /**
+ * 화면이 그리는 그림 — 이 제품이 쓰는 그림 언어 전부.
+ *
+ * ★ 왜 엔진이 이걸 만드나 — 화면이 직접 그리면 화면이 숫자를 갖게 된다.
+ *   이 제품에서 화면이 숫자를 지어내는 순간 화면 전체가 거짓이 된다(coach.ts와 같은 원칙).
+ *   그래서 엔진은 '잰 값'만 넘기고, 화면은 그 값을 길이·개수로 바꾸기만 한다.
+ *
+ * ★ 왜 문장을 지우지 않고 replaces로 표시만 하나 — 그림은 화면에만 있다.
+ *   터미널(cli-probe)과 화면 낭독기에는 SVG가 없다. 문장을 데이터에서 지우면
+ *   그 두 곳에서는 정보가 그냥 사라진다. 그래서 문장은 그대로 두고,
+ *   "이 줄은 그림이 대신한다"는 사실만 적는다. 지우는 건 화면이 판단한다.
+ *   replaces에 문자열을 다시 타이핑하지 않는다 — 문장을 만든 상수를 그대로 넣는다.
+ *
+ * ══ 그림 문법 ═══════════════════════════════════════════════════
+ *   실선·회색 채움 = 지금 있는 것 (재서 확인한 값)
+ *   점선·청록     = 아직 아닌 것 (우리가 회수할 몫, 조건이 붙은 몫)
+ *   점선·빈칸     = 못 잰 것     (0으로 안 그린다)
+ *   점선 안내선   = 안 변한 것   ("그대로다"를 눈으로 확인시킨다)
+ *
+ *   색은 전부 기존 토큰을 쓴다. 새 색을 안 만드니 다크 모드가 저절로 따라오고,
+ *   원칙 1번("장식이 하나 늘 때마다 경고색의 힘이 빠진다")도 안 깨진다.
+ *   판정 3색(초록·주황·빨강)은 그림에서도 판정에만 쓴다.
+ *
+ * ══ 어디에 그림을 넣나 ══════════════════════════════════════════
+ *   규칙 하나다: **그림이 문장을 지워주지 못하면 안 넣는다.**
+ *   그림이 대신할 수 있는 건 '값'이지 '성질'이 아니다.
+ *     넣는다  — 시간이 걸린 조건("재시작 뒤에"), 안 변한다는 사실,
+ *               여럿 중 하나만 남는다는 사실, 못 쟀다는 사실, 나뉜 비율, 지난 시간.
+ *     안 넣는다 — "되돌릴 수 있습니다"(성질이라 그릴 값이 없다),
+ *               "노트북이면 한 번 더 생각해보세요"(조건이지 양이 아니다),
+ *               크기 하나로 끝나는 항목(휴지통·최대절전 — 숫자가 이미 답이다).
+ */
+
+interface FigureBase {
+  /** 그림을 못 보는 사람이 듣는 문장. 그림이 말하는 것을 그대로 적는다. */
+  alt: string
+  /** 이 그림이 대신하는 explain 줄들. 화면은 이 줄을 안 그린다. */
+  replaces?: string[]
+}
+
+/**
+ * 같은 자 위의 막대 두 줄 — 지금 / 바꾼 뒤.
+ * 바꾼 뒤의 막대는 '남는 몫'과 '비는 몫'으로 갈라진다.
+ *
+ * 답하는 질문: "바꾸면 얼마가, 언제 비나"
+ * 쓰는 곳: 가상 메모리(재시작 뒤에 빔) · 드라이브 옮기기 · 못 지우고 남은 것
+ */
+export interface BeforeAfterFigure extends FigureBase {
+  kind: 'before-after'
+  /** 지금 크기 = 두 막대가 함께 쓰는 자의 전체 길이 */
+  totalBytes: number
+  /** 바꾼 뒤에도 남는 몫 */
+  keepBytes: number
+  /** 비는 몫. totalBytes - keepBytes와 같아야 한다 */
+  freesBytes: number
+  beforeLabel: string
+  afterLabel: string
+  /** 비는 몫에 붙는 조건 한 마디 — '재시작 뒤에 빔' */
+  freesNote: string
+}
+
+/**
+ * 같은 크기 상자 둘 — 안이 달라져도 밖은 그대로.
+ *
+ * 답하는 질문: "안에서 지웠는데 왜 용량이 그대로인가"
+ * 쓰는 곳: WSL 리눅스 디스크 · Docker 저장소
+ *
+ * ★ 안에 얼마가 들었는지는 **안 그린다.** 우리는 그 값을 못 잰다.
+ *   밖에서 보이는 건 파일 크기 하나뿐이라, 안쪽은 '못 잰 것'으로 그린다.
+ *   여기에 그럴듯한 눈금을 그려 넣는 순간 이 그림이 거짓말이 된다.
+ */
+export interface UnchangedFigure extends FigureBase {
+  kind: 'unchanged'
+  /** 두 상자가 함께 쓰는 바깥 크기 — 이것만이 우리가 잰 값이다 */
+  bytes: number
+  beforeLabel: string
+  afterLabel: string
+  /** 두 상자 사이에서 벌어지는 일 — '안에서 지워도' */
+  betweenLabel: string
+  /** 안쪽을 왜 안 그렸는지 — '안에 얼마나 들었는지는 밖에서 못 봅니다' */
+  insideNote: string
+}
+
+/**
+ * 같은 것 N벌 — 한 벌만 남는다.
+ *
+ * 답하는 질문: "다 지우는 건가? 하나는 남나?"
+ * 쓰는 곳: 같은 파일 · 같은 폴더가 여러 벌
+ *
+ * ★ 이 화면에서 가장 자주 다시 읽히는 문장이 "한 벌은 남습니다"다.
+ *   그림이면 다시 안 읽어도 된다.
+ */
+export interface CopiesFigure extends FigureBase {
+  kind: 'copies'
+  /** 전체 벌 수 */
+  total: number
+  /** 남길 벌 수 — 보통 1 */
+  keep: number
+  /** 지울 벌 수. total - keep과 같아야 한다 */
+  gone: number
+  freesBytes: number
+  /** 남는 것에 붙는 말 — '남습니다' */
+  keepLabel: string
+}
+
+/**
+ * 실선 0 과 점선 빈칸 — "없다"와 "못 봤다"는 다른 말이다.
+ *
+ * 답하는 질문: "숫자가 없는데, 없다는 건가 모른다는 건가"
+ * 쓰는 곳: 시스템 복원(관리자 권한이 있어야 읽힘)
+ *
+ * ★ 이건 글을 줄이려고 넣는 그림이 아니다. 이 제품이 지키는 원칙을 화면에 새긴다.
+ *   숫자 자리가 비어 있으면 사람은 그걸 0으로 읽는다. 점선 빈칸은 0으로 안 읽힌다.
+ */
+export interface UnmeasuredFigure extends FigureBase {
+  kind: 'unmeasured'
+  /** 이렇게 쓰면 거짓말이 되는 쪽 — '0GB' */
+  wrongTag: string
+  wrongLabel: string
+  /** 사실인 쪽 — '못 쟀음' */
+  rightTag: string
+  rightLabel: string
+}
+
+/**
+ * 한 줄 막대를 몇 갈래로 — 전체가 어떻게 나뉘었나.
+ *
+ * 답하는 질문: "N개 중 M개를 제안한다는데, 나머지는 뭔가"
+ * 쓰는 곳: 시작프로그램 머리말
+ *
+ * ★ 청록(act)은 '우리가 하자는 것'에만 쓴다. 나머지는 회색 단계로만 나눈다 —
+ *   여기서 색을 하나 더 쓰면 화면 전체에서 청록이 '누를 것'이라는 뜻을 잃는다.
+ */
+export interface SplitFigure extends FigureBase {
+  kind: 'split'
+  parts: {
+    label: string
+    count: number
+    /** act = 우리가 하자는 것(청록) · hold = 판단 못 한 것 · off = 이미 꺼둔 것 */
+    tone: 'act' | 'hold' | 'off'
+  }[]
+}
+
+/**
+ * 시간 축 위의 점 — 마지막으로 쓴 때.
+ *
+ * 답하는 질문: "오래 안 썼다는데, 얼마나 오래인가"
+ * 쓰는 곳: 안 쓴 프로그램
+ *
+ * ★ 이 화면에서 사람이 의심하는 건 제안이 아니라 근거다("정말 안 썼나?").
+ *   근거가 시간이라면 시간을 그려야 한다. 기록이 없는 것은 축에 안 올린다 —
+ *   '아주 오래전'과 '모름'은 다른 말이고, 축의 맨 끝은 아주 오래전이라는 뜻이다.
+ */
+export interface TimelineFigure extends FigureBase {
+  kind: 'timeline'
+  /** 축의 끝 — 며칠 전까지 그리나 */
+  spanDays: number
+  /** 축 위의 점들. daysAgo가 클수록 왼쪽(오래전)이다 */
+  marks: { label: string; daysAgo: number }[]
+  /**
+   * 제안의 기준선 — 이만큼 지난 것만 고른다.
+   *
+   * ★ 이게 이 그림의 핵심이다. 점만 찍으면 "오래됐네"로 끝나지만,
+   *   기준선이 같이 있으면 **왜 이것들만 골랐는지**가 그림 안에서 답이 된다.
+   *   근거를 못 보여주는 제안은 사용자가 안 누른다.
+   */
+  thresholdDays: number
+  thresholdLabel: string
+  /** 축 오른쪽 끝 — '오늘' */
+  nowLabel: string
+  /** 축 왼쪽 끝 — '2년 전' */
+  farLabel: string
+  /** 기록이 없어 축에 못 올린 것. 0이면 안 쓴다 */
+  unknownCount: number
+  unknownLabel: string
+}
+
+export type Figure =
+  | BeforeAfterFigure
+  | UnchangedFigure
+  | CopiesFigure
+  | UnmeasuredFigure
+  | SplitFigure
+  | TimelineFigure
+
+/**
  * 프로브가 찾은 것 — 파일이 아니라 '항목'이다.
  *
  * 왜 FileEntry가 아닌가: hiberfil.sys는 node의 stat()이 EPERM으로 튕겨서
@@ -240,6 +425,8 @@ export interface Finding {
   bytes: number
   zone: Zone
   explain: Explanation
+  /** 잰 값을 그림으로. 없으면 화면은 지금처럼 글만 그린다. */
+  figure?: Figure
   /** 회수 방법. 없으면 = 아직 안전한 경로를 모른다 → 건드리지 않는다. */
   action?: SystemAction
   /** 되돌리기가 없어 SystemAction을 못 만드는 항목의 정식 도구 경로 */

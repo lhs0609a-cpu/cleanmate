@@ -7,25 +7,68 @@
 <meta name="description" content="다 지웠는데도 용량이 안 주는 이유가 있습니다 — 정작 자리를 차지하는 건 탐색기에 안 보입니다. 테라클린은 그걸 찾아내고, 지워도 되는 것만 이유와 함께 보여줍니다. 무료 · 지우기 전에 목록과 이유부터 · 100% 온디바이스." />
 <link rel="canonical" href="https://cleanmate-henna.vercel.app/" />
 
+<!-- ★ 사이트 소유 확인 — 여기에 코드를 붙여야 색인 요청을 보낼 수 있습니다.
+     구글: search.google.com/search-console → 속성 추가 → HTML 태그 →
+           content 값만 아래 줄에 넣고 주석을 벗기세요.
+     네이버: searchadvisor.naver.com → 웹마스터 도구 → 사이트 등록 →
+           HTML 태그 → 같은 방식. 네이버는 등록 후 '요청 → 웹 페이지 수집'에서
+           URL을 직접 넣어야 며칠이 아니라 몇 시간 안에 올라옵니다.
+     둘 다 사이트맵 제출을 잊지 마세요: /sitemap.xml
+<meta name="google-site-verification" content="여기에-코드" />
+<meta name="naver-site-verification" content="여기에-코드" />
+-->
+
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="테라클린" />
 <meta property="og:url" content="https://cleanmate-henna.vercel.app/" />
 <meta property="og:title" content="테라클린 — 다 지웠는데도 용량이 안 줄죠" />
 <meta property="og:description" content="정작 자리를 차지하는 건 탐색기에 안 보입니다. 실측한 PC에서 40.7GB가 스캐너에 0으로 보였습니다. 테라클린은 그걸 찾아내고, 지워도 되는 것만 이유와 함께 보여줍니다." />
-<meta property="og:image" content="https://cleanmate-henna.vercel.app/og.png" />
+<meta property="og:image" content="https://cleanmate-henna.vercel.app/social/home.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
-<meta property="og:image:alt" content="테라클린 — 지워도 되는 것으로 확인된 용량 14.6GB, 잠근 용량 41.8GB" />
+<meta property="og:image:alt" content="테라클린 — 지우기 전에, 이유부터 보여드립니다. Windows용 무료 프로그램." />
 <meta property="og:locale" content="ko_KR" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="테라클린 — 다 지웠는데도 용량이 안 줄죠" />
 <meta name="twitter:description" content="정작 자리를 차지하는 건 탐색기에 안 보입니다. 테라클린은 그걸 찾아내고, 지워도 되는 것만 이유와 함께 보여줍니다. 무료." />
-<meta name="twitter:image" content="https://cleanmate-henna.vercel.app/og.png" />
+<meta name="twitter:image" content="https://cleanmate-henna.vercel.app/social/home.png" />
 
 <link rel="preload" href="/fonts/PretendardVariable.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="/favicon-180.png" />
 <meta name="theme-color" content="#05080B" />
+
+<!-- 구조화 데이터 — 검색과 AI가 "이게 무엇인가"를 사람 문장이 아니라 값으로 읽는 자리.
+     ★ 이름·URL 표기를 사이트 전체에서 하나로 통일한다. 표기가 흔들리면 검색과 AI가
+       서로 다른 개체로 보고, 쌓아둔 신뢰가 두 곳으로 나뉜다. -->
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Organization","@id":"https://cleanmate-henna.vercel.app/#org",
+  "name":"테라클린","url":"https://cleanmate-henna.vercel.app/",
+  "logo":{"@type":"ImageObject","url":"https://cleanmate-henna.vercel.app/favicon-180.png"},
+  "description":"윈도우 PC에서 용량을 차지하지만 탐색기에는 안 보이는 것을 찾아, 지워도 되는 것만 이유와 함께 보여주는 무료 앱."},
+ {"@type":"WebSite","@id":"https://cleanmate-henna.vercel.app/#site",
+  "url":"https://cleanmate-henna.vercel.app/","name":"테라클린",
+  "inLanguage":"ko-KR","publisher":{"@id":"https://cleanmate-henna.vercel.app/#org"}},
+ {"@type":"SoftwareApplication","@id":"https://cleanmate-henna.vercel.app/#app",
+  "name":"테라클린","applicationCategory":"UtilitiesApplication",
+  "operatingSystem":"Windows 10, Windows 11","inLanguage":"ko-KR",
+  "url":"https://cleanmate-henna.vercel.app/",
+  "publisher":{"@id":"https://cleanmate-henna.vercel.app/#org"},
+  "offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"},
+  "featureList":["숨은 공간 찾기(최대절전·가상 메모리·시스템 복원)","시작프로그램 정리","안 쓴 프로그램 찾기","같은 파일 합치기","다른 드라이브로 옮기기","되돌리기"],
+  "description":"다 지웠는데도 용량이 안 주는 이유를 찾아, 지워도 되는 것만 이유와 함께 보여줍니다. 파일이 기기를 떠나지 않습니다."},
+ {"@type":"FAQPage","@id":"https://cleanmate-henna.vercel.app/#faq","mainEntity":[
+  {"@type":"Question","name":"다 지웠는데 왜 용량이 그대로인가요?",
+   "acceptedAnswer":{"@type":"Answer","text":"정작 자리를 차지하는 것이 탐색기에 안 보이기 때문입니다. 최대절전 파일·가상 메모리·시스템 복원 지점은 파일 목록에 안 나오거나 크기가 0으로 보입니다. 실측한 PC에서 이렇게 숨어 있던 용량이 40.7GB였습니다."}},
+  {"@type":"Question","name":"파일이 서버로 올라가나요?",
+   "acceptedAnswer":{"@type":"Answer","text":"아니요. 전부 이 PC 안에서만 처리합니다. 파일 이름도 내용도 밖으로 나가지 않습니다."}},
+  {"@type":"Question","name":"유료인가요?",
+   "acceptedAnswer":{"@type":"Answer","text":"무료입니다."}},
+  {"@type":"Question","name":"잘못 지우면 되돌릴 수 있나요?",
+   "acceptedAnswer":{"@type":"Answer","text":"되돌릴 수 있는 것만 저희가 실행합니다. 되돌릴 수 없는 것은 그렇다고 먼저 말하고, 사용자가 직접 확인한 뒤에만 진행합니다."}}]}
+]}
+</script>
 <style>
   /* ══════════════════════════════════════════════════════════════
      테라클린 랜딩 — 앱과 같은 디자인 시스템의 '어두운 판'
@@ -221,7 +264,7 @@
   #sheet .go{margin-top:var(--s-2)}
 
   /* ── 히어로 ─────────────────────────────────────────────────── */
-  .hero{position:relative;padding:var(--s-9) 0 var(--s-7);text-align:center;isolation:isolate}
+  .hero{position:relative;padding:var(--s-9) 0 var(--s-7);text-align:center;isolation:isolate;overflow:clip}
   .hero .aurora{position:absolute;inset:-24% -10% auto -10%;height:620px;z-index:-1;
     background:radial-gradient(44% 40% at 30% 16%,rgba(55,214,203,.18),transparent 70%),
                radial-gradient(40% 36% at 68% 28%,rgba(79,187,242,.15),transparent 70%),
@@ -640,6 +683,21 @@
   /* 기능 카드 안에 들어가는 축소본 */
   .card .shot{margin-top:20px}
   .card.wide .shot{margin-top:0}
+  .service-art{display:block;width:100%;height:auto;aspect-ratio:1;object-fit:cover;border-radius:18px;margin:0 0 24px;background:#e8f5f1}
+  .contact-art{display:block;width:220px;max-width:100%;height:auto;border-radius:20px;margin-top:24px}
+  .s-dashboard{display:flex;gap:2em;align-items:center;text-align:left}
+  .s-preview-layout{display:flex}.s-preview-layout .s-main{flex:1;min-width:0}
+  .s-preview-side{width:10.5em;flex:none;background:var(--s-surface);padding:1.4em 1em;border-right:1px solid var(--s-line);text-align:left}
+  .s-preview-side .s-nav{display:flex;flex-direction:column;gap:.8em;margin-top:1.6em}.s-preview-side .s-nav span{padding:.5em .6em;border-radius:.4em}
+  @media(max-width:600px){.s-preview-layout{display:block}.s-preview-side{width:100%;padding:.8em 1em;border-right:0;border-bottom:1px solid var(--s-line)}.s-preview-side .s-nav{flex-direction:row;gap:.4em;margin-top:.6em;overflow:hidden;white-space:nowrap}}
+  .s-disk{flex:none;width:9em;height:9em;border-radius:50%;background:conic-gradient(#0b7d82 79%,#e3e9eb 0);display:grid;place-items:center}
+  .s-disk-in{width:7.3em;height:7.3em;border-radius:50%;background:var(--s-surface);display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .s-disk-in b{font-size:2.3em;color:var(--s-acc)}.s-disk-in span{font-size:.9em;color:var(--s-ink-2)}
+  .s-dashboard-copy{flex:1;min-width:0}.s-dashboard-copy h4{font-size:1.4em;margin:0 0 .8em}
+  .s-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:.7em}.s-metrics>div{background:var(--s-surface-2);border-radius:.6em;padding:.8em}
+  .s-metrics span{display:block;color:var(--s-ink-2);font-size:.8em}.s-metrics b{display:block;font-size:1.5em;margin-top:.35em}.s-metrics>div:first-child{background:var(--s-acc-soft);color:var(--s-acc)}
+  .s-dashboard .s-one{margin:1em 0 0;text-align:center}.s-dashboard .s-hcap{font-size:.9em;line-height:1.6;margin-top:.8em}
+  @media(max-width:600px){.s-dashboard{gap:1em;align-items:flex-start}.s-disk{width:6em;height:6em}.s-disk-in{width:4.8em;height:4.8em}.s-disk-in b{font-size:1.6em}.s-metrics{gap:.35em}.s-metrics>div{padding:.6em .4em}.s-metrics b{font-size:1.15em}.service-art{max-height:280px;object-fit:contain}.contact-art{width:180px}}
 </style>
 </head>
 <body>
@@ -657,6 +715,7 @@
       <a href="#screens">화면</a>
       <a href="#compare">비교</a>
       <a href="#roadmap">로드맵</a>
+      <a href="/guide/">정리 가이드</a>
       <a href="#contact">문의</a>
     </nav>
     <div class="sp"></div>
@@ -701,24 +760,31 @@
 
     <!-- 앱 화면 — /app.html(데스크톱 앱 프론트엔드)의 '홈' 탭 재현 -->
     <div class="shotwrap reveal">
-      <div class="shot" role="img" aria-label="테라클린 앱 홈 화면: 이 폴더에서 정리 가능 14.6GB(지금 즉시 2.1GB, 물어보면 12.5GB). 확신도 3-존 막대 — 존 A 안전 2.1GB, 존 B 애매 12.5GB, 존 C 잠금 41.8GB.">
+      <div class="shot" role="img" aria-label="앱 홈 화면 예시. 디스크 사용 중 79%, 남은 공간 105GB, 전체 500GB. 정리 후보 14.6GB 중 안전 2.1GB, 확인 필요 12.5GB. 보호 대상 41.8GB. 수치는 설명용 예시입니다.">
         <div class="s-chrome" aria-hidden="true">
           <span class="ic"><svg class="mkv" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22.72 12.16L12.8 12.16M12.8 12.16L12.8 51.84M12.8 51.84L22.72 51.84M41.28 12.16L51.2 12.16M51.2 12.16L51.2 51.84M51.2 51.84L41.28 51.84" stroke-width="6.4"/><path d="M25.28 24.32L38.72 24.32M32 24.32L32 41.28" stroke-width="7.68"/></svg></span><span class="nm">테라클린</span>
           <span class="wb"><span>─</span><span>▢</span><span>✕</span></span>
         </div>
         <div aria-hidden="true">
-          <div class="s-top">
+          <div class="s-preview-layout">
+          <div class="s-preview-side">
             <span class="s-brand">테라클린<i>.</i></span>
             <span class="s-nav">
-              <span class="on">홈</span><span>숨은 공간</span><span>안 쓴 프로그램</span><span>드라이브 옮기기</span><span>되돌리기</span>
+              <span class="on">홈</span><span>숨은 공간</span><span>시작프로그램</span><span>안 쓴 프로그램</span><span>같은 파일</span><span>드라이브 옮기기</span><span>되돌리기</span><span>생활 정리</span>
             </span>
           </div>
           <div class="s-main">
-            <div class="s-card s-hero">
-              <div class="s-big">14.6GB</div>
-              <div class="s-hcap">이 폴더에서 <b>정리 가능</b> · 지금 즉시 2.1GB + 물어보면 12.5GB</div>
+            <div class="s-card">
+              <div class="s-dashboard">
+                <div class="s-disk"><div class="s-disk-in"><b>79%</b><span>사용 중</span></div></div>
+                <div class="s-dashboard-copy">
+                  <h4>디스크 상태를 한눈에</h4>
+                  <div class="s-metrics"><div><span>정리 후보</span><b>14.6GB</b></div><div><span>남은 공간</span><b>105GB</b></div><div><span>전체 용량</span><b>500GB</b></div></div>
+                  <div class="s-hcap">안전하게 정리할 수 있는 2.1GB · 확인이 필요한 12.5GB</div>
               <span class="s-one">원클릭 최적화<span class="s">확실한 건 알아서 · 애매한 건 모아서 보여드려요</span></span>
               <span class="s-sub">다른 폴더 고르기</span>
+                </div>
+              </div>
               <p class="s-priv"><span class="d">●</span> 파일은 <b>기기를 한 바이트도 떠나지 않습니다.</b> 서버도 업로드도 없어요.</p>
               <div class="s-status">115,165개 · 56.4GB · 40,120ms</div>
             </div>
@@ -741,7 +807,8 @@
           </div>
         </div>
       </div>
-      <p class="shotcap">실제 앱 화면입니다. 브라우저에서 그대로 눌러볼 수 있어요.</p>
+      </div>
+      <p class="shotcap">현재 앱 구성을 재현한 화면 예시입니다. 용량은 PC마다 달라집니다. <a href="/app.html">직접 체험하기 →</a></p>
     </div>
   </div>
 </section>
@@ -749,7 +816,7 @@
 <!-- 스탯 밴드 — 전부 실측값. 못 읽은 칸은 아예 안 그린다. -->
 <div class="band">
   <div class="wrap stats">
-    <div class="stat reveal"><div class="n grad">14.6<span class="u">GB</span></div><div class="l">지워도 되는 것으로<br>확인된 용량</div></div>
+    <div class="stat reveal"><div class="n grad">14.6<span class="u">GB</span></div><div class="l">예시 정리 후보<br>안전 2.1GB + 확인 필요 12.5GB</div></div>
     <div class="stat reveal"><div class="n grad">3~4<span class="u">개</span></div><div class="l">정리 전<br>묻는 질문 수</div></div>
     <div class="stat reveal"><div class="n grad">41.8<span class="u">GB</span></div><div class="l">건드리면 안 돼서<br>잠근 용량</div></div>
     <!-- 다운로드 수는 서버(/api/public-stats)가 GitHub 릴리스에서 실측해 준다.
@@ -838,7 +905,7 @@
     <p class="ssub reveal">다른 도구는 “정리 완료”만 알려줍니다. 우리는 <b>지울 것을 먼저 보여주고</b> 지웁니다.</p>
     <div class="del-hero edge reveal">
       <div class="big">14.6GB</div>
-      <div class="cap">이 PC에서 지워도 되는 것으로 확인된 용량 — 하나하나 이유가 있습니다</div>
+      <div class="cap">정리 후보 예시 — 안전하게 정리할 2.1GB와 확인이 필요한 12.5GB. 하나하나 이유가 있습니다.</div>
       <div class="rowlist">
         <div class="krow del"><span class="mk" aria-hidden="true">✓</span>
           <span class="nm">브라우저·앱 캐시<span class="why">지워도 다시 생깁니다. 손실이 없어 묻지 않고 정리합니다.</span></span>
@@ -1216,18 +1283,21 @@
 
     <div class="steps">
       <div class="step now reveal">
+        <img class="service-art" src="/illustrations/pc-640.webp" srcset="/illustrations/pc-320.webp 320w, /illustrations/pc-640.webp 640w" sizes="(max-width: 720px) 280px, 340px" width="640" height="640" alt="컴퓨터 속 폴더를 가지런히 정리한 모습" loading="lazy" decoding="async" />
         <span class="sn">STEP 1</span>
         <span class="badge on">지금 이용 가능</span>
         <h3>PC 정리 프로그램</h3>
         <p>지금 받아서 쓸 수 있고, 앞으로도 무료입니다.</p>
       </div>
       <div class="step reveal">
+        <img class="service-art" src="/illustrations/home-640.webp" srcset="/illustrations/home-320.webp 320w, /illustrations/home-640.webp 640w" sizes="(max-width: 720px) 280px, 340px" width="640" height="640" alt="청소 도구와 깨끗하게 정돈된 거실" loading="lazy" decoding="async" />
         <span class="sn">STEP 2</span>
         <span class="badge soon">준비 중</span>
         <h3>집 청소 연결</h3>
         <p>검증된 청소 업체를 필요한 만큼만 연결합니다.</p>
       </div>
       <div class="step reveal">
+        <img class="service-art" src="/illustrations/storage-640.webp" srcset="/illustrations/storage-320.webp 320w, /illustrations/storage-640.webp 640w" sizes="(max-width: 720px) 280px, 340px" width="640" height="640" alt="수건과 책을 용도별로 정돈한 수납장" loading="lazy" decoding="async" />
         <span class="sn">STEP 3</span>
         <span class="badge soon">준비 중</span>
         <h3>정리정돈 전문가</h3>
@@ -1249,6 +1319,7 @@
         <div>
           <span class="kick"><span class="en">Contact</span> · 문의</span>
           <h2 style="margin-top:var(--s-3)">함께할 청소·정리 업체를 찾습니다</h2>
+          <img class="contact-art" src="/illustrations/home-320.webp" width="320" height="320" alt="" loading="lazy" decoding="async" />
           <p class="cl">"정리를 해야겠다"고 마음먹은 사람들이 여기 모입니다.
             그 사람들이 다음에 필요해지는 게 <b>사람 손</b>이에요.</p>
           <ul class="cpoints">

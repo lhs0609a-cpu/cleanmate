@@ -41,6 +41,27 @@ test('제안 카드는 좁아지면 접힌다', () => {
   assert.match(pcard, /min-width:0/, '카드가 안 줄어든다')
 })
 
+test('★ 버튼 자리에 문장이 들어오면 한 줄을 통째로 쓴다', () => {
+  /* 실물에서 나온 그림: 다 지운 카드에서 "52.0 / GB", "MusicF / actory"처럼
+     글자가 두세 자씩 끊겨 나왔다. 글꼴이 깨진 게 아니라 칸이 없어진 것이다 —
+     버튼 자리(.pcard-act)에 flex:none이 걸려 있는데 거기에 한 문장이 들어오면,
+     그 문장이 펼친 길이 그대로 자리를 먹고 옆칸이 90px로 눌린다.
+     '줄지 마라'는 버튼을 위한 규칙이지 문장을 위한 규칙이 아니다. */
+  const s = css()
+  const app = readFileSync(join(root, 'web/src/app.ts'), 'utf8')
+
+  assert.match(
+    s,
+    /\.pcard-act\.pcard-act-wide\{[^}]*flex:1 1 100%/,
+    '결과가 들어와도 버튼 폭에 갇힌다 — 옆칸이 눌려 글자가 한 자씩 떨어진다'
+  )
+  assert.match(
+    app,
+    /classList\.add\('pcard-act-wide'\)/,
+    '규칙만 있고 붙이는 쪽이 없다 — 화면은 그대로 터진다'
+  )
+})
+
 test('긴 경로 목록은 제 상자 안에서 스크롤한다', () => {
   const s = css()
   // 밖으로 미는 대신 자기 안에서 스크롤하면 나머지 화면이 멀쩡하다.

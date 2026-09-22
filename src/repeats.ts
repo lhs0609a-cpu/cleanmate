@@ -255,7 +255,7 @@ export function findRepeats(
         ageRank: e.ageRank,
         role: (shared ? 'shared' : 'unique') as RepeatRole,
         because: shared
-          ? `${e.present}개 폴더에 **크기까지 같은 것**이 들어 있어요 — 어딘가에서 복사돼 들어온 것으로 보입니다. 한 벌은 남습니다.`
+          ? `${e.present}개 폴더에 크기까지 같은 것이 들어 있어요 — 어딘가에서 복사돼 들어온 것으로 보입니다. 한 벌은 남습니다.`
           : `이 폴더에만 있는 것으로 보여요. 지우면 되살릴 방법이 없습니다.`,
       }
     })

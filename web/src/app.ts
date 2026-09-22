@@ -12,6 +12,8 @@
 import { isSupported, pickDirectory, scanHandle } from './browser-scanner.ts'
 import { classifyOne, isAutoEligible } from '../../src/classify.ts'
 import { run as runEngine, fmtBytes } from '../../src/engine.ts'
+/* 그림은 한 곳에서만 그린다 — 그림 문법과 그리는 규칙은 figures.ts 머리말에 있다. */
+import { figureSvg, withoutCovered } from './figures.ts'
 import { fmtDuration } from '../../src/progress.ts'
 import { compareVersions, verifyIntegrity, normalizeSha256 } from '../../src/updater.ts'
 import {
@@ -100,6 +102,38 @@ async function engine(command: string, args: string[] = [], job?: string): Promi
   const res = await TAURI.core.invoke('run_engine', { command, args, job: job ?? null })
   if (!res || res.ok === false) throw new Error(res?.error || '엔진 오류')
   return res.data
+}
+
+/* ── 미리 걸어두기 ─────────────────────────────────────────────
+   ★ 왜 생겼나 (실물에서 본 것)
+     조사를 **메뉴를 누른 뒤에** 시작했다. 그래서 화면마다 처음 열 때 빈 막대를
+     보며 기다려야 했고, 실측 화면에서 '숨은 공간'이 55초를 버텼다.
+
+     그런데 이 조사들은 사용자가 무엇을 누를지와 아무 상관이 없다. 앱이 떠 있는
+     동안 언제든 할 수 있는 일이고, 읽기만 해서 아무것도 안 바꾼다. 미리 걸어두면
+     누를 때 이미 와 있다 — 기다리는 시간을 줄이는 게 아니라 **옮기는** 것이다.
+
+   ★ 한 번 쓰면 버린다. 두 번째부터는 새로 잰다 — 화면을 다시 여는 건 대개
+     '방금 바꾼 게 반영됐나' 보려는 것이다. 그때 데워둔 옛 값을 내밀면 안 바뀐
+     것처럼 보인다. (휴지통을 비운 뒤 loadHidden을 다시 부르는 자리가 그렇다) */
+const warmed = new Map<string, Promise<any>>()
+
+/** 지금 걸어둔다. 결과를 기다리는 사람은 나중에 온다. */
+function warmUp(cmd: string): void {
+  if (!inTauri || warmed.has(cmd)) return
+  const p = engine(cmd)
+  /* 아무도 안 기다리는 사이에 실패하면 '처리 안 된 거부'로 창에 뜬다.
+     여기서 한 번 받아만 둔다 — 진짜 오류는 takeWarm이 같은 프로미스를
+     돌려주므로 화면 쪽에서 그대로 다시 던져진다. 삼키는 게 아니다. */
+  p.catch(() => {})
+  warmed.set(cmd, p)
+}
+
+/** 데워둔 게 있으면 그걸, 없으면 지금 부른다. 어느 쪽이든 쓰고 나면 버린다. */
+function takeWarm(cmd: string): Promise<any> {
+  const p = warmed.get(cmd)
+  warmed.delete(cmd)
+  return p ?? engine(cmd)
 }
 
 /* ── 문의 창구 ────────────────────────────────────────────────
@@ -596,6 +630,13 @@ async function runCard(btn: HTMLButtonElement, card: any) {
     const r = await engine('proposal-apply', [card.id])
     const left = leftoverNote(r.leftover)
     const skipped = r.failed?.length ? `${r.failed.length}개는 사용 중이라 건너뛰었어요. ` : ''
+    /* ★ 문장이 붙는 경우에는 이 칸을 한 줄 통째로 내려보낸다.
+       이 자리는 원래 버튼 자리라 '줄지 마라'(flex:none)가 걸려 있다. 버튼에는
+       맞는 규칙인데, 여기에 한 문장이 들어오면 그 문장이 펼친 길이 그대로
+       자리를 먹고 왼쪽 본문이 90px로 눌린다 — 실물에서 "52.0 / GB",
+       "MusicF / actory"처럼 글자가 두세 자씩 끊겨 나왔다.
+       ✓ 한 줄뿐이면 짧으니 버튼 자리에 그대로 둔다. (web/app.html .pcard-act) */
+    if (skipped || left) slot.classList.add('pcard-act-wide')
     /* 완료 표시와 남은 이야기를 **한 번에** 넣는다. 덮어쓴 뒤에 appendChild를
        부르면 붙일 자리가 이미 사라지고 없다 — 위에서 터졌던 그 자리다. */
     slot.innerHTML =
@@ -2018,6 +2059,7 @@ function startSweepTicker(): () => void {
  */
 function doneBlock(title: string, lines: (string | false | undefined)[]): string {
   return `<div class="pick-done">
+    <img src="/illustrations/state-done.svg" width="64" height="48" alt="" />
     <div class="pick-done-h">✓ ${title}</div>
     ${lines.filter(Boolean).map((l) => `<div class="t-caption">${l}</div>`).join('')}
   </div>`
@@ -2043,7 +2085,7 @@ async function loadHidden() {
   const card = $('hiber-card')
   const stop = startPanel(card, 'probe', '이 PC를 확인하는 중')
   try {
-    const data = await engine('probe')
+    const data = await takeWarm('probe')
     stop()
     if (!data.findings.length) { card.innerHTML = `<div class="empty"><svg class="ic"><use href="#i-check"/></svg><b>회수할 숨은 공간이 없어요</b><span>최대절전 파일·휴지통·업데이트가 남긴 파일 모두 깔끔합니다.</span></div>`; return }
     card.innerHTML = data.findings.map((f: any, i: number) => explainCard(f, i)).join('')
@@ -2077,8 +2119,13 @@ function explainCard(f: any, index: number): string {
   const li = (arr: string[]) => `<ul>${arr.map((x) => `<li>${esc(x.replace(/^★\s*/, ''))}</li>`).join('')}</ul>`
   const blk = (h: string, body: string) => `<div><span class="h">${h}</span>${body}</div>`
 
-  const risks = (e.ifRemoved ?? []).filter((x: string) => x.includes('★'))
-  const rest = (e.ifRemoved ?? []).filter((x: string) => !x.includes('★'))
+  /* 그림이 대신하는 줄은 화면에서 뺀다.
+     ★ 데이터에서 지우는 게 아니다 — 터미널과 화면 낭독기에는 그림이 없다.
+       엔진은 문장을 그대로 갖고 있고(cli-probe가 그걸 쓴다), 그림의 alt에도
+       같은 말이 들어간다. 여기서만 중복이 안 되게 빼는 것이다. */
+  const shown = withoutCovered(e.ifRemoved, f.figure)
+  const risks = shown.filter((x: string) => x.includes('★'))
+  const rest = shown.filter((x: string) => !x.includes('★'))
 
   /* 실행 줄. 항목마다 우리가 할 수 있는 게 다르다 —
      되돌리는 명령이 있으면 우리가 실행(SystemAction),
@@ -2107,6 +2154,7 @@ function explainCard(f: any, index: number): string {
         f.bytes ? gb(f.bytes) : '확인 필요'
       }</span>
       <div class="fact-t">${esc(f.title)}</div>
+      ${figureSvg(f.figure)}
       <p class="fact-p">${esc(e.what)}</p>
       <p class="fact-p">${esc(e.why)}</p>
       ${risks.length ? `<div class="fact-risk">${li(risks)}</div>` : ''}
@@ -3231,7 +3279,7 @@ async function loadStartup(quiet = false) {
   // quiet일 때는 이전 목록을 그대로 둔다(위 머리말) — 진행 표시도 띄우지 않는다.
   const stop = quiet ? () => {} : startPanel(host, 'startup', '시작프로그램을 읽는 중')
   try {
-    const d = await engine('startup')
+    const d = await takeWarm('startup')
     stop()
     const entries: any[] = d.entries
 
@@ -3286,11 +3334,27 @@ async function loadStartup(quiet = false) {
     const others = entries.filter((e) => !e.verdict.suggestible && e.enabled)
     const off = entries.filter((e) => !e.enabled)
 
+    /* 머리말이 "N개 중 M개를 제안"이라고만 하면 나머지가 뭔지 알 수 없다.
+       한 줄 막대로 나누면 "제안 안 한 것들은 우리가 판단을 못 한 것"이 한눈에 보인다.
+       ★ 청록(제안)은 아직 안 한 일이라 점선이다 — 그림 문법이 그대로 통한다. */
+    const headFig = figureSvg({
+      kind: 'split',
+      parts: [
+        { label: '끄자고 제안', count: suggest.length, tone: 'act' as const },
+        { label: '판단 못 함', count: others.length, tone: 'hold' as const },
+        ...(off.length ? [{ label: '이미 꺼둠', count: off.length, tone: 'off' as const }] : []),
+      ],
+      alt: `켜져 있는 ${d.enabledCount}개 중 ${suggest.length}개를 끄자고 제안하고, `
+        + `${others.length}개는 무슨 일을 하는지 몰라 제안하지 않습니다.`
+        + (off.length ? ` ${off.length}개는 이미 꺼두셨어요.` : ''),
+    })
+
     host.innerHTML = `
       <div style="display:flex;align-items:baseline;gap:10px;margin:14px 0 4px;flex-wrap:wrap">
         <h2 class="t-title" style="font-weight:var(--w-num)">켜져 있는 ${d.enabledCount}개 중 ${suggest.length}개를 제안</h2>
         <span class="t-small" style="margin-left:auto;color:var(--muted)">전체 ${entries.length}개</span>
       </div>
+      <div class="head-fig">${headFig}</div>
       ${suggest.length ? suggest.map(row).join('') : '<div class="empty">지금은 끄자고 권할 만한 항목이 없어요.</div>'}
 
       <details style="margin-top:18px">
@@ -3409,15 +3473,46 @@ async function loadPrograms() {
   const host = $('programs-body')
   const stop = startPanel(host, 'programs', '설치된 프로그램과 실행 기록을 읽는 중')
   try {
-    const d = await engine('programs')
+    const d = await takeWarm('programs')
     stop()
+    /* 이 화면에서 사람이 의심하는 건 제안이 아니라 근거다 — "정말 안 썼나?"
+       근거가 시간이면 시간을 그려야 한다. 기준선을 같이 그리는 이유도 그것이다:
+       왜 이것들만 골랐는지가 그림 안에서 답이 된다.
+       ★ 기록이 없는 것은 축에 안 올린다. '아주 오래전'과 '모름'은 다른 말이고,
+         축의 왼쪽 끝은 아주 오래전이라는 뜻이다. 수로만 따로 적는다. */
+    const days: number[] = d.suggestions
+      .map((p: any) => p.unusedDays)
+      .filter((n: any) => typeof n === 'number')
+    const noRecord = d.excluded.filter((x: any) => /실행 기록/.test(x.reason)).length
+    const span = Math.max(d.minUnusedDays * 2, ...days, 1)
+    const months = (n: number) => Math.floor(n / 30)
+    const headFig = days.length
+      ? figureSvg({
+          kind: 'timeline',
+          spanDays: span,
+          marks: d.suggestions
+            .filter((p: any) => typeof p.unusedDays === 'number')
+            .map((p: any) => ({ label: `${p.name} · ${months(p.unusedDays)}개월째`, daysAgo: p.unusedDays })),
+          thresholdDays: d.minUnusedDays,
+          thresholdLabel: `${months(d.minUnusedDays)}개월`,
+          nowLabel: '오늘',
+          farLabel: `${months(span)}개월 전`,
+          unknownCount: noRecord,
+          unknownLabel: '실행 기록 없음',
+          alt:
+            `제거 후보 ${days.length}개는 모두 ${months(d.minUnusedDays)}개월 넘게 실행하지 않으신 것들이에요. ` +
+            `가장 오래된 것은 ${months(Math.max(...days))}개월째입니다.` +
+            (noRecord ? ` 실행 기록을 못 찾은 ${noRecord}개는 판단하지 않아 여기 없습니다.` : ''),
+        })
+      : ''
+
     const head = `<div style="display:flex;align-items:baseline;gap:10px;margin:14px 0 10px">
         <h2 class="t-title" style="font-weight:var(--w-num)">제거 후보 ${d.suggestions.length}개 · ${fmtBytes(d.suggestibleBytes)}</h2>
         <span class="t-small" style="margin-left:auto;color:var(--muted)">설치 항목 ${d.totalScanned}개 중</span>
-      </div>`
+      </div>${headFig ? `<div class="head-fig">${headFig}</div>` : ''}`
 
     if (!d.suggestions.length) {
-      host.innerHTML = head + `<div class="empty"><svg class="ic"><use href="#i-box"/></svg><b>제안할 프로그램이 없어요</b><span>실행 기록으로 확인되는 것만 제안합니다. 기록이 없으면 넘겨짚지 않아요.</span></div>`
+      host.innerHTML = head + `<div class="empty"><img class="state-art" src="/illustrations/state-empty.svg" width="120" height="90" alt="" /><b>제안할 프로그램이 없어요</b><span>실행 기록으로 확인되는 것만 제안합니다. 기록이 없으면 넘겨짚지 않아요.</span></div>`
         + excludedBlock(d)
       return
     }
@@ -3915,6 +4010,18 @@ function wireDupRoots(host: HTMLElement, roots: { label: string; path: string }[
  * 그 묶음을 건너뛰면 된다 — 아무것도 안 하는 게 언제나 가능해야 한다.
  */
 function dupGroupHtml(g: any): string {
+  /* 이 화면에서 가장 자주 다시 읽히는 문장이 "한 벌은 남습니다"다.
+     그림이면 다시 안 읽어도 된다 — 실선 한 장이 남는 것, 점선들이 지우는 것. */
+  const fig = figureSvg({
+    kind: 'copies',
+    total: g.copies.length + 1,
+    keep: 1,
+    gone: g.copies.length,
+    freesBytes: g.wastedBytes,
+    keepLabel: '남습니다',
+    alt: `같은 것이 ${g.copies.length + 1}벌 있고, 그중 한 벌은 남습니다. `
+      + `나머지 ${g.copies.length}벌 ${fmtBytes(g.wastedBytes)}를 지웁니다.`,
+  })
   return `
     <div class="pg pg-safe">
       <div class="pg-h">
@@ -3926,6 +4033,7 @@ function dupGroupHtml(g: any): string {
       <div class="pg-l pg-ok"><i>✓</i>${esc(g.keeperReason)}</div>
       ${g.isModel ? `<div class="pg-l pg-mv"><i>⇄</i>받아온 자료예요. 프로그램마다 필요할 수 있으니 <b>지우기보다 합치기</b>가 안전합니다 — 경로는 다 살아 있고 용량만 한 벌치를 씁니다.</div>` : ''}
       <div class="bd-path" style="margin-top:2px">${esc(g.keeper.path)}</div>
+      ${fig}
       <div class="pg-files">${g.copies.map((c: any) => `
         <label class="pick-row">
           <input type="checkbox" data-dup="${esc(c.path)}">
@@ -4063,11 +4171,30 @@ async function planMove(src: string, dest: string) {
         d.refusedCount ? ` 안전을 위해 제외한 항목이 ${d.refusedCount}개 있습니다.` : ''}</div>`
       return
     }
+    /* "12.4GB를 옮깁니다"는 옮기는 양이지 **이 드라이브가 얼마나 숨 쉬게 되는지**가 아니다.
+       사람이 이 화면에 온 이유는 뒤쪽이다. 같은 자로 그린 막대 두 줄이면 그게 보인다.
+       ★ 디스크를 못 읽었으면(lastDisk가 없으면) 안 그린다 — 여유를 지어내지 않는다. */
+    const planFig = lastDisk
+      ? figureSvg({
+          kind: 'before-after',
+          totalBytes: lastDisk.total,
+          keepBytes: lastDisk.total - lastDisk.free - d.bytes,
+          freesBytes: lastDisk.free + d.bytes,
+          beforeLabel: `${lastDisk.drive.replace(/\$/, '')} 지금 — 여유 ${fmtBytes(lastDisk.free)}`,
+          afterLabel: '옮긴 뒤',
+          freesNote: `여유 (지금보다 ${fmtBytes(d.bytes)} 더)`,
+          alt:
+            `${lastDisk.drive.replace(/\$/, '')} 여유가 지금 ${fmtBytes(lastDisk.free)}인데, ` +
+            `${fmtBytes(d.bytes)}를 옮기면 ${fmtBytes(lastDisk.free + d.bytes)}가 됩니다. 지우는 게 아니라 자리만 옮깁니다.`,
+        })
+      : ''
+
     slot.innerHTML = `<div class="card" style="margin-top:12px">
       <div style="display:flex;align-items:baseline;gap:10px">
         <h2 class="t-title" style="font-weight:var(--w-num)">${d.count.toLocaleString()}개 · ${fmtBytes(d.bytes)}</h2>
         <span class="t-small" style="margin-left:auto;color:var(--muted)">→ ${esc(d.destFolder)}</span>
       </div>
+      ${planFig}
       <div class="t-small" style="color:var(--muted);margin-top:4px">지우지 않습니다. 옮긴 기록이 남아 언제든 되돌릴 수 있어요.</div>
       ${d.items.slice(0, 30).map((it: any) => `<div class="row">
         <div class="row-main">
@@ -4138,7 +4265,7 @@ async function loadQuar() {
       const moved = await renderMovedUndo(host)
       const merged = await renderMergedUndo(host)
       if (!moved && !merged) {
-        host.innerHTML = `<div class="card">${purgeNote}<div class="empty"><svg class="ic"><use href="#i-undo"/></svg><b>되돌릴 것이 없어요</b><span>지운 것은 되돌릴 수 없습니다. 다른 드라이브로 옮기거나 하나로 합친 것이 여기 올라와요.</span></div></div>`
+        host.innerHTML = `<div class="card">${purgeNote}<div class="empty"><img class="state-art" src="/illustrations/state-restore.svg" width="120" height="90" alt="" /><b>되돌릴 것이 없어요</b><span>지운 것은 되돌릴 수 없습니다. 다른 드라이브로 옮기거나 하나로 합친 것이 여기 올라와요.</span></div></div>`
       }
       return
     }
@@ -4152,10 +4279,21 @@ async function loadQuar() {
         <button class="btn danger" id="purge-all">지금 지우기</button>
         <button class="btn ghost" id="restore-all" style="margin-left:auto">전부 되돌리기</button>
       </div>
+      ${figureSvg({
+        kind: 'before-after',
+        totalBytes: data.totalBytes,
+        keepBytes: 0,
+        freesBytes: data.totalBytes,
+        beforeLabel: '지금 — 원래 자리에는 없는데 용량은 그대로',
+        afterLabel: "'지금 지우기'를 누르면",
+        freesNote: '그때 빔',
+        alt:
+          `${fmtBytes(data.totalBytes)}가 원래 자리에서는 빠졌지만 용량은 아직 안 빴습니다. ` +
+          `'지금 지우기'를 눌러야 그때 빕니다.`,
+      })}
       <div class="t-small" style="color:var(--muted);margin:-4px 0 12px">
         지우려 했는데 <b>다른 프로그램이 쓰고 있어서</b> 못 지운 것들이에요(옛 버전이 보관해둔 것도 여기 있습니다).
-        원래 자리에는 없지만 <b>용량도 아직 안 빴습니다</b> — 그 프로그램을 닫고 '지금 지우기'를 누르거나,
-        되돌려서 원래 자리로 돌려놓으세요.
+        그 프로그램을 닫고 '지금 지우기'를 누르거나, 되돌려서 원래 자리로 돌려놓으세요.
       </div>
       ${data.items.slice(0, 50).map((it: any) => `<div class="row">
           <div class="row-main">
@@ -4505,6 +4643,11 @@ if (inTauri) {
   // 창을 닫으면 트레이로 내려간다. 어디로 갔는지 모르면 그건 사라진 것이다.
   ;($('tray-note') as HTMLElement).hidden = false
   refreshDisk(true)
+  /* 홈 화면이 먼저 그려지고 디스크 상태가 뜬 다음에 건다 — 조사가 첫 화면을
+     늦추면 빠르게 만들려다 느리게 만든 꼴이다. 셋을 같이 거는 건 서로 기다릴
+     이유가 없어서다(엔진이 명령마다 따로 돈다). 사용자가 아무 메뉴도 안 누르면
+     결과는 그냥 안 쓰이고 버려진다 — 읽기만 하므로 버려도 아무 일도 안 난다. */
+  setTimeout(() => { for (const cmd of ['probe', 'startup', 'programs']) warmUp(cmd) }, 400)
   // ★ 트레이에서 창을 다시 꺼냈을 때도 읽는다. 그 사이 며칠이 지났을 수 있다.
   //   (같은 이유로 업데이트 확인도 6시간마다 돈다 — 아래)
   window.addEventListener('focus', () => refreshDisk())

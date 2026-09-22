@@ -445,6 +445,13 @@ export interface ProgramsReport {
   excluded: { name: string; reason: string }[]
   totalScanned: number
   suggestibleBytes: number
+  /**
+   * 며칠 안 썼으면 제안하는가 — 이 판단의 기준선.
+   *
+   * ★ 화면이 이 값을 하드코딩하면 안 된다. 기준을 바꾸는 순간 화면이 거짓말을
+   *   하기 시작하고(그림의 기준선이 실제 기준과 달라진다), 아무도 못 알아챈다.
+   */
+  minUnusedDays: number
 }
 
 /** UserAssist에서 실행 기록을 읽는다. 실패하면 빈 배열 — 그러면 아무것도 제안되지 않는다. */
@@ -559,7 +566,7 @@ export async function probePrograms(
   }
 
   suggestions.sort((a, b) => b.estimatedBytes - a.estimatedBytes)
-  return { suggestions, excluded, totalScanned: installed.length, suggestibleBytes }
+  return { suggestions, excluded, totalScanned: installed.length, suggestibleBytes, minUnusedDays }
 }
 
 /**

@@ -23,6 +23,7 @@ import {
   type MonthSummary,
 } from '../../src/content/room.ts'
 import type { HabitStats } from '../../src/content/tidy.ts'
+import { roomArt } from './room-art.ts'
 
 /** 화면에 넣기 전에 꺾쇠를 막는다. app.ts의 같은 이름 함수와 같은 규칙이다. */
 const esc = (s: string) =>
@@ -95,6 +96,7 @@ function zoneHtml(z: ZoneState): string {
       style="--f:${z.freshness.toFixed(3)}"
       aria-label="${esc(z.name)} — ${esc(line)}${z.dueCount ? `, 지금 할 수 있는 것 ${z.dueCount}개` : ''}">
     ${z.dueCount ? `<span class="zc" aria-hidden="true">${z.dueCount}</span>` : ''}
+    ${roomArt(z.id)}
     <span class="zn">${esc(z.name)}</span>
     <span class="zm">${esc(line)}</span>
     <span class="zh">${esc(z.hint)}</span>

@@ -45,6 +45,9 @@ UninstallDisplayName={#AppName}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\src-tauri\icons\icon.ico
+WizardImageFile=wizard.bmp
+WizardSmallImageFile=wizard-small.bmp
 OutputDir=..\dist-installer
 OutputBaseFilename=TeraClean-Setup-{#AppVersion}
 ; 서명은 이 파일이 아니라 CI(release.yml)가 한다 — 앱 바이너리는 iscc 전에,

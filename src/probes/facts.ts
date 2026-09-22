@@ -17,10 +17,7 @@
  *      끄면 윈도우가 파일을 지운다. powercfg를 물어볼 필요가 없다.
  */
 
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
-
-const exec = promisify(execFile)
+import { ps } from './shell.ts'
 
 export interface SystemFacts {
   ramBytes: number
@@ -68,13 +65,7 @@ export async function gatherFacts(): Promise<SystemFacts> {
     throw new Error('숨은 공간 프로브는 지금 Windows만 지원합니다. (macOS는 purgeable/APFS 스냅샷 — 기획서 17.1)')
   }
 
-  const { stdout } = await exec(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-Command', SCRIPT],
-    { windowsHide: true, maxBuffer: 1 << 20 }
-  )
-
-  const raw = JSON.parse(stdout)
+  const raw = JSON.parse(await ps(SCRIPT))
 
   // 노트북 판정은 신호 두 개를 독립적으로 본다. 하나만 믿지 않는다 —
   // 섀시 타입을 엉터리로 보고하는 메인보드가 흔하다.

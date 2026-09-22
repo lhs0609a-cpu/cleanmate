@@ -35,11 +35,8 @@
  *   이 통로는 **읽기만 한다** — 복원 지점은 여전히 우리가 안 지운다.
  */
 
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import type { Finding } from '../types.ts'
-
-const exec = promisify(execFile)
+import { ps } from './shell.ts'
 
 const GB = 1024 ** 3
 const MB = 1024 ** 2
@@ -91,11 +88,7 @@ if ($p) {
 
 export async function gatherPageFile(): Promise<PageFileFacts | null> {
   if (process.platform !== 'win32') return null
-  const { stdout } = await exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', PAGEFILE_SCRIPT], {
-    windowsHide: true,
-    maxBuffer: 1 << 20,
-  })
-  const raw = JSON.parse(stdout || '{}')
+  const raw = JSON.parse((await ps(PAGEFILE_SCRIPT)) || '{}')
   if (!raw.path || !raw.mb) return null
   return {
     path: raw.path,
@@ -138,6 +131,15 @@ export function recommendPageFile(f: PageFileFacts): { targetBytes: number; free
 }
 
 /**
+ * 이 항목에서 가장 늦게 알면 안 되는 한 마디.
+ *
+ * 한 번만 쓴다. explain에도 들어가고 그림의 replaces에도 들어가는데,
+ * 두 곳에 따로 타이핑해두면 한쪽만 고쳤을 때 그림이 안 지우는 문장이 남거나
+ * 있지도 않은 문장을 지우려 든다. 어긋날 자리를 아예 안 만든다.
+ */
+const RESTART_NOTE = '★ 줄인 크기는 재시작한 뒤에 반영됩니다. 재시작 전까지는 용량이 안 빕니다.'
+
+/**
  * 가상 메모리(pagefile.sys).
  *
  * 존 C다. 우리가 지울 수도 없고 지워서도 안 된다 — 크기를 바꾸는 건 윈도우 설정이다.
@@ -170,7 +172,7 @@ export function probePageFile(f: PageFileFacts): Finding | null {
       ],
       ifRemoved: [
         ...(rec
-          ? [`★ 줄인 크기는 **재시작한 뒤에** 반영됩니다. 재시작 전까지는 용량이 안 빕니다.`]
+          ? [RESTART_NOTE]
           : ['크기를 줄이면 그만큼 바로 빕니다. 메모리가 넉넉하면 대개 문제없어요.']),
         '★ 너무 줄이거나 없애면 메모리가 꽉 찰 때 프로그램이 갑자기 꺼질 수 있습니다. ' +
           '그래서 저희는 켠 뒤로 가장 많이 쓴 양을 근거로만 줄입니다.',
@@ -186,6 +188,24 @@ export function probePageFile(f: PageFileFacts): Finding | null {
         : '설정 창에서 언제든 다시 늘릴 수 있어요(재시작 필요).',
       ifKept: `아무 문제 없어요. ${size(f.bytes)}를 계속 쓸 뿐입니다.`,
     },
+    /* 그림 — '재시작 전까지는 안 빈다'는 시간이 걸린 조건이라 문장으로는 두 번 말해야 한다.
+       같은 자로 그린 막대 두 줄이면 한 번에 보인다. 그래서 그 문장은 화면에서 뺀다.
+       권장할 게 없으면(rec이 없으면) 그릴 '바꾼 뒤'가 없으니 그림도 없다. */
+    figure: rec
+      ? {
+          kind: 'before-after',
+          totalBytes: f.bytes,
+          keepBytes: rec.targetBytes,
+          freesBytes: rec.freesBytes,
+          beforeLabel: '지금 잡힌 크기',
+          afterLabel: '줄인 뒤',
+          freesNote: '재시작 뒤에 빔',
+          alt:
+            `지금 ${size(f.bytes)}를 잡아뒀고, ${size(rec.targetBytes)}로 줄이면 ` +
+            `나머지 ${size(rec.freesBytes)}는 재시작한 뒤에 빕니다. 재시작 전까지는 용량이 안 빕니다.`,
+          replaces: [RESTART_NOTE],
+        }
+      : undefined,
     /* ★ 우리가 실행하는 통로. 되돌리는 명령이 있어서 만들 수 있는 것이다.
        권장할 게 없으면(줄일 여지가 적거나 최고 기록을 못 읽었으면) 안 만든다 —
        할 일이 없는 버튼은 잡음이고, 근거 없는 실행은 사고다. */
@@ -271,11 +291,7 @@ export async function gatherRestore(): Promise<RestoreFacts> {
   const none: RestoreFacts = { measured: false, usedBytes: 0, allocatedBytes: 0, maxBytes: 0 }
   if (process.platform !== 'win32') return none
   try {
-    const { stdout } = await exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', VSS_SCRIPT], {
-      windowsHide: true,
-      maxBuffer: 1 << 20,
-    })
-    return parseRestore(stdout)
+    return parseRestore(await ps(VSS_SCRIPT))
   } catch {
     return none
   }
@@ -311,7 +327,7 @@ export function probeRestore(f: RestoreFacts, driveTotalBytes = 0): Finding | nu
         ? `문제가 생겼을 때 되돌아갈 지점을 저장해두는 자리예요. 지금 ${size(f.usedBytes)}를 쓰고 있고, ` +
           `${capText}.`
         : '문제가 생겼을 때 되돌아갈 지점을 저장해두는 자리예요. ' +
-          '얼마나 잡혀 있는지는 **관리자 권한이 있어야 읽을 수 있습니다.** ' +
+          '얼마나 잡혀 있는지는 관리자 권한이 있어야 읽을 수 있습니다. ' +
           '아래 “권한 확인하고 재기”를 누르시면 확인 창이 한 번 뜨고, 확인하시면 바로 재서 알려드려요. ' +
           `숨은 공간 중 가장 큰 경우가 많아요 — 수십 GB에서 100GB를 넘기도 합니다. ${capHint}`,
       why:
@@ -331,6 +347,22 @@ export function probeRestore(f: RestoreFacts, driveTotalBytes = 0): Finding | nu
         '한도만 줄이면(예: 20GB) 최근 지점은 남으면서 오래된 것만 정리됩니다.',
       ifKept: '아무 문제 없어요. 잡아둔 만큼 계속 쓸 뿐이고, 되돌릴 지점이 더 많이 남습니다.',
     },
+    /* 그림 — 못 쟀을 때만. 잰 값이 있으면 숫자가 이미 답이라 그릴 게 없다.
+       ★ 이건 글을 줄이려고 넣는 그림이 아니라 원칙을 화면에 새기는 그림이다.
+         숫자 자리가 비어 있으면 사람은 그걸 0으로 읽는다. 실측에서 여기
+         155GB가 잡혀 있는 PC가 있었다 — "없다"로 읽히면 안 되는 자리다. */
+    figure: known
+      ? undefined
+      : {
+          kind: 'unmeasured',
+          wrongTag: '안 씀',
+          wrongLabel: '0GB — 이렇게 쓰면 거짓말이 됩니다',
+          rightTag: '못 쟀음',
+          rightLabel: '관리자 권한이 있어야 읽습니다',
+          alt:
+            '얼마나 잡혀 있는지는 관리자 권한이 있어야 읽을 수 있어서 아직 못 쟀습니다. ' +
+            '0GB가 아니라 모른다는 뜻이에요 — 수십 GB에서 100GB를 넘기도 합니다.',
+        },
     /* ★ 못 쟀을 때만 낸다. "권한이 필요해서 못 쟀습니다"로 끝내지 않기 위한 통로다.
        읽기만 한다 — 복원 지점은 여전히 우리가 안 지운다(recovery: 'none'이니까). */
     measure: known

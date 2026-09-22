@@ -14,17 +14,22 @@
     "restore": "node --experimental-strip-types --no-warnings src/cli-restore.ts",
     "test": "node --experimental-strip-types --no-warnings --test src/**/*.test.ts",
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run guide && node scripts/build-design-preview.mjs && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "app:dev": "tauri dev",
     "app:build": "tauri build",
     "release:prep": "node scripts/publish-release.mjs",
-    "stats:downloads": "node scripts/download-counts.mjs"
+    "stats:downloads": "node scripts/download-counts.mjs",
+    "guide": "node --experimental-strip-types --no-warnings scripts/build-guide.mjs",
+    "assets:visuals": "node --experimental-strip-types --no-warnings scripts/make-visuals.mjs",
+    "check:visuals": "node scripts/check-visuals.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tauri-apps/cli": "^2",
     "esbuild": "^0.24.0",
+    "sharp": "^0.35.4",
     "vite": "^7.1.5"
   }
 }

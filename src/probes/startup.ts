@@ -35,6 +35,7 @@ import { readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Zone } from '../types.ts'
+import { ps } from './shell.ts'
 
 const exec = promisify(execFile)
 
@@ -398,7 +399,7 @@ export function judgeStartup(e: StartupEntry): StartupVerdict {
       zone: 'AMBIG',
       meaning: `${withRo(host)} 실행되는 항목`,
       reason: sentence([
-        `${withGa(host)} **다른 파일을 실행**하는 항목이에요.`,
+        `${withGa(host)} 다른 파일을 실행하는 항목이에요.`,
         script
           ? `무엇을 하는지는 ${withGa(host)} 아니라 실행되는 파일에 달려 있습니다: ${script}`
           : '무엇을 하는지는 실행되는 파일에 달려 있는데, 그 파일을 못 찾았습니다.',
@@ -406,7 +407,7 @@ export function judgeStartup(e: StartupEntry): StartupVerdict {
       ]),
       suggestible: false,
       ifDisabled:
-        '끄면 무엇이 달라지는지는 저희가 몰라요. 다만 **끄기는 되돌릴 수 있습니다** — ' +
+        '끄면 무엇이 달라지는지는 저희가 몰라요. 다만 끄기는 되돌릴 수 있습니다 — ' +
         '켤 때 따라 나오지 않을 뿐이라, 이상하면 다시 켜면 됩니다.',
     }
   }
@@ -446,7 +447,7 @@ export function judgeStartup(e: StartupEntry): StartupVerdict {
       ]),
       suggestible: false,
       ifDisabled:
-        '끄면 무엇이 달라지는지는 저희가 몰라요. 다만 **끄기는 되돌릴 수 있습니다** — ' +
+        '끄면 무엇이 달라지는지는 저희가 몰라요. 다만 끄기는 되돌릴 수 있습니다 — ' +
         '켤 때 따라 나오지 않을 뿐이라, 이상하면 다시 켜면 됩니다.',
     }
   }
@@ -464,7 +465,7 @@ export function judgeStartup(e: StartupEntry): StartupVerdict {
       ]),
       suggestible: false,
       ifDisabled:
-        '끄면 무엇이 달라지는지는 저희가 몰라요. 다만 **끄기는 되돌릴 수 있습니다** — ' +
+        '끄면 무엇이 달라지는지는 저희가 몰라요. 다만 끄기는 되돌릴 수 있습니다 — ' +
         '프로그램은 그대로 있고 켤 때 따라 나오지 않을 뿐이라, 이상하면 다시 켜면 됩니다.',
     }
   }
@@ -496,7 +497,7 @@ export function judgeStartup(e: StartupEntry): StartupVerdict {
     ]),
     suggestible: false,
     ifDisabled:
-      '끄면 무엇이 달라지는지는 저희가 몰라요. 다만 **끄기는 되돌릴 수 있습니다** — ' +
+      '끄면 무엇이 달라지는지는 저희가 몰라요. 다만 끄기는 되돌릴 수 있습니다 — ' +
       '프로그램은 그대로 있고 켤 때 따라 나오지 않을 뿐이라, 이상하면 다시 켜면 됩니다.',
   }
 }
@@ -690,8 +691,11 @@ $json = [PSCustomObject]$out | ConvertTo-Json -Depth 3 -Compress
 export async function gatherSignatures(paths: string[]): Promise<Record<string, { signer: string; signed: boolean }>> {
   const list = [...new Set(paths.filter(Boolean))]
   if (process.platform !== 'win32' || !list.length) return {}
+  /* ★ 여기만 ps()를 못 쓴다 — 경로를 stdin으로 넘겨야 해서 자식 손잡이가 필요하다.
+     한도는 ps()와 같은 뜻으로 건다. 서명 확인은 원래 느리다(21개 5.5초, 실측). */
   const child = exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', SIGNATURES], {
     windowsHide: true,
+    timeout: 2 * 60_000,
     maxBuffer: 8 * 1024 * 1024,
   })
   // ★ 경로를 명령줄이 아니라 stdin으로 넘긴다. 명령줄에 이어붙이면 길이 제한에 걸리고,
@@ -717,11 +721,9 @@ export interface StartupReport {
  */
 export async function countLogonTasks(): Promise<number> {
   if (process.platform !== 'win32') return 0
-  const { stdout } = await exec(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-Command', LOGON_TASKS],
-    { windowsHide: true }
-  )
+  /* 각주다 — 본문(목록)을 막지 않으므로 오래 걸려도 된다. 다만 '영원히'는 아니다.
+     세는 데 몇 분이 걸리는 PC가 실제로 있어서(LOGON_TASKS 머리말) 한도를 따로 준다. */
+  const stdout = await ps(LOGON_TASKS, { timeoutMs: 3 * 60_000 })
   const n = parseInt(stdout.trim(), 10)
   return Number.isFinite(n) && n >= 0 ? n : 0
 }
@@ -731,11 +733,7 @@ export async function probeStartup(): Promise<StartupReport> {
     throw new Error('시작프로그램 프로브는 지금 Windows만 지원합니다.')
   }
 
-  const { stdout } = await exec(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-Command', GATHER],
-    { windowsHide: true, maxBuffer: 8 * 1024 * 1024 }
-  )
+  const stdout = await ps(GATHER, { maxBuffer: 8 * 1024 * 1024 })
   const raw = JSON.parse(Buffer.from(stdout.trim(), 'base64').toString('utf8'))
   const list: any[] = Array.isArray(raw.entries) ? raw.entries : raw.entries ? [raw.entries] : []
 

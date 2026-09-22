@@ -28,6 +28,7 @@ const esc = (s: string) =>
  */
 export function startHtml(): string {
   return `<section class="coach start">
+    <img class="coach-art" src="/illustrations/storage-320.webp" width="128" height="128" alt="" decoding="async" />
     <div class="t">
       <h2>정리정돈 시작</h2>
       <p>지금 상태를 보고 <b>오늘 할 한 곳</b>만 골라 드릴게요. 목록은 그다음입니다.</p>
@@ -69,6 +70,7 @@ export function pickHtml(pick: TodayPick | null): string {
   if (!pick) {
     return `<section class="coach">
       <div class="pk-empty">
+        <img class="state-art" src="/illustrations/state-done.svg" width="120" height="90" alt="" />
         <h2>오늘은 안 하셔도 됩니다.</h2>
         <p>할 때가 된 곳이 없어요. 없는 할 일을 만들어 드리지는 않습니다.</p>
         <button class="opt" id="coach-close">닫기</button>

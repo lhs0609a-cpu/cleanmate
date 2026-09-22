@@ -24,11 +24,8 @@
  * 않으면 사용자는 "지웠는데 왜 그대로냐"에서 멈춘다.
  */
 
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
-import type { Finding } from '../types.ts'
-
-const exec = promisify(execFile)
+import type { Figure, Finding } from '../types.ts'
+import { ps } from './shell.ts'
 
 const GB = 1024 ** 3
 const MB = 1024 ** 2
@@ -80,12 +77,7 @@ ConvertTo-Json -Compress -InputObject @($items)
 
 export async function gatherBulkFacts(): Promise<BulkItem[]> {
   if (process.platform !== 'win32') return []
-  const { stdout } = await exec(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-Command', SCRIPT],
-    { windowsHide: true, maxBuffer: 1 << 20 }
-  )
-  const raw = JSON.parse(stdout || '[]')
+  const raw = JSON.parse((await ps(SCRIPT)) || '[]')
   const list: any[] = Array.isArray(raw) ? raw : [raw]
   return list
     .filter((r) => r && r.path && r.bytes)
@@ -100,6 +92,40 @@ export async function gatherBulkFacts(): Promise<BulkItem[]> {
    Windows.old는 윈도우의 정식 도구가 따로 있다(존 C + assist).
    ──────────────────────────────────────────────────────────── */
 
+/**
+ * 이 계열(WSL·Docker)에서 사람이 가장 안 믿는 한 마디.
+ *
+ * "안에서 지웠는데 왜 용량이 그대로냐"는 이 화면에 오는 가장 흔한 질문이고,
+ * 문장으로는 아무리 써도 안 믿긴다. 같은 크기 상자 둘을 그리는 게 빠르다.
+ * 문장은 그대로 둔다 — 터미널과 화면 낭독기에는 그림이 없다(types.ts 머리말).
+ */
+const GROWS_ONLY =
+  '★ 그리고 이 파일은 커지기만 합니다 — 안에서 30GB를 지워도 윈도우가 보는 크기는 그대로예요.'
+const DOCKER_GROWS_ONLY =
+  '★ 이 파일도 커지기만 합니다 — Docker 안에서 지워도 윈도우가 보는 크기는 그대로예요.'
+
+/**
+ * 안이 달라져도 밖은 그대로 — 이 계열이 공유하는 그림.
+ *
+ * ★ 안에 얼마가 들었는지는 안 그린다. 우리는 그 값을 못 잰다.
+ *   밖에서 보이는 건 파일 크기 하나뿐이라, 안쪽은 '못 잰 것'으로 그린다.
+ *   여기에 그럴듯한 눈금을 그려 넣는 순간 이 그림이 거짓말이 된다.
+ */
+function onlyGrowsFigure(bytes: number, inside: string, replaced = GROWS_ONLY): Figure {
+  return {
+    kind: 'unchanged',
+    bytes,
+    beforeLabel: '지우기 전',
+    afterLabel: '지운 뒤',
+    betweenLabel: `${inside} 안에서 지워도`,
+    insideNote: '안에 얼마나 들었는지는 밖에서 못 봅니다',
+    alt:
+      `${inside} 안에서 파일을 지워도 윈도우가 보는 이 파일 크기는 ` +
+      `${size(bytes)} 그대로입니다. 이 파일은 커지기만 합니다.`,
+    replaces: [replaced],
+  }
+}
+
 function wslFinding(it: BulkItem): Finding {
   const who = it.label && !/^(LocalState|wsl|data|disk)$/i.test(it.label) ? it.label : '리눅스'
   return {
@@ -111,9 +137,7 @@ function wslFinding(it: BulkItem): Finding {
       what:
         `윈도우 안에 리눅스 컴퓨터가 하나 더 들어 있고, 그 컴퓨터의 저장소 전체가 파일 하나로 들어 있어요. 이 파일 하나가 ${size(it.bytes)}입니다.\n` +
         it.path,
-      why:
-        '리눅스 안에 설치한 것·받은 것이 전부 이 한 파일에 들어갑니다. ' +
-        '★ 그리고 이 파일은 **커지기만 합니다** — 리눅스 안에서 30GB를 지워도 윈도우가 보는 크기는 그대로예요.',
+      why: '리눅스 안에 설치한 것·받은 것이 전부 이 한 파일에 들어갑니다. ' + GROWS_ONLY,
       usedBy: [
         `${who} — 이 파일 하나가 곧 그 리눅스 전부예요. 안에 설치한 것·만든 것 모두.`,
         '개발용 프로그램을 이 리눅스에서 쓰신다면 그것들도 여기 들어 있습니다.',
@@ -138,6 +162,7 @@ function wslFinding(it: BulkItem): Finding {
         '안에서 지운 만큼 실제로 줄어듭니다.',
       ifKept: `아무 문제 없어요. ${size(it.bytes)}를 계속 쓸 뿐입니다.`,
     },
+    figure: onlyGrowsFigure(it.bytes, '리눅스'),
   }
 }
 
@@ -151,7 +176,7 @@ function dockerFinding(it: BulkItem): Finding {
       what: `Docker(개발용 프로그램)가 받아둔 프로그램 묶음과 그 안에 저장한 자료를 담아두는 저장소예요. 파일 하나가 ${size(it.bytes)}입니다.\n${it.path}`,
       why:
         '한 번 받은 프로그램 묶음은 지우지 않는 한 계속 쌓입니다. 만들면서 생긴 임시 파일도 여기 들어가요. ' +
-        '★ 이 파일도 커지기만 합니다 — Docker 안에서 지워도 윈도우가 보는 크기는 그대로예요.',
+        DOCKER_GROWS_ONLY,
       usedBy: [
         'Docker — 받아둔 프로그램 묶음과 그 안에 만들어둔 것 전부입니다.',
         '여기에 자료를 저장하는 프로그램을 쓰셨다면 그 자료도 함께 들어 있습니다.',
@@ -167,6 +192,7 @@ function dockerFinding(it: BulkItem): Finding {
         '그다음 저장소 파일을 쪼그라뜨려야 윈도우 쪽 용량이 실제로 빕니다(위 리눅스 항목과 같은 방법).',
       ifKept: `아무 문제 없어요. ${size(it.bytes)}를 계속 쓸 뿐입니다.`,
     },
+    figure: onlyGrowsFigure(it.bytes, 'Docker', DOCKER_GROWS_ONLY),
   }
 }
 

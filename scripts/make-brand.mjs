@@ -2,7 +2,7 @@
  * 브랜드 자산 생성기 — 의존성 0 (Node 내장 zlib만)
  *
  *   node scripts/make-brand.mjs
- *     → web/public/og.png            (1200×630, 링크 공유 썸네일)
+ *     → web/public/og.png            (make-visuals.mjs의 한국어 공유 카드 복사)
  *     → web/public/favicon-32.png    (탭 아이콘)
  *     → web/public/favicon-180.png   (iOS 홈화면)
  *
@@ -13,12 +13,12 @@
  * 정의하고, 선분까지의 거리에 두께를 줘서 획을 만든다. 둥근 글자는 arc()로 호를
  * 잘게 쪼개 폴리라인으로 만든다 — 그래서 곡선이 각지지 않는다.
  *
- * 한글은 못 그린다. OG 이미지의 한국어 문구는 og:title/og:description이 맡고,
- * 이미지는 브랜드(로고·워드마크·수치·존 색)를 맡는다.
+ * 한국어 OG는 make-visuals.mjs에서 번들 글꼴로 렌더링한다.
+ * 이 스크립트는 커밋된 카드를 복사하므로 아이콘 재생성에 브라우저가 필요 없다.
  */
 
 import { deflateSync } from 'node:zlib'
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 
 /* ── 브랜드 색 (web/index.html의 :root와 동일) ──────────────── */
 const BG = [7, 9, 13]
@@ -441,7 +441,7 @@ function encodePng(w, h, raw) {
 
 /* ── 출력 ───────────────────────────────────────────────────── */
 mkdirSync('web/public', { recursive: true })
-const out = [['web/public/og.png', OGW, OGH, encodePng(OGW, OGH, render(OGW, OGH, ogSample, 2))]]
+const out = [['web/public/og.png', OGW, OGH, readFileSync('web/public/social/home.png')]]
 for (const N of [32, 180]) {
   out.push([`web/public/favicon-${N}.png`, N, N, encodePng(N, N, render(N, N, (x, y, d) => iconSample(x, y, N, d), 4))])
 }

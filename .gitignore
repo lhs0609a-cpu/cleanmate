@@ -30,3 +30,16 @@ desktop.ini
 *.scan.json
 scan-output/
 .vercel
+
+# 정리 가이드는 빌드 때 만든다(scripts/build-guide.mjs).
+# ★ 만든 결과를 커밋하지 않는다 — 원본은 src/content/guide.ts 하나뿐이어야 한다.
+#   생성물이 저장소에 있으면 원본을 고치고 생성을 안 돌린 상태가 조용히 배포된다.
+web/public/guide/
+web/public/sitemap.xml
+web/public/robots.txt
+web/public/llms.txt
+
+# Local visual review captures
+output/design-review/
+web/public/design/
+output/quality-redesign/test-results.txt

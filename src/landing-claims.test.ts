@@ -109,19 +109,19 @@ test('★ 히어로 목업의 숫자가 앱이 실제로 낼 수 있는 값이�
   /* 존 A = '지금 즉시'. 존 A는 규칙이 확증한 것만으로 만들어지므로(isAutoEligible)
      "존 A는 34.9GB인데 즉시 지울 건 2.1GB"인 화면은 앱에서 나오지 않는다.
      추론이 존 A를 만들 수 있게 되는 날에만 이 둘이 갈라진다. */
-  const cap = hero.match(/지금 즉시 ([\d.]+)GB \+ 물어보면 ([\d.]+)GB/)
-  assert.ok(cap, "'지금 즉시 / 물어보면' 안내를 못 찾았다")
+  const cap = hero.match(/안전하게 정리할 수 있는 ([\d.]+)GB · 확인이 필요한 ([\d.]+)GB/)
+  assert.ok(cap, '정리 후보와 확인 필요 용량 안내를 못 찾았다')
   const [auto, ask] = [Number(cap![1]), Number(cap![2])]
   near(zones[0].gb, auto, 0.05,
     `존 A(${zones[0].gb}GB)와 '지금 즉시'(${auto}GB)가 다르다 — 앱은 이 상태를 만들 수 없다`)
   near(zones[1].gb, ask, 0.05, `존 B와 '물어보면'이 다르다`)
 
-  const big = hero.match(/class="s-big">([\d.]+)GB/)
+  const big = hero.match(/<span>정리 후보<\/span><b>([\d.]+)GB/)
   assert.ok(big, '정리 가능 큰 숫자를 못 찾았다')
   near(Number(big![1]), auto + ask, 0.05, "'정리 가능'이 즉시 + 물어보면의 합이 아니다")
 
   // 낭독기로 듣는 사람에게 다른 숫자를 읽어주면 그것도 거짓이다.
-  const alt = hero.match(/aria-label="테라클린 앱 홈 화면:([^"]*)"/)
+  const alt = hero.match(/aria-label="앱 홈 화면 예시\.([^"]*)"/)
   assert.ok(alt, '히어로 목업에 대체 설명이 없다')
   for (const n of [big![1], String(auto), String(ask), ...zones.map((z) => String(z.gb))]) {
     assert.ok(alt![1].includes(n), `대체 설명이 화면과 다른 숫자를 읽어준다: ${n}GB가 없다`)

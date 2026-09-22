@@ -21,11 +21,8 @@
  * 화면이 의미를 갖는다.
  */
 
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import type { Finding } from '../types.ts'
-
-const exec = promisify(execFile)
+import { ps } from './shell.ts'
 
 const GB = 1024 ** 3
 const MB = 1024 ** 2
@@ -53,23 +50,27 @@ export interface ReclaimFacts {
  *   COM은 세션·권한에 따라 조용히 실패한다. 휴지통은 드라이브마다
  *   $Recycle.Bin\<사용자SID>\ 아래에 $R(실물)·$I(메타)로 저장되므로,
  *   $R만 세면 '되살릴 수 있는 실제 용량'이 정확히 나온다.
+ *
+ * ★ 세는 방식을 바꿨다 — 전에는 파일 객체를 배열에 하나씩 이어붙였다
+ *   (`$items += …`). 파워셸의 배열은 크기가 고정이라 '이어붙이기'가 실은
+ *   **매번 전체를 새 배열로 복사하는 일**이다. 파일 수의 제곱으로 늘어난다.
+ *   휴지통이 큰 PC에서 이 한 줄이 프로브 16초 중 9초를 먹었다.
+ *   이제 담지 않고 흘려보낸다 — Measure-Object가 한 번 지나가며 개수와 합을
+ *   같이 낸다. 그리고 이름 고르기를 Where-Object가 아니라 -Filter에 맡긴다:
+ *   파일시스템이 직접 거르므로 안 볼 파일을 객체로 만들지도 않는다.
  */
 const SCRIPT = `
 $ErrorActionPreference = 'SilentlyContinue'
 $drive = $env:SystemDrive
-$bins = Get-ChildItem "$drive\\" -Force -Directory | Where-Object { $_.Name -eq '$Recycle.Bin' }
-$items = @()
-foreach ($b in $bins) {
-  $items += Get-ChildItem $b.FullName -Force -Recurse -File | Where-Object { $_.Name -like '$R*' }
-}
-$rbSum = ($items | Measure-Object -Property Length -Sum).Sum
+$bin = Join-Path $drive '$Recycle.Bin'
+$rb = Get-ChildItem -LiteralPath $bin -Force -Recurse -File -Filter '$R*' | Measure-Object -Property Length -Sum
 $dl = Join-Path $drive 'Windows\\SoftwareDistribution\\Download'
-$dlSum = (Get-ChildItem $dl -Force -Recurse -File | Measure-Object -Property Length -Sum).Sum
+$dlm = Get-ChildItem -LiteralPath $dl -Force -Recurse -File | Measure-Object -Property Length -Sum
 [PSCustomObject]@{
   systemDrive      = $drive
-  recycleBytes     = [int64]$(if ($rbSum) { $rbSum } else { 0 })
-  recycleCount     = [int]@($items).Count
-  updateCacheBytes = [int64]$(if ($dlSum) { $dlSum } else { 0 })
+  recycleBytes     = [int64]$(if ($rb.Sum) { $rb.Sum } else { 0 })
+  recycleCount     = [int]$rb.Count
+  updateCacheBytes = [int64]$(if ($dlm.Sum) { $dlm.Sum } else { 0 })
 } | ConvertTo-Json -Compress
 `
 
@@ -77,12 +78,7 @@ export async function gatherReclaimFacts(): Promise<ReclaimFacts> {
   if (process.platform !== 'win32') {
     throw new Error('휴지통·업데이트가 남긴 파일 확인은 지금 윈도우에서만 됩니다.')
   }
-  const { stdout } = await exec(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-Command', SCRIPT],
-    { windowsHide: true, maxBuffer: 1 << 20 }
-  )
-  const raw = JSON.parse(stdout)
+  const raw = JSON.parse(await ps(SCRIPT))
   return {
     systemDrive: raw.systemDrive ?? 'C:',
     recycleBytes: raw.recycleBytes ?? 0,
