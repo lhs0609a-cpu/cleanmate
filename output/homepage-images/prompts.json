@@ -1,0 +1,24 @@
+{
+  "mode": "built-in image_gen",
+  "hero": "Use case: photorealistic-natural. Asset type: TeraClean Korean PC cleanup website hero photograph, portrait 4:5. Create a beautiful fictional adult Korean woman model aged around 28, warm natural smile, refined natural makeup, long dark hair loosely tucked behind one ear, wearing an elegant ivory blouse with sleeves. Seated at a clean pale oak desk with an open unbranded silver laptop in the lower foreground, looking toward camera. Modern minimalist home workspace, softly blurred pale sage and cream interior, small green plant, gentle daylight from side. Premium lifestyle campaign photography, authentic skin texture, relaxed approachable confidence, sophisticated editorial composition, waist-up with full head comfortably inside frame and generous headroom, subtle mint accents. No text, logos, watermarks, graphics or UI.",
+  "sections": [
+    [
+      "pc",
+      "Premium editorial interior photograph for a Korean PC cleanup website. A beautifully organized pale oak home office desk, open unbranded silver laptop showing a simple softly out-of-focus mint desktop with no readable text, neatly placed wireless mouse, sage ceramic mug, single notebook and plant. Soft daylight, ivory and mint palette, calm tangible textures, sophisticated photography, square composition, no people, no text, no logos, no watermarks."
+    ],
+    [
+      "home",
+      "Premium editorial interior photograph for a Korean home cleaning service website. Spotlessly clean contemporary Korean apartment living room, ivory linen sofa, pale oak coffee table, sheer curtains with beautiful soft morning sunlight, small green plant, sage cushion, airy generous floor space. Warm ivory and subtle mint palette, authentic materials, architectural magazine photography, square composition, no people, no text, no logos, no watermarks."
+    ],
+    [
+      "storage",
+      "Premium editorial interior photograph for a Korean home organization service website. Beautiful organized pale oak built-in shelving with precisely folded ivory towels, natural woven baskets, a few orderly neutral books with blank spines, understated sage ceramic vase, organized useful belongings with generous breathing room. Soft daylight, ivory and sage palette, tactile materials, close architectural detail, square composition, no people, no text, no logos, no watermarks."
+    ]
+  ],
+  "sources": {
+    "hero": "C:\\Users\\leegu\\.codex\\generated_images\\01a0c728-7fc0-7073-b9f9-e5090aeaa72f\\exec-764d71cf-2524-4678-b0f2-c35b72b8336a.png",
+    "pc": "C:\\Users\\leegu\\.codex\\generated_images\\01a0c728-7fc0-7073-b9f9-e5090aeaa72f\\exec-f2435431-0436-48ac-b9b1-139c12a6cc71.png",
+    "home": "C:\\Users\\leegu\\.codex\\generated_images\\01a0c728-7fc0-7073-b9f9-e5090aeaa72f\\exec-353c59c8-2e83-4930-bfbf-94db2c5f8c88.png",
+    "storage": "C:\\Users\\leegu\\.codex\\generated_images\\01a0c728-7fc0-7073-b9f9-e5090aeaa72f\\exec-15fc32dc-cd39-421b-833f-c8ed4b442b9a.png"
+  }
+}
