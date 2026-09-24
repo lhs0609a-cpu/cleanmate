@@ -7,17 +7,33 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "no-referrer" }
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        }
       ]
     },
     {
       "source": "/((?!community\\.html$).*)",
-      "headers": [{ "key": "X-Frame-Options", "value": "DENY" }]
+      "headers": [
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        }
+      ]
     },
     {
       "source": "/community.html",
-      "headers": [{ "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'self' http://tauri.localhost https://tauri.localhost tauri:" }]
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'self' http://tauri.localhost https://tauri.localhost tauri:"
+        }
+      ]
     },
     {
       "source": "/app.html",
@@ -35,17 +51,51 @@
           "key": "Content-Security-Policy",
           "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"
         },
-        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
       ]
     },
     {
-      "source": "/((?!app\\.html|admin\\.html|community\\.html).*)",
+      "source": "/library/:path*",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+        }
+      ]
+    },
+    {
+      "source": "/((?!app\\.html|admin\\.html|community\\.html|library).*)",
       "headers": [
         {
           "key": "Content-Security-Policy",
           "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.github.com; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"
         }
       ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/library",
+      "destination": "/api/library?path="
+    },
+    {
+      "source": "/library/search",
+      "destination": "/api/library?path=search"
+    },
+    {
+      "source": "/library/:path*",
+      "destination": "/api/library?path=:path*"
+    },
+    {
+      "source": "/sitemaps/library.xml",
+      "destination": "/api/library-sitemap"
+    },
+    {
+      "source": "/sitemaps/library-:n(\\d+).xml",
+      "destination": "/api/library-sitemap?n=:n"
     }
   ]
 }

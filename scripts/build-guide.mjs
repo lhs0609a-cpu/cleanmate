@@ -131,14 +131,14 @@ ${jsonld.map((j) => `<script type="application/ld+json">${JSON.stringify(j)}</sc
 <body>
 <header class="bar"><div class="in">
   <a class="logo" href="/"><img src="/brand/mark.svg" width="32" height="32" alt="" />${BRAND}</a>
-  <nav><a href="/guide/">정리 가이드</a><a href="/#get">무료 다운로드</a></nav>
+  <nav><a href="/guide/">정리 가이드</a><a href="/library/">자료실</a><a href="/#get">무료 다운로드</a></nav>
 </div></header>
 <div class="wrap">
 ${crumb}
 ${body}
 <footer>
   <p>${BRAND} — 지워도 되는 것만, 이유와 함께. 파일은 기기를 떠나지 않습니다.</p>
-  <p><a href="/">홈</a> · <a href="/guide/">정리 가이드</a> · <a href="/#contact">문의</a></p>
+  <p><a href="/">홈</a> · <a href="/guide/">정리 가이드</a> · <a href="/library/">자료실</a> · <a href="/#contact">문의</a></p>
 </footer>
 </div>
 </body>
@@ -310,6 +310,8 @@ function sitemap() {
   const urls = [
     { loc: SITE + '/', pri: '1.0', freq: 'weekly', mod: TODAY },
     { loc: `${SITE}/guide/`, pri: '0.9', freq: 'weekly', mod: TODAY },
+    // 자료실 입구만 여기 적는다. 문서 34만 장은 /sitemaps/library.xml 색인이 맡는다.
+    { loc: `${SITE}/library/`, pri: '0.9', freq: 'weekly', mod: TODAY },
     ...ARTICLES.map((a) => ({
       loc: `${SITE}/guide/${a.slug}.html`,
       pri: '0.8',
@@ -370,6 +372,7 @@ User-agent: Daum
 Allow: /
 
 Sitemap: ${SITE}/sitemap.xml
+Sitemap: ${SITE}/sitemaps/library.xml
 `
 }
 
@@ -393,6 +396,12 @@ function llmsTxt() {
 
 ## 정리 가이드
 ${ARTICLES.map((a) => `- [${a.question}](${SITE}/guide/${a.slug}.html): ${a.summary}`).join('\n')}
+
+## 자료실
+디스크를 차지하는 항목을 하나씩 정리한 참고 자료입니다. 항목별로 경로·전형적인 크기·지워도 되는지·지우는 법을 적었고, 운영체제와 저장장치 환경에 따라 달라지는 부분은 따로 나눠 두었습니다.
+- [자료실](${SITE}/library/): 전체 목차
+- [전체 목록](${SITE}/library/all/1): 항목 한눈에 보기
+- 사이트맵 색인: ${SITE}/sitemaps/library.xml
 
 ## 제품
 - [홈](${SITE}/): 무엇을 하는 앱인지, 무엇을 안 하는지
