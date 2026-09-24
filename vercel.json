@@ -58,7 +58,7 @@
       ]
     },
     {
-      "source": "/library/:path*",
+      "source": "/library(.*)",
       "headers": [
         {
           "key": "Content-Security-Policy",
@@ -82,20 +82,16 @@
       "destination": "/api/library?path="
     },
     {
-      "source": "/library/search",
-      "destination": "/api/library?path=search"
-    },
-    {
-      "source": "/library/:path*",
-      "destination": "/api/library?path=:path*"
+      "source": "/library/(.*)",
+      "destination": "/api/library?path=$1"
     },
     {
       "source": "/sitemaps/library.xml",
       "destination": "/api/library-sitemap"
     },
     {
-      "source": "/sitemaps/library-:n(\\d+).xml",
-      "destination": "/api/library-sitemap?n=:n"
+      "source": "/sitemaps/library-(\\d+).xml",
+      "destination": "/api/library-sitemap?n=$1"
     }
   ]
 }
